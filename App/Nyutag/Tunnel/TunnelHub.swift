@@ -120,6 +120,17 @@ actor TunnelHub {
 
     /// Вызывать при переходе приложения в активное состояние, до того как клиенты начнут переподключаться.
     /// Если порт не вернулся, ядро перезапускается на новом порту, а клиенты получают новый путь.
+    /// Ждёт открытого пути не дольше `limit`: вход сразу после запуска не должен уйти в закрытый путь.
+    func waitUntilUp(within limit: Duration = .seconds(20)) async -> Bool {
+        let deadline = ContinuousClock.now + limit
+        while ContinuousClock.now < deadline {
+            if case .up = state { return true }
+            try? await Task.sleep(for: .milliseconds(250))
+        }
+        if case .up = state { return true }
+        return false
+    }
+
     func appBecameActive() async {
         switch state {
         case .up:

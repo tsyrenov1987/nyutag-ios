@@ -118,6 +118,10 @@ fileref("selfcheck_swift", "SelfCheck.swift", "sourcecode.swift")
 fileref("tunnel_bridge", "CoreBridge.swift", "sourcecode.swift")
 fileref("tunnel_net", "NetworkWatch.swift", "sourcecode.swift")
 fileref("tunnel_hub", "TunnelHub.swift", "sourcecode.swift")
+# Экраны: все .swift из App/Nyutag/UI, новый файл попадает в проект повторным запуском генератора.
+UI_FILES = sorted(n for n in os.listdir(os.path.join(ROOT, "App", "Nyutag", "UI")) if n.endswith(".swift"))
+for name in UI_FILES:
+    fileref("ui:" + name, name, "sourcecode.swift")
 # FarvaterCore.xcframework не в git (tools/fetch-farvater-core.sh кладёт его в Frameworks/). Внутри статический
 # архив, поэтому только линковка: встраивать (Embed & Sign) статический фреймворк в бандл нельзя.
 fileref("farvater", "Frameworks/FarvaterCore.xcframework", "wrapper.xcframework")
@@ -153,6 +157,7 @@ b_swift_selfcheck = bf("selfcheck_swift", F["selfcheck_swift"], "SelfCheck.swift
 b_tunnel = [bf("tunnel_bridge", F["tunnel_bridge"], "CoreBridge.swift", "Sources"),
             bf("tunnel_net", F["tunnel_net"], "NetworkWatch.swift", "Sources"),
             bf("tunnel_hub", F["tunnel_hub"], "TunnelHub.swift", "Sources")]
+b_ui = [bf("ui:" + n, F["ui:" + n], n, "Sources") for n in UI_FILES]
 b_farvater = bf("farvater", F["farvater"], "FarvaterCore.xcframework", "Frameworks")
 b_assets = bf("assets", F["assets"], "Assets.xcassets", "Resources")
 b_res = bf("resources", F["resources"], "Catalogue", "Resources")
@@ -169,7 +174,7 @@ def phase(name, isa, files, extra=()):
                [("files", lst(files)), ("runOnlyForDeploymentPostprocessing", "0")])
 
 
-ph_app_src = phase("Sources:app", "PBXSourcesBuildPhase", [b_swift_app, b_swift_content, b_swift_accounts, b_swift_selfcheck] + b_tunnel)
+ph_app_src = phase("Sources:app", "PBXSourcesBuildPhase", [b_swift_app, b_swift_content, b_swift_accounts, b_swift_selfcheck] + b_tunnel + b_ui)
 ph_app_fw = phase("Frameworks:app", "PBXFrameworksBuildPhase", [b_pkg_app, b_farvater])
 ph_app_res = phase("Resources:app", "PBXResourcesBuildPhase", [b_assets, b_res])
 ph_embed = phase("Embed Foundation Extensions", "PBXCopyFilesBuildPhase", [b_embed],
@@ -190,7 +195,8 @@ def group(key, comment, children, path=None, name=None):
 
 
 g_tunnel = group("tunnel", "Tunnel", [F["tunnel_bridge"], F["tunnel_net"], F["tunnel_hub"]], "Tunnel")
-g_nyutag = group("nyutag", "Nyutag", [F["app_swift"], F["content_swift"], F["accounts_swift"], F["selfcheck_swift"], g_tunnel, F["assets"], F["app_plist"], F["app_ent"]], "Nyutag")
+g_ui = group("ui", "UI", [F["ui:" + n] for n in UI_FILES], "UI")
+g_nyutag = group("nyutag", "Nyutag", [F["app_swift"], F["content_swift"], F["accounts_swift"], F["selfcheck_swift"], g_tunnel, g_ui, F["assets"], F["app_plist"], F["app_ent"]], "Nyutag")
 g_nse = group("nse", "NyutagNSE", [F["nse_swift"], F["nse_plist"], F["nse_ent"]], "NyutagNSE")
 g_apps = group("apps", "App", [g_nyutag, g_nse, F["resources"]], "App")
 g_products = group("products", "Products", [APP_PROD, NSE_PROD], None, "Products")

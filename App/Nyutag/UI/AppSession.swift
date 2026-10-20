@@ -1,0 +1,159 @@
+// Нютаг. Состояние приложения для экранов: вошли или нет, список чатов, выход. Под капотом хранитель входа,
+// синхронизация и крипто-машина; экраны видят только `phase` и `lines`.
+
+import Foundation
+import NyutagCore
+import Observation
+
+@MainActor @Observable
+final class AppSession {
+    enum Phase: Equatable { case launching, signedOut, signedIn }
+
+    enum SignInFailure: Error, Equatable { case wrongPassword, tooOften, noNetwork, broken }
+
+    private(set) var phase: Phase = .launching
+    private(set) var lines: [ChatLine] = []
+    private(set) var me: String?
+    /// Чем кончилась попытка открыть историю паролем; `needsRecoveryKey`/`needsOtherDevice` разберёт экран ключей.
+    private(set) var history: PasswordUnlockOutcome?
+
+    @ObservationIgnored private let keeper: AccountKeeper?
+    @ObservationIgnored private var account: SignedInAccount?
+    @ObservationIgnored private var engine: SyncEngine?
+    @ObservationIgnored private var machine: CryptoMachine?
+    @ObservationIgnored private var pump: Task<Void, Never>?
+    @ObservationIgnored private let opened = OpenedCache()
+
+    init(keeper: AccountKeeper? = .app()) {
+        self.keeper = keeper
+    }
+
+    /// Запуск: сохранённый вход поднимаем без сети, список строится из базы сразу.
+    func launch() async {
+        guard phase == .launching else { return }
+        guard let keeper, let account = try? keeper.restore() else {
+            phase = .signedOut
+            return
+        }
+        await start(account, password: nil)
+    }
+
+    /// Вход по имени, телефону или почте. Телефон и почту сервер Нютага переводит в Matrix ID.
+    func signIn(identifier: String, password: String) async throws(SignInFailure) {
+        guard let keeper else { throw .broken }
+        let typed = identifier.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard await TunnelHub.shared.waitUntilUp() else { throw .noNetwork }
+        do {
+            var user = typed
+            if Self.needsResolve(typed) {
+                user = try await NyutagService(client: TunnelHub.shared.makeClient()).resolve(identifier: typed, password: password)
+            }
+            let account = try await keeper.signIn(homeserver: TunnelHub.coreURL, user: user, password: password,
+                                                  deviceName: "Нютаг iPhone")
+            await start(account, password: password)
+        } catch let error as MatrixError {
+            #if DEBUG
+            print("ui-check: отказ входа: \(error)")
+            #endif
+            throw Self.failure(error)
+        } catch {
+            #if DEBUG
+            print("ui-check: отказ входа: \(error)")
+            #endif
+            throw .broken
+        }
+    }
+
+    func signOut() async {
+        guard let account, let keeper else { return }
+        await stop()
+        try? await keeper.signOut(account)
+        self.account = nil
+        lines = []
+        me = nil
+        history = nil
+        phase = .signedOut
+    }
+
+    // MARK: Внутреннее
+
+    private func start(_ account: SignedInAccount, password: String?) async {
+        self.account = account
+        me = account.session.userID
+        let engine = SyncEngine(client: account.client, store: account.store, session: account.session)
+        self.engine = engine
+        phase = .signedIn
+        await refresh()
+        do {
+            let machine = try await CryptoMachine(client: account.client, store: account.store, session: account.session)
+            self.machine = machine
+            await engine.addObserver(machine)
+            _ = try? await machine.publishKeys(serverCount: nil)
+            if let password {
+                // Пароль уже проверен сервером: им же запираем или открываем хранилище ключей.
+                history = try? await machine.unlockWithPassword(password)
+            }
+        } catch {
+            // Без машины переписка в шифрованных чатах остаётся под замком, остальное работает.
+        }
+        let updates = await engine.updates()
+        pump = Task { [weak self] in
+            for await _ in updates {
+                await self?.refresh()
+            }
+        }
+        await engine.start()
+        await refresh()
+    }
+
+    private func stop() async {
+        pump?.cancel()
+        pump = nil
+        await engine?.stop()
+        engine = nil
+        machine = nil
+    }
+
+    private func refresh() async {
+        guard let account, let me else { return }
+        let machine = machine
+        let opened = opened
+        let fresh = try? await ChatDigest.lines(store: account.store, me: me) { event, roomID in
+            guard let id = event.eventID else { return nil }
+            if let known = await opened.get(id) { return known }
+            guard let machine, let clear = try? await machine.decrypt(event, roomID: roomID).event else { return nil }
+            await opened.put(clear, id: id)
+            return clear
+        }
+        if let fresh, fresh != lines { lines = fresh }
+    }
+
+    static func needsResolve(_ identifier: String) -> Bool {
+        if identifier.hasPrefix("@") { return false }
+        if identifier.contains("@") { return true }
+        let digits = identifier.filter(\.isNumber)
+        return digits.count >= 7 && identifier.allSatisfy { $0.isNumber || "+-() ".contains($0) }
+    }
+
+    static func failure(_ error: MatrixError) -> SignInFailure {
+        if error.status == 429 || error.errcode == "M_LIMIT_EXCEEDED" { return .tooOften }
+        if error.errcode == "M_FORBIDDEN" || error.errcode == "M_NOT_FOUND" || error.status == 403 { return .wrongPassword }
+        if case .network = error.kind { return .noNetwork }
+        // Закрытый путь (туннель упал между проверкой и запросом) URLSession отдаёт как отмену.
+        if case .cancelled = error.kind { return .noNetwork }
+        return .broken
+    }
+}
+
+/// Расшифрованные последние реплики: список перестраивается на каждый /sync, расшифровывать заново незачем.
+/// Неудачи не запоминаем: ключ может прийти со следующей синхронизацией.
+actor OpenedCache {
+    private var events: [String: Event] = [:]
+
+    func get(_ eventID: String) -> Event? { events[eventID] }
+
+    func put(_ event: Event, id: String) {
+        if events.count > 2000 { events.removeAll(keepingCapacity: true) }
+        events[id] = event
+    }
+}
