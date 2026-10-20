@@ -148,6 +148,16 @@ public actor SyncEngine {
             for event in response.accountData {
                 try await store.setAccountData(event.type, content: event.content)
             }
+            // Новый m.direct: пересчитать признак личного чата у всех комнат (на первом синке комнаты уже записаны выше).
+            if response.accountData.contains(where: { $0.type == EventType.direct }) {
+                for var record in try await store.rooms() {
+                    let direct = try await isDirect(record.id)
+                    guard direct != record.isDirect else { continue }
+                    record.isDirect = direct
+                    try await store.upsert(record)
+                    changed.insert(record.id)
+                }
+            }
             try await store.setMeta("sync_token", response.nextBatch)
         } catch {
             throw MatrixError(.decoding("хранилище: \(error)"))
@@ -204,11 +214,16 @@ public actor SyncEngine {
         if let alias = try await content(EventType.canonicalAlias) { record.canonicalAlias = alias["alias"]?.string }
         if try await content(EventType.encryption) != nil { record.isEncrypted = true }
         if let create = try await content(EventType.create) { record.isSpace = create["type"]?.string == "m.space" }
-        // Личный чат: наш m.room.member с is_direct, либо m.direct в account data (применяется отдельно).
-        if let member = stateEvents.last(where: { $0.type == EventType.member && $0.stateKey == session.userID }),
-           member.content["is_direct"]?.bool == true {
-            record.isDirect = true
-        }
+        record.isDirect = try await isDirect(roomID, stateEvents: stateEvents)
+    }
+
+    /// Личный чат: комната есть в нашем `m.direct` или наш m.room.member помечен `is_direct` (так приходит приглашение).
+    private func isDirect(_ roomID: String, stateEvents: [Event] = []) async throws -> Bool {
+        var member = stateEvents.last(where: { $0.type == EventType.member && $0.stateKey == session.userID })?.content
+        if member == nil { member = try await store.state(roomID, type: EventType.member, stateKey: session.userID) }
+        if member?["is_direct"]?.bool == true { return true }
+        let direct = try await store.accountData(EventType.direct)?.object ?? [:]
+        return direct.values.contains { $0.array?.contains(.string(roomID)) == true }
     }
 
     private func applyReceipts(roomID: String, content: JSONValue) async throws {

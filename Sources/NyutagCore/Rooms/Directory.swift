@@ -227,17 +227,12 @@ public extension MatrixClient {
     // MARK: Knock
 
     /// POST /v3/knock/{roomIdOrAlias}: постучаться в комнату с правилом входа `knock`. Возвращает id комнаты.
-    /// Query-слой клиента не умеет повторять ключ, поэтому уходит только первый сервер из `via`
-    /// (и как `via`, и как исторический `server_name`).
+    /// Каждый сервер из `via` уходит и как `via`, и как исторический `server_name`.
     @discardableResult
     func knock(_ roomIDOrAlias: String, reason: String? = nil, via: [String] = []) async throws(MatrixError) -> String {
-        var query: [String: String] = [:]
-        if let server = via.first {
-            query["via"] = server
-            query["server_name"] = server
-        }
+        let query: [String: [String]] = via.isEmpty ? [:] : ["via": via, "server_name": via]
         let body: JSONValue = reason.map { ["reason": .string($0)] } ?? [:]
-        let json: JSONValue = try await request(.post, "knock/\(roomIDOrAlias)", query: query, body: body)
+        let json: JSONValue = try await request(.post, "knock/\(roomIDOrAlias)", repeatedQuery: query, body: body)
         guard let roomID = json["room_id"]?.string else { throw MatrixError(.decoding("knock: нет room_id")) }
         return roomID
     }

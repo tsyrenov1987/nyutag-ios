@@ -8,6 +8,8 @@ private final class DirectoryStub: @unchecked Sendable {
         let method: String
         let path: String
         let query: [String: String]
+        /// Все параметры по порядку, с повторами (`via=a&via=b`).
+        let queryItems: [URLQueryItem]
         let body: JSONValue?
         let auth: String?
     }
@@ -69,13 +71,14 @@ private final class DirectoryStubProtocol: URLProtocol, @unchecked Sendable {
             stream.close()
             bodyData = data
         }
-        let query = Dictionary((URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? [])
-            .map { ($0.name, $0.value ?? "") }, uniquingKeysWith: { first, _ in first })
+        let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        let query = Dictionary(items.map { ($0.name, $0.value ?? "") }, uniquingKeysWith: { first, _ in first })
         let recorded = DirectoryStub.Recorded(
             method: request.httpMethod ?? "GET",
             // percentEncodedPath: проверяем, что `!`, `:`, `#` ушли закодированными.
             path: URLComponents(url: url, resolvingAgainstBaseURL: false)?.percentEncodedPath ?? url.path,
             query: query,
+            queryItems: items,
             body: bodyData.flatMap { $0.isEmpty ? nil : try? JSONValue(data: $0) },
             auth: request.value(forHTTPHeaderField: "Authorization"))
         let (status, json) = stub.handle(recorded)
@@ -207,7 +210,8 @@ struct DirectoryTests {
         let request = try #require(stub.last)
         #expect(request.method == "POST")
         #expect(request.path == "/_matrix/client/v3/knock/%23club%3Ax")
-        #expect(request.query == ["via": "x", "server_name": "x"])
+        #expect(request.queryItems.map { "\($0.name)=\($0.value ?? "")" }
+                == ["server_name=x", "server_name=y", "via=x", "via=y"])
         #expect(request.body == ["reason": "Пустите"])
     }
 

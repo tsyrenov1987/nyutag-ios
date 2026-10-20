@@ -90,10 +90,11 @@ public actor MatrixClient {
                                                         _ path: String,
                                                         version: String = MatrixClient.apiVersion,
                                                         query: [String: String] = [:],
+                                                        repeatedQuery: [String: [String]] = [:],
                                                         body: JSONValue? = nil,
                                                         authenticated: Bool = true,
                                                         timeout: Duration? = nil) async throws(MatrixError) -> Response {
-        try await raw(method, "/_matrix/client/\(version)/\(path)", query: query, body: body,
+        try await raw(method, "/_matrix/client/\(version)/\(path)", query: query, repeatedQuery: repeatedQuery, body: body,
                       authenticated: authenticated, timeout: timeout)
     }
 
@@ -101,10 +102,11 @@ public actor MatrixClient {
     public func raw<Response: Decodable & Sendable>(_ method: Method,
                                                     _ absolutePath: String,
                                                     query: [String: String] = [:],
+                                                    repeatedQuery: [String: [String]] = [:],
                                                     body: JSONValue? = nil,
                                                     authenticated: Bool = true,
                                                     timeout: Duration? = nil) async throws(MatrixError) -> Response {
-        let data = try await data(method, absolutePath, query: query, body: body,
+        let data = try await data(method, absolutePath, query: query, repeatedQuery: repeatedQuery, body: body,
                                   authenticated: authenticated, timeout: timeout)
         if Response.self == EmptyResponse.self, let empty = EmptyResponse() as? Response {
             return empty
@@ -120,10 +122,12 @@ public actor MatrixClient {
     public func data(_ method: Method,
                      _ absolutePath: String,
                      query: [String: String] = [:],
+                     repeatedQuery: [String: [String]] = [:],
                      body: JSONValue? = nil,
                      authenticated: Bool = true,
                      timeout: Duration? = nil) async throws(MatrixError) -> Data {
-        var request = try makeRequest(method, absolutePath, query: query, authenticated: authenticated, timeout: timeout)
+        var request = try makeRequest(method, absolutePath, query: query, repeatedQuery: repeatedQuery,
+                                      authenticated: authenticated, timeout: timeout)
         if let body {
             do {
                 request.httpBody = try body.data()
@@ -148,15 +152,17 @@ public actor MatrixClient {
 
     // MARK: Внутреннее
 
+    /// `repeatedQuery`: ключ, повторённый для каждого значения (`?via=a&via=b`), идёт после обычных параметров.
     private func makeRequest(_ method: Method, _ absolutePath: String, query: [String: String],
+                             repeatedQuery: [String: [String]] = [:],
                              authenticated: Bool, timeout: Duration?) throws(MatrixError) -> URLRequest {
         guard var components = URLComponents(url: homeserver, resolvingAgainstBaseURL: false) else {
             throw MatrixError(.network("плохой адрес сервера"))
         }
         components.percentEncodedPath = Self.encodePath(absolutePath)
-        if !query.isEmpty {
-            components.queryItems = query.keys.sorted().map { URLQueryItem(name: $0, value: query[$0]) }
-        }
+        let items = query.keys.sorted().map { URLQueryItem(name: $0, value: query[$0]) }
+            + repeatedQuery.keys.sorted().flatMap { key in repeatedQuery[key, default: []].map { URLQueryItem(name: key, value: $0) } }
+        if !items.isEmpty { components.queryItems = items }
         guard let url = components.url else { throw MatrixError(.network("плохой путь \(absolutePath)")) }
         var request = URLRequest(url: url)
         request.httpMethod = method.rawValue

@@ -77,6 +77,38 @@ import Testing
         #expect(try await store.eventCount(in: "!group:nyutag.chat") == 3)
     }
 
+    @Test func directAccountDataMarksRooms() async throws {
+        let store = try Store.inMemory()
+        let client = MatrixClient(homeserver: URL(string: "http://127.0.0.1:1")!)
+        let session = Session(userID: "@a:nyutag.chat", deviceID: "D", accessToken: "t", homeserver: client.homeserver)
+        let engine = SyncEngine(client: client, store: store, session: session)
+        func sync(_ batch: String, rooms: JSONValue = [:], direct: JSONValue? = nil) async throws -> SyncUpdate {
+            let accountData: JSONValue = .array(direct.map { [["type": "m.direct", "content": $0]] } ?? [])
+            let json: JSONValue = ["next_batch": .string(batch), "rooms": ["join": rooms],
+                                   "account_data": ["events": accountData]]
+            return try await engine.apply(try SyncResponse(json: json), isInitial: false)
+        }
+        let empty: JSONValue = ["timeline": ["events": []]]
+
+        // Комната пришла раньше m.direct: признак ставится, когда m.direct приходит.
+        _ = try await sync("1", rooms: ["!dm:nyutag.chat": empty, "!g:nyutag.chat": empty])
+        #expect(try await store.room("!dm:nyutag.chat")?.isDirect == false)
+        let update = try await sync("2", direct: ["@b:nyutag.chat": ["!dm:nyutag.chat"]])
+        #expect(update.changedRooms == ["!dm:nyutag.chat"])
+        #expect(try await store.room("!dm:nyutag.chat")?.isDirect == true)
+        #expect(try await store.room("!g:nyutag.chat")?.isDirect == false)
+
+        // Новая комната, уже записанная в m.direct, сразу личная.
+        _ = try await sync("3", rooms: ["!dm2:nyutag.chat": empty], direct: ["@b:nyutag.chat": ["!dm:nyutag.chat", "!dm2:nyutag.chat"]])
+        _ = try await sync("4", rooms: ["!dm2:nyutag.chat": empty])
+        #expect(try await store.room("!dm2:nyutag.chat")?.isDirect == true)
+
+        // Убрали из m.direct — признак снимается.
+        _ = try await sync("5", direct: ["@b:nyutag.chat": ["!dm2:nyutag.chat"]])
+        #expect(try await store.room("!dm:nyutag.chat")?.isDirect == false)
+        #expect(try await store.room("!dm2:nyutag.chat")?.isDirect == true)
+    }
+
     @Test func syncFilterIsCompactJSON() {
         let filter = SyncFilter.initial(timelineLimit: 20).canonicalJSON()
         #expect(filter.contains(#""limit":20"#))
