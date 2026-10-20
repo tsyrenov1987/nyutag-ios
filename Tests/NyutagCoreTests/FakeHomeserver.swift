@@ -22,6 +22,11 @@ final class FakeHomeserver: @unchecked Sendable {
     private var members: [String: Set<String>] = [:]
     private var timeline: [String: [JSONValue]] = [:]
     private(set) var backup: [String: [String: JSONValue]] = [:]
+    /// Текущая версия бэкапа и её `auth_data`; nil — версия «1» без описания (её не видно по GET).
+    private(set) var backupVersion = "1"
+    private(set) var backupAuthData: JSONValue?
+    /// Account data: пользователь → тип → содержимое.
+    private var accountData: [String: [String: JSONValue]] = [:]
     private var nextEvent = 0
     /// Ключи кросс-подписи: пользователь → usage → объект.
     private var crossSigning: [String: [String: JSONValue]] = [:]
@@ -67,6 +72,10 @@ final class FakeHomeserver: @unchecked Sendable {
             fallbackKeys["\(user)|\(device)"] = nil
         }
     }
+
+    func crossSigningKey(user: String, usage: String) -> JSONValue? { lock.withLock { crossSigning[user]?[usage] } }
+
+    func accountDataContent(user: String, type: String) -> JSONValue? { lock.withLock { accountData[user]?[type] } }
 
     func oneTimeKeyCount(user: String, device: String) -> Int {
         lock.withLock { oneTimeKeys["\(user)|\(device)"]?.count ?? 0 }
@@ -195,9 +204,38 @@ final class FakeHomeserver: @unchecked Sendable {
                 ])
                 return (200, ["event_id": .string(eventID)])
 
+            case ("PUT", let p) where p.count == 4 && p[0] == "user" && p[2] == "account_data":
+                guard p[1] == who.user else { return (403, ["errcode": "M_FORBIDDEN", "error": "чужой"]) }
+                accountData[who.user, default: [:]][p[3]] = body ?? [:]
+                return (200, [:])
+
+            case ("GET", let p) where p.count == 4 && p[0] == "user" && p[2] == "account_data":
+                guard p[1] == who.user, let content = accountData[who.user]?[p[3]] else {
+                    return (404, ["errcode": "M_NOT_FOUND", "error": "нет"])
+                }
+                return (200, content)
+
+            case ("POST", ["room_keys", "version"]):
+                backupVersion = String((Int(backupVersion) ?? 0) + 1)
+                backupAuthData = body?["auth_data"]
+                backup = [:]
+                return (200, ["version": .string(backupVersion)])
+
+            case ("GET", ["room_keys", "version"]):
+                guard let authData = backupAuthData else { return (404, ["errcode": "M_NOT_FOUND", "error": "нет бэкапа"]) }
+                return (200, ["version": .string(backupVersion), "algorithm": "m.megolm_backup.v1.curve25519-aes-sha2",
+                              "auth_data": authData, "count": .int(backup.values.map(\.count).reduce(0, +)), "etag": "1"])
+
+            case ("GET", ["room_keys", "keys"]):
+                guard query["version"] == backupVersion else {
+                    return (404, ["errcode": "M_NOT_FOUND", "error": "версия"])
+                }
+                return (200, ["rooms": .object(backup.mapValues { ["sessions": .object($0)] })])
+
             case ("PUT", ["room_keys", "keys"]):
-                guard query["version"] == "1" else {
-                    return (403, ["errcode": "M_WRONG_ROOM_KEYS_VERSION", "error": "версия", "current_version": "1"])
+                guard query["version"] == backupVersion else {
+                    return (403, ["errcode": "M_WRONG_ROOM_KEYS_VERSION", "error": "версия",
+                                  "current_version": .string(backupVersion)])
                 }
                 for (room, entry) in body?["rooms"]?.object ?? [:] {
                     for (session, record) in entry["sessions"]?.object ?? [:] { backup[room, default: [:]][session] = record }

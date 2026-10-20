@@ -66,6 +66,14 @@ public extension MatrixClient {
                              authData: json["auth_data"] ?? .object([:]))
     }
 
+    /// Завести новую версию бэкапа. Возвращает её номер.
+    func createBackupVersion(algorithm: String, authData: JSONValue) async throws(MatrixError) -> String {
+        let json: JSONValue = try await request(.post, "room_keys/version",
+                                                body: ["algorithm": .string(algorithm), "auth_data": authData])
+        guard let version = json["version"]?.string else { throw MatrixError(.decoding("room_keys/version")) }
+        return version
+    }
+
     /// Все ключи бэкапа: комната → session_id → запись (`first_message_index`, `session_data` …).
     func backupKeys(version: String) async throws(MatrixError) -> [String: [String: JSONValue]] {
         let json: JSONValue = try await request(.get, "room_keys/keys", query: ["version": version])
