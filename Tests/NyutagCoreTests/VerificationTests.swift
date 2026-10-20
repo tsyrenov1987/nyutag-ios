@@ -80,6 +80,86 @@ import Testing
         #expect(a2.crossSigned)
         #expect(await old.machine.isVerified(a2))
         #expect(seen.first { $0.deviceID == "A3" }?.crossSigned == false)
+
+        // A2 сверило A1 и получило от него ключи кросс-подписи: теперь подтверждено и для самого себя.
+        await pump(server, [new, old])
+        #expect(await new.machine.hasCrossSigningKeys)
+        #expect(try await new.machine.ownCrossSigningKey(.userSigning) != nil)
+        let mineAtNew = try #require(try await new.machine.devices(for: [Self.alice]).first { $0.deviceID == "A2" })
+        #expect(mineAtNew.crossSigned)
+        #expect(await new.machine.crossSigningIdentity(userID: Self.alice)?.verified == true)
+    }
+
+    /// Секреты просит устройство, которое никто не проверял: ему ничего не уходит.
+    @Test func secretsNotGivenToUnverifiedDevice() async throws {
+        let server = FakeHomeserver()
+        let old = try await device(server, Self.alice, "A1")
+        try await old.machine.bootstrapCrossSigning(password: nil)
+        let stranger = try await device(server, Self.alice, "A3")
+        let a1 = try #require(try await stranger.machine.devices(for: [Self.alice]).first { $0.deviceID == "A1" })
+        try await stranger.machine.requestSecrets(from: a1)
+        await pump(server, [old])
+        let toStranger = server.takeToDevice(user: Self.alice, device: "A3")
+        #expect(!toStranger.contains { $0.type == EventType.encrypted })
+        #expect(await !stranger.machine.hasCrossSigningKeys)
+    }
+
+    /// Ответ пришёл на настоящий запрос, но от своего устройства, которое мы не проверяли: ключи не берём.
+    @Test func secretsFromUnverifiedDeviceIgnored() async throws {
+        let server = FakeHomeserver()
+        let old = try await device(server, Self.alice, "A1")
+        try await old.machine.bootstrapCrossSigning(password: nil)
+        let new = try await device(server, Self.alice, "A2")
+        // A1 доверяет A2, A2 не доверяет A1.
+        let a2 = try #require(try await old.machine.devices(for: [Self.alice]).first { $0.deviceID == "A2" })
+        try await old.machine.trustLocally(a2)
+        let a1 = try #require(try await new.machine.devices(for: [Self.alice]).first { $0.deviceID == "A1" })
+        try await new.machine.requestSecrets(from: a1)
+        await pump(server, [old])
+        let answers = server.takeToDevice(user: Self.alice, device: "A2")
+        #expect(answers.filter { $0.type == EventType.encrypted }.count == 3)
+        _ = await new.machine.receiveToDevice(answers)
+        #expect(await !new.machine.hasCrossSigningKeys)
+    }
+
+    /// Непрошеный секрет и ключи, которые уже не совпадают с сервером, не принимаются.
+    @Test func unsolicitedOrStaleSecretsIgnored() async throws {
+        let server = FakeHomeserver()
+        let old = try await device(server, Self.alice, "A1")
+        try await old.machine.bootstrapCrossSigning(password: nil)
+        let new = try await device(server, Self.alice, "A2")
+        let id = try await reachComparing(server, from: old, to: new)
+        try await old.machine.confirmSas(id)
+        try await new.machine.confirmSas(id)
+        await pump(server, [new])
+        // A1 получает MAC, но запросы секретов пока придерживаем.
+        let toOld = server.takeToDevice(user: Self.alice, device: "A1")
+        let requests = toOld.filter { $0.type == "m.secret.request" }
+        #expect(requests.count == 4)
+        _ = await old.machine.receiveToDevice(toOld.filter { $0.type != "m.secret.request" })
+        #expect(try await flow(old, id).state == .done)
+
+        // A1 шлёт настоящие ключи, но с чужими id запроса: A2 их не берёт.
+        let a2 = try #require(try await old.machine.devices(for: [Self.alice]).first { $0.deviceID == "A2" })
+        for kind in [CryptoMachine.CrossSigningKind.master, .selfSigning] {
+            let key = try #require(try await old.machine.ownCrossSigningKey(kind))
+            _ = try await old.machine.sendEncryptedToDevice(type: "m.secret.send", content: [
+                "request_id": .string("nobody-asked-\(kind.rawValue)"),
+                "secret": .string(Base64.encodeUnpadded(key.rawRepresentation)),
+            ], to: [a2])
+        }
+        await pump(server, [new])
+        #expect(await new.machine.receivedCrossSigning.isEmpty)
+        #expect(await !new.machine.hasCrossSigningKeys)
+
+        // A1 отвечает на запросы, но до A2 ответ доходит, когда личность на сервере уже сменилась.
+        _ = await old.machine.receiveToDevice(requests)
+        let rogue = try await device(server, Self.alice, "A9")
+        try await rogue.machine.bootstrapCrossSigning(password: nil)
+        let answers = server.takeToDevice(user: Self.alice, device: "A2")
+        #expect(answers.filter { $0.type == EventType.encrypted }.count == 3)
+        _ = await new.machine.receiveToDevice(answers)
+        #expect(await !new.machine.hasCrossSigningKeys)
     }
 
     @Test func usersVerifyEachOther() async throws {

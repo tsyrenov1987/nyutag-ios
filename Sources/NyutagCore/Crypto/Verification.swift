@@ -325,12 +325,17 @@ extension CryptoMachine {
         }
         guard deviceOK else { return await cancel(session, code: "m.key_mismatch", reason: "Нет ключа устройства") }
 
-        if other == userID {
-            if try await ownCrossSigningKey(.selfSigning) != nil { try await signDevice(device) }
-        } else if let masterKey, try await ownCrossSigningKey(.userSigning) != nil {
+        // Подписать нечем — доверяем устройству на этом устройстве. Своё новое устройство без ключей кросс-подписи
+        // тут же просит их (и ключ бэкапа) у только что проверенного.
+        if other == userID, try await ownCrossSigningKey(.selfSigning) != nil {
+            try await signDevice(device)
+        } else if other != userID, let masterKey, try await ownCrossSigningKey(.userSigning) != nil {
             try await signUser(other, masterKey: masterKey)
+        } else {
+            try await trustLocally(device)
         }
         try await send(VerificationEvent.done, [:], session)
+        if other == userID, try await ownCrossSigningKey(.selfSigning) == nil { try await requestSecrets(from: device) }
         var finished = session
         finished.flow.state = .done
         verifications[transactionID] = finished

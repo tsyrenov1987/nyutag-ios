@@ -69,9 +69,10 @@ extension CryptoMachine {
     }
 
     /// Устройство подтверждено: его подписал ключ самоподписи владельца, а мастер-ключ владельца подтверждён.
+    /// Или его ключ сверен на этом устройстве по эмодзи.
     public func isVerified(_ device: DeviceInfo) async -> Bool {
-        guard device.crossSigned else { return false }
-        return (try? await store.crossSigning(userID: device.userID))?.verified == true
+        if device.crossSigned, (try? await store.crossSigning(userID: device.userID))?.verified == true { return true }
+        return await isLocallyTrusted(device)
     }
 
     /// Ключи кросс-подписи пользователя, как их видит это устройство.

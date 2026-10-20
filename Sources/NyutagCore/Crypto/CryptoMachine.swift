@@ -47,6 +47,9 @@ public actor CryptoMachine: SyncObserver {
     var roomWaiters: [String: [CheckedContinuation<Void, Never>]] = [:]
     /// Идущие проверки по эмодзи; ключи SAS живут только в памяти.
     var verifications: [String: VerificationSession] = [:]
+    /// Запрошенные у своих устройств секреты (id запроса → имя, устройство) и уже полученные ключи кросс-подписи.
+    var secretRequests: [String: (name: String, deviceID: String)] = [:]
+    var receivedCrossSigning: [CrossSigningKind: Ed25519KeyPair] = [:]
 
     public init(client: MatrixClient, store: Store, session: Session) async throws(E2EEError) {
         self.client = client
@@ -176,6 +179,7 @@ public actor CryptoMachine: SyncObserver {
         for event in events {
             switch event.type {
             case EventType.roomKeyRequest: _ = try? await answerRoomKeyRequest(event)
+            case Self.secretRequestType: _ = try? await answerSecretRequest(event)
             case Self.withheldType: await acceptWithheld(event)
             case let type where VerificationEvent.all.contains(type): await receiveVerification(event)
             default: break
@@ -187,6 +191,7 @@ public actor CryptoMachine: SyncObserver {
             switch inner.type {
             case EventType.roomKey: try? await acceptRoomKey(inner)
             case EventType.forwardedRoomKey: try? await acceptForwardedRoomKey(inner)
+            case Self.secretSendType: try? await acceptSecret(inner)
             case let type where VerificationEvent.all.contains(type): await receiveVerification(inner)
             default: break
             }
@@ -367,6 +372,12 @@ public actor CryptoMachine: SyncObserver {
     public func restoreBackup(recoveryKey: String) async throws(E2EEError) -> (imported: Int, total: Int) {
         let ssss = try await secretStorageKey(recoveryKey: recoveryKey)
         let privateKey = try await secret("m.megolm_backup.v1", keyID: ssss.id, key: ssss.key)
+        let (backupKey, version) = try await adoptBackupKey(privateKey)
+        return try await importBackup(backupKey, version: version)
+    }
+
+    /// Сохранить ключ бэкапа (base64 закрытого ключа), если он подходит к текущей версии бэкапа на сервере.
+    func adoptBackupKey(_ privateKey: String) async throws(E2EEError) -> (BackupKey, BackupVersion) {
         let backupKey: BackupKey
         do { backupKey = try BackupKey(privateKey: try Base64.decode(privateKey)) } catch { throw .crypto(error) }
 
@@ -389,7 +400,11 @@ public actor CryptoMachine: SyncObserver {
         } catch {
             throw .store("\(error)")
         }
+        return (backupKey, version)
+    }
 
+    /// Скачать бэкап и поднять из него ключи комнат.
+    func importBackup(_ backupKey: BackupKey, version: BackupVersion) async throws(E2EEError) -> (imported: Int, total: Int) {
         let rooms: [String: [String: JSONValue]]
         do { rooms = try await client.backupKeys(version: version.version) } catch { throw .server(error) }
         var total = 0
