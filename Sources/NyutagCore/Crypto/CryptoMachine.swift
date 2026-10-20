@@ -40,6 +40,9 @@ public actor CryptoMachine: SyncObserver {
     let client: MatrixClient
     let store: Store
     var account: OlmAccount
+    /// Комнаты, где сейчас идёт шифрование, и кто ждёт своей очереди.
+    var busyRooms: Set<String> = []
+    var roomWaiters: [String: [CheckedContinuation<Void, Never>]] = [:]
 
     public init(client: MatrixClient, store: Store, session: Session) async throws(E2EEError) {
         self.client = client
@@ -152,11 +155,15 @@ public actor CryptoMachine: SyncObserver {
     // MARK: To-device
 
     public func syncDidReceive(_ update: SyncUpdate) async {
+        let changed = update.response.deviceListsChanged + update.response.deviceListsLeft
+        if !changed.isEmpty { try? await store.markDeviceListsChanged(changed) }
         _ = await receiveToDevice(update.response.toDevice)
         if let count = update.response.oneTimeKeysCount["signed_curve25519"] ?? (update.isInitial ? 0 : nil),
            count < OlmAccount.maxOneTimeKeys / 2 {
             _ = try? await publishKeys(serverCount: count)
         }
+        // Новые ключи комнат (свои и полученные) уходят в бэкап, если ключ бэкапа на этом устройстве есть.
+        if (try? await store.cryptoBlob("backup_key")) != nil { _ = try? await uploadRoomKeysToBackup() }
     }
 
     /// Расшифровывает to-device сообщения Olm и принимает ключи комнат. Возвращает расшифрованные события.
@@ -232,10 +239,15 @@ public actor CryptoMachine: SyncObserver {
         guard content["algorithm"]?.string == Self.megolmAlgorithm, let roomID = content["room_id"]?.string,
               let sessionKey = content["session_key"]?.string,
               let senderKey = event.unsigned?["sender_key"]?.string else { throw .badPayload("m.room_key") }
+        let claimed = event.unsigned?["sender_ed25519"]?.string
         let session: MegolmInboundSession
         do { session = try MegolmInboundSession(sessionKey: sessionKey) } catch { throw .crypto(error) }
         guard content["session_id"]?.string == session.sessionID else { throw .badPayload("m.room_key: session_id") }
-        do { try await store.saveMegolmSession(session, roomID: roomID, senderKey: senderKey) } catch { throw .store("\(error)") }
+        do {
+            try await store.saveMegolmSession(session, roomID: roomID, senderKey: senderKey, claimedEd25519: claimed)
+        } catch {
+            throw .store("\(error)")
+        }
     }
 
     private func acceptForwardedRoomKey(_ event: Event) async throws(E2EEError) {
@@ -247,7 +259,12 @@ public actor CryptoMachine: SyncObserver {
             throw .badPayload("m.forwarded_room_key")
         }
         let session = try Self.parseExported(sessionKey, sessionID: content["session_id"]?.string)
-        do { try await store.saveMegolmSession(session, roomID: roomID, senderKey: senderKey) } catch { throw .store("\(error)") }
+        let claimed = content["sender_claimed_ed25519_key"]?.string
+        do {
+            try await store.saveMegolmSession(session, roomID: roomID, senderKey: senderKey, claimedEd25519: claimed)
+        } catch {
+            throw .store("\(error)")
+        }
     }
 
     // MARK: Комнаты
@@ -363,6 +380,8 @@ public actor CryptoMachine: SyncObserver {
         guard version.algorithm == Self.backupAlgorithm else { throw .unsupportedAlgorithm(version.algorithm) }
         guard version.publicKey == backupKey.publicKeyBase64 else { throw .wrongRecoveryKey }
         do {
+            // Другая версия бэкапа: в ней нет того, что мы выгружали в прежнюю.
+            if try await store.meta("e2ee_backup_version") != version.version { try await store.resetMegolmBackedUp() }
             try await store.setCryptoBlob("backup_key", backupKey.keyPair.rawRepresentation)
             try await store.setMeta("e2ee_backup_version", version.version)
         } catch {
@@ -384,7 +403,8 @@ public actor CryptoMachine: SyncObserver {
                       let sessionKey = json["session_key"]?.string, let senderKey = json["sender_key"]?.string else { continue }
                 guard let session = try? Self.parseExported(sessionKey, sessionID: sessionID) else { continue }
                 do {
-                    if try await store.saveMegolmSession(session, roomID: roomID, senderKey: senderKey, backedUp: true) {
+                    if try await store.saveMegolmSession(session, roomID: roomID, senderKey: senderKey, backedUp: true,
+                                                         claimedEd25519: json["sender_claimed_keys", "ed25519"]?.string) {
                         imported += 1
                     }
                 } catch {

@@ -44,7 +44,7 @@ public struct RoomRecord: Sendable, Equatable, Identifiable {
 
 /// Хранилище на SQLite. Актор: один писатель, читатели ждут своей очереди.
 public actor Store {
-    public static let schemaVersion = 2
+    public static let schemaVersion = 3
 
     let db: SQLite
     /// Сквозной порядок событий таймлайна: события из /sync идут в хронологии получения, события из `/messages` в прошлое.
@@ -145,6 +145,23 @@ public actor Store {
                 PRIMARY KEY (session_id, message_index)
             );
             PRAGMA user_version = 2;
+            """)
+        }
+        if version < 3 {
+            // Отправка: устройства собеседников, исходящие сессии комнат, заявленный ключ отправителя для бэкапа.
+            try db.exec("""
+            CREATE TABLE IF NOT EXISTS devices (
+                user_id TEXT NOT NULL,
+                device_id TEXT NOT NULL,
+                curve_key TEXT NOT NULL,
+                ed_key TEXT NOT NULL,
+                keys TEXT NOT NULL,
+                PRIMARY KEY (user_id, device_id)
+            );
+            CREATE TABLE IF NOT EXISTS tracked_users (user_id TEXT PRIMARY KEY, dirty INTEGER NOT NULL DEFAULT 1);
+            CREATE TABLE IF NOT EXISTS megolm_outbound (room_id TEXT PRIMARY KEY, data BLOB NOT NULL);
+            ALTER TABLE megolm_inbound ADD COLUMN claimed_ed25519 TEXT;
+            PRAGMA user_version = 3;
             """)
         }
     }

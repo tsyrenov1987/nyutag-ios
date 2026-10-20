@@ -30,6 +30,114 @@ enum LiveE2EEEnv {
         try await client.logout()
     }
 
+    /// Две учётки переписываются в новой зашифрованной комнате: ключ комнаты уходит по Olm через сервер,
+    /// сообщения в обе стороны расшифровываются, ключ своей сессии попадает в бэкап. В конце комната забыта, выход.
+    @Test(.enabled(if: LiveEnv.available, "нет NYUTAG_TEST_USER")) func twoAccountsTalkEncrypted() async throws {
+        let hs = LiveEnv.homeserver!
+        let aliceClient = MatrixClient(homeserver: hs)
+        let bobClient = MatrixClient(homeserver: hs)
+        let aliceSession = try await aliceClient.login(user: LiveEnv.user!, password: LiveEnv.password!,
+                                                       deviceDisplayName: "Нютаг тест отправки (Мак)")
+        let bobSession: Session
+        do {
+            bobSession = try await bobClient.login(user: LiveE2EEEnv.user!, password: LiveE2EEEnv.password!,
+                                                   deviceDisplayName: "Нютаг тест отправки (Мак)")
+        } catch {
+            try? await aliceClient.logout()
+            throw error
+        }
+        do {
+            try await talk(alice: (aliceClient, aliceSession), bob: (bobClient, bobSession))
+        } catch {
+            print("live e2ee: ошибка \(error)")
+            try? await aliceClient.logout()
+            try? await bobClient.logout()
+            throw error
+        }
+        try await aliceClient.logout()
+        try await bobClient.logout()
+    }
+
+    private func cleanup(_ roomID: String, _ clients: MatrixClient...) async {
+        for client in clients {
+            try? await client.leave(roomID: roomID)
+            try? await client.forget(roomID: roomID)
+        }
+    }
+
+    /// Ждёт, пока событие расшифруется: ключ приходит to-device в одном из следующих /sync.
+    private func readLatest(_ client: MatrixClient, _ machine: CryptoMachine, _ engine: SyncEngine,
+                            roomID: String, from sender: String) async throws -> [String] {
+        for _ in 0..<8 {
+            _ = try await engine.syncOnce(timeout: .seconds(2))
+            let page = try await client.messages(roomID: roomID, from: nil, limit: 50)
+            var bodies: [String] = []
+            var pending = false
+            for event in page.events.reversed() where event.type == EventType.encrypted && event.sender == sender {
+                do {
+                    let decrypted = try await machine.decrypt(event, roomID: roomID)
+                    bodies.append(decrypted.event.content["body"]?.string ?? "")
+                } catch E2EEError.missingSession {
+                    pending = true
+                }
+            }
+            if !pending, !bodies.isEmpty { return bodies }
+        }
+        return []
+    }
+
+    private func talk(alice: (MatrixClient, Session), bob: (MatrixClient, Session)) async throws {
+        let aliceMachine = try await CryptoMachine(client: alice.0, store: try Store.inMemory(), session: alice.1)
+        let aliceEngine = SyncEngine(client: alice.0, store: await aliceMachine.store, session: alice.1)
+        await aliceEngine.addObserver(aliceMachine)
+        let bobStore = try Store.inMemory()
+        let bobMachine = try await CryptoMachine(client: bob.0, store: bobStore, session: bob.1)
+        let bobEngine = SyncEngine(client: bob.0, store: bobStore, session: bob.1)
+        await bobEngine.addObserver(bobMachine)
+        _ = try await aliceEngine.syncOnce()
+        _ = try await bobEngine.syncOnce()
+
+        let roomID = try await alice.0.createRoom(.init(name: "Нютаг тест шифрования", invite: [bob.1.userID]))
+        print("live e2ee: комната создана")
+        do {
+            try await converse(roomID: roomID, alice: (alice.0, alice.1, aliceMachine, aliceEngine),
+                               bob: (bob.0, bob.1, bobMachine, bobEngine))
+        } catch {
+            await cleanup(roomID, alice.0, bob.0)
+            throw error
+        }
+        await cleanup(roomID, alice.0, bob.0)
+    }
+
+    private func converse(roomID: String, alice: (MatrixClient, Session, CryptoMachine, SyncEngine),
+                          bob: (MatrixClient, Session, CryptoMachine, SyncEngine)) async throws {
+        let (aliceMachine, aliceEngine, bobMachine, bobEngine) = (alice.2, alice.3, bob.2, bob.3)
+        _ = try await bob.0.join(roomID)
+        _ = try await aliceEngine.syncOnce()
+        _ = try await bobEngine.syncOnce()
+
+        let stamp = ISO8601DateFormatter().string(from: Date())
+        try await aliceMachine.sendEncrypted(roomID: roomID, type: EventType.message,
+                                             content: ["msgtype": "m.text", "body": .string("сайн байна \(stamp)")])
+        let atBob = try await readLatest(bob.0, bobMachine, bobEngine, roomID: roomID, from: alice.1.userID)
+        print("live e2ee: Боб прочитал \(atBob.count)")
+        #expect(atBob == ["сайн байна \(stamp)"])
+
+        try await bobMachine.sendEncrypted(roomID: roomID, type: EventType.message,
+                                           content: ["msgtype": "m.text", "body": .string("сайн \(stamp)")])
+        let atAlice = try await readLatest(alice.0, aliceMachine, aliceEngine, roomID: roomID, from: bob.1.userID)
+        print("live e2ee: Алиса прочитала \(atAlice.count)")
+        #expect(atAlice == ["сайн \(stamp)"])
+
+        // Бэкап Боба: ключ поднят по коду, свежие ключи комнаты (свой и полученный) выгружены.
+        try await bobMachine.restoreBackup(recoveryKey: LiveE2EEEnv.recovery!)
+        let uploaded = try await bobMachine.uploadRoomKeysToBackup()
+        let version = try #require(try await bob.0.backupVersion()).version
+        let inBackup = try await bob.0.backupKeys(version: version)[roomID]?.count ?? 0
+        print("live e2ee: в бэкап выгружено \(uploaded), сессий комнаты в бэкапе \(inBackup)")
+        #expect(inBackup == 2)
+    }
+
     private func run(client: MatrixClient, session: Session) async throws {
         let store = try Store.inMemory()
         let machine = try await CryptoMachine(client: client, store: store, session: session)
