@@ -45,6 +45,21 @@ final class FakeHomeserver: @unchecked Sendable {
         return Session(userID: user, deviceID: device, accessToken: token, homeserver: homeserver)
     }
 
+    /// Пароли для `m.login.password`: пользователь → пароль.
+    private var passwords: [String: String] = [:]
+    private var loginCount = 0
+
+    func setPassword(_ password: String, user: String) { lock.withLock { passwords[user] = password } }
+
+    func isTokenValid(_ token: String) -> Bool { lock.withLock { tokens[token] != nil } }
+
+    /// Клиент с любым токеном или без него (для входа).
+    func client(accessToken: String?) -> MatrixClient {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [FakeHomeserverProtocol.self]
+        return MatrixClient(homeserver: homeserver, accessToken: accessToken, configuration: configuration)
+    }
+
     func client(for session: Session) -> MatrixClient {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [FakeHomeserverProtocol.self]
@@ -86,10 +101,27 @@ final class FakeHomeserver: @unchecked Sendable {
     func handle(method: String, path: [String], query: [String: String], body: JSONValue?,
                 token: String?) -> (Int, JSONValue) {
         lock.withLock {
+            if method == "POST", path == ["login"] {
+                guard let user = body?["identifier", "user"]?.string, let password = body?["password"]?.string else {
+                    return (400, ["errcode": "M_BAD_JSON", "error": "нет логина"])
+                }
+                let userID = user.hasPrefix("@") ? user : "@\(user):nyutag.chat"
+                guard passwords[userID] == password else { return (403, ["errcode": "M_FORBIDDEN", "error": "пароль"]) }
+                loginCount += 1
+                let device = body?["device_id"]?.string ?? "DEV\(loginCount)"
+                let token = "tok-\(userID)-\(device)-\(loginCount)"
+                tokens[token] = (userID, device)
+                return (200, ["user_id": .string(userID), "access_token": .string(token), "device_id": .string(device)])
+            }
             guard let token, let who = tokens[token] else {
                 return (401, ["errcode": "M_UNKNOWN_TOKEN", "error": "нет токена"])
             }
             switch (method, path) {
+            case ("GET", ["account", "whoami"]):
+                return (200, ["user_id": .string(who.user), "device_id": .string(who.device)])
+            case ("POST", ["logout"]):
+                tokens[token] = nil
+                return (200, [:])
             case ("POST", ["keys", "upload"]):
                 if let keys = body?["device_keys"] { deviceKeys[who.user, default: [:]][who.device] = keys }
                 for (id, key) in body?["one_time_keys"]?.object ?? [:] {
