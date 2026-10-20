@@ -165,6 +165,7 @@ public actor CryptoMachine: SyncObserver {
         let changed = update.response.deviceListsChanged + update.response.deviceListsLeft
         if !changed.isEmpty { try? await store.markDeviceListsChanged(changed) }
         _ = await receiveToDevice(update.response.toDevice)
+        for (roomID, room) in update.response.joined { await receiveRoomVerifications(room.timeline.events, roomID: roomID) }
         if let count = update.response.oneTimeKeysCount["signed_curve25519"] ?? (update.isInitial ? 0 : nil),
            count < OlmAccount.maxOneTimeKeys / 2 {
             _ = try? await publishKeys(serverCount: count)

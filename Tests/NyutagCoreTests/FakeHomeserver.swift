@@ -200,7 +200,7 @@ final class FakeHomeserver: @unchecked Sendable {
                 let eventID = "$e\(nextEvent)"
                 timeline[p[1], default: []].append([
                     "type": .string(p[3]), "event_id": .string(eventID), "sender": .string(who.user),
-                    "origin_server_ts": .int(nextEvent), "room_id": .string(p[1]), "content": body ?? [:],
+                    "origin_server_ts": .int(Int(Date().timeIntervalSince1970 * 1000)), "room_id": .string(p[1]), "content": body ?? [:],
                 ])
                 return (200, ["event_id": .string(eventID)])
 

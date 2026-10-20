@@ -1,5 +1,7 @@
-// Нютаг. Проверка своих устройств и собеседников по эмодзи (`m.sas.v1`) через to-device:
+// Нютаг. Проверка своих устройств и собеседников по эмодзи (`m.sas.v1`) через to-device или в комнате:
 // request → ready → start → accept → key ↔ key → люди сверяют эмодзи → mac ↔ mac → done.
+// В комнате (так собеседника проверяет Element) запрос — сообщение `m.key.verification.request`, его event_id
+// служит id проверки, остальные события ссылаются на него через `m.relates_to` (`m.reference`).
 // Итог: своё устройство подписывается ключом самоподписи, мастер-ключ собеседника — ключом подписи пользователей.
 
 import Foundation
@@ -31,6 +33,8 @@ public struct VerificationFlow: Sendable, Equatable {
     /// Номера эмодзи в `SasEmoji.table` и три числа: появляются в состоянии `comparing`.
     public internal(set) var emoji: [Int]?
     public internal(set) var decimals: [Int]?
+    /// Комната, в которой идёт проверка; nil — проверка через to-device.
+    public internal(set) var roomID: String? = nil
 }
 
 /// Внутреннее состояние проверки: ключ SAS живёт только в памяти.
@@ -58,6 +62,8 @@ enum VerificationEvent {
     static let done = "m.key.verification.done"
     static let cancel = "m.key.verification.cancel"
     static let all: Set<String> = [request, ready, start, accept, key, mac, done, cancel]
+    /// Запросы старше этого (или «из будущего» больше чем на 5 минут) не показываем.
+    static let requestLifetime = 10 * 60 * 1000
 
     static let sas = "m.sas.v1"
     static let keyAgreement = "curve25519-hkdf-sha256"
@@ -97,6 +103,20 @@ extension CryptoMachine {
         return transactionID
     }
 
+    /// Попросить собеседника о проверке в комнате (обычно в личном чате). Возвращает id проверки: event_id запроса.
+    public func requestVerification(userID other: String, inRoom roomID: String) async throws(E2EEError) -> String {
+        guard other != userID else { throw .badPayload("свои устройства проверяются через to-device") }
+        let content: JSONValue = [
+            "msgtype": .string(VerificationEvent.request), "to": .string(other), "from_device": .string(deviceID),
+            "methods": [.string(VerificationEvent.sas)],
+            "body": .string("\(userID) просит проверить ключи шифрования. Ваш клиент не поддерживает проверку в чате."),
+        ]
+        let transactionID = try await sendRoomEvent(roomID: roomID, type: EventType.message, content: content)
+        verifications[transactionID] = VerificationSession(flow: VerificationFlow(
+            transactionID: transactionID, otherUserID: other, incoming: false, state: .requested, roomID: roomID))
+        return transactionID
+    }
+
     /// Согласиться на пришедший запрос.
     public func acceptVerification(_ transactionID: String) async throws(E2EEError) {
         guard var session = verifications[transactionID], session.flow.incoming, session.flow.state == .requested
@@ -118,9 +138,10 @@ extension CryptoMachine {
             "message_authentication_codes": [.string(VerificationEvent.macMethod)],
             "short_authentication_string": ["decimal", "emoji"], "transaction_id": .string(transactionID),
         ]
-        try await send(VerificationEvent.start, content, session)
+        // Обязательство считается от start в том виде, в каком его получила другая сторона.
+        let sent = try await send(VerificationEvent.start, content, session)
         session.weStarted = true
-        session.startContent = content
+        session.startContent = sent
         session.flow.state = .started
         verifications[transactionID] = session
     }
@@ -154,13 +175,59 @@ extension CryptoMachine {
     // MARK: Входящие события
 
     func receiveVerification(_ event: Event) async {
+        guard let transactionID = event.content["transaction_id"]?.string else { return }
+        await receiveVerification(event, transactionID: transactionID, roomID: nil)
+    }
+
+    /// События проверки из таймлайнов комнат; зашифрованные сначала расшифровываются.
+    func receiveRoomVerifications(_ events: [Event], roomID: String) async {
+        let now = Int(Date().timeIntervalSince1970 * 1000)
+        for var event in events {
+            // Старые события (первая синхронизация, догрузка истории) живых проверок не касаются.
+            guard let ts = event.originServerTS, now - ts < VerificationEvent.requestLifetime else { continue }
+            if event.type == EventType.encrypted {
+                guard let decrypted = try? await decrypt(event, roomID: roomID) else { continue }
+                event = decrypted.event
+            }
+            await receiveRoomVerification(event, roomID: roomID)
+        }
+    }
+
+    func receiveRoomVerification(_ event: Event, roomID: String) async {
         let content = event.content
-        guard let transactionID = content["transaction_id"]?.string, let sender = event.sender else { return }
-        if event.type == VerificationEvent.request {
-            receiveRequest(content, sender: sender, transactionID: transactionID)
+        guard let sender = event.sender else { return }
+        if event.type == EventType.message {
+            guard content["msgtype"]?.string == VerificationEvent.request, let eventID = event.eventID,
+                  sender != userID, content["to"]?.string == userID else { return }
+            return receiveRequest(content, sender: sender, transactionID: eventID, timestamp: event.originServerTS,
+                                  roomID: roomID)
+        }
+        guard VerificationEvent.all.contains(event.type), event.type != VerificationEvent.request,
+              content["m.relates_to", "rel_type"]?.string == "m.reference",
+              let transactionID = content["m.relates_to", "event_id"]?.string,
+              var session = verifications[transactionID], session.flow.roomID == roomID else { return }
+        if sender == userID {
+            // Наше эхо пропускаем; если на запрос ответило другое наше устройство, здесь проверка закончена.
+            if session.flow.incoming, session.flow.state == .requested, event.type == VerificationEvent.ready,
+               content["from_device"]?.string != deviceID {
+                session.flow.state = .cancelled(code: "m.accepted", reason: "Проверку приняло другое устройство")
+                verifications[transactionID] = session
+            }
             return
         }
-        guard var session = verifications[transactionID], session.flow.otherUserID == sender else { return }
+        await receiveVerification(event, transactionID: transactionID, roomID: roomID)
+    }
+
+    private func receiveVerification(_ event: Event, transactionID: String, roomID: String?) async {
+        let content = event.content
+        guard let sender = event.sender else { return }
+        if event.type == VerificationEvent.request {
+            receiveRequest(content, sender: sender, transactionID: transactionID, timestamp: content["timestamp"]?.int,
+                           roomID: nil)
+            return
+        }
+        guard var session = verifications[transactionID], session.flow.otherUserID == sender,
+              session.flow.roomID == roomID else { return }
         if case .cancelled = session.flow.state { return }
         if session.flow.state == .done { return }
         switch event.type {
@@ -170,7 +237,8 @@ extension CryptoMachine {
             verifications[transactionID] = session
         case VerificationEvent.ready:
             guard !session.flow.incoming, session.flow.state == .requested,
-                  let from = content["from_device"]?.string, session.requestedDevices.contains(from),
+                  let from = content["from_device"]?.string,
+                  session.flow.roomID != nil || session.requestedDevices.contains(from),
                   content["methods"]?.array?.contains(.string(VerificationEvent.sas)) == true
             else { return await unexpected(session) }
             session.flow.otherDeviceID = from
@@ -209,16 +277,18 @@ extension CryptoMachine {
         }
     }
 
-    private func receiveRequest(_ content: JSONValue, sender: String, transactionID: String) {
+    private func receiveRequest(_ content: JSONValue, sender: String, transactionID: String, timestamp: Int?,
+                                roomID: String?) {
         guard verifications[transactionID] == nil, let from = content["from_device"]?.string,
               sender != userID || from != deviceID,
               content["methods"]?.array?.contains(.string(VerificationEvent.sas)) == true,
-              let timestamp = content["timestamp"]?.int else { return }
+              let timestamp else { return }
         // Старые и «из будущего» запросы не показываем.
         let age = Int(Date().timeIntervalSince1970 * 1000) - timestamp
-        guard age < 10 * 60 * 1000, age > -5 * 60 * 1000 else { return }
+        guard age < VerificationEvent.requestLifetime, age > -5 * 60 * 1000 else { return }
         verifications[transactionID] = VerificationSession(flow: VerificationFlow(
-            transactionID: transactionID, otherUserID: sender, otherDeviceID: from, incoming: true, state: .requested))
+            transactionID: transactionID, otherUserID: sender, otherDeviceID: from, incoming: true, state: .requested,
+            roomID: roomID))
     }
 
     private func receiveStart(_ content: JSONValue, session: VerificationSession) async {
@@ -387,16 +457,30 @@ extension CryptoMachine {
 
     // MARK: Отправка
 
-    private func send(_ type: String, _ content: JSONValue, _ session: VerificationSession) async throws(E2EEError) {
-        guard case .object(var fields) = content, let device = session.flow.otherDeviceID else {
-            throw .badPayload("нет устройства собеседника")
+    /// Отправить событие проверки. Возвращает содержимое в том виде, в каком оно ушло.
+    @discardableResult
+    private func send(_ type: String, _ content: JSONValue, _ session: VerificationSession) async throws(E2EEError) -> JSONValue {
+        guard case .object(var fields) = content else { throw .badPayload("содержимое проверки не объект") }
+        if let roomID = session.flow.roomID {
+            fields["m.relates_to"] = ["rel_type": "m.reference", "event_id": .string(session.flow.transactionID)]
+            _ = try await sendRoomEvent(roomID: roomID, type: type, content: .object(fields))
+            return .object(fields)
         }
+        guard let device = session.flow.otherDeviceID else { throw .badPayload("нет устройства собеседника") }
         fields["transaction_id"] = .string(session.flow.transactionID)
         do {
             try await client.sendToDevice(type: type, messages: [session.flow.otherUserID: [device: .object(fields)]])
         } catch {
             throw .server(error)
         }
+        return .object(fields)
+    }
+
+    /// Событие в комнату: в зашифрованной (или неизвестной локально) — через Megolm.
+    private func sendRoomEvent(roomID: String, type: String, content: JSONValue) async throws(E2EEError) -> String {
+        let record = try await storing { try await store.room(roomID) }
+        if record?.isEncrypted ?? true { return try await sendEncrypted(roomID: roomID, type: type, content: content) }
+        do { return try await client.send(roomID: roomID, type: type, content: content) } catch { throw .server(error) }
     }
 
     private func unexpected(_ session: VerificationSession) async {
@@ -408,7 +492,9 @@ extension CryptoMachine {
         let content: JSONValue = ["transaction_id": .string(session.flow.transactionID), "code": .string(code),
                                   "reason": .string(reason)]
         let targets = session.flow.otherDeviceID.map { [$0] } ?? session.requestedDevices
-        if !targets.isEmpty {
+        if session.flow.roomID != nil {
+            try? await send(VerificationEvent.cancel, ["code": .string(code), "reason": .string(reason)], session)
+        } else if !targets.isEmpty {
             try? await client.sendToDevice(type: VerificationEvent.cancel, messages: [
                 session.flow.otherUserID: Dictionary(uniqueKeysWithValues: targets.map { ($0, content) }),
             ])

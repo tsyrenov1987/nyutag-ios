@@ -301,4 +301,107 @@ import Testing
         _ = await alice.machine.receiveToDevice([request])
         #expect(await alice.machine.verification("old") == nil)
     }
+
+    // MARK: В комнате
+
+    static let room = "!dm:nyutag.chat"
+
+    /// Доставить to-device и новые события комнаты всем устройствам, пока есть что доставлять.
+    func pumpRoom(_ server: FakeHomeserver, _ devices: [Device], seen: inout Int) async {
+        for _ in 0..<10 {
+            await pump(server, devices)
+            let events = server.events(roomID: Self.room)
+            guard events.count > seen else { return }
+            let fresh = Array(events[seen...])
+            seen = events.count
+            for device in devices { await device.machine.receiveRoomVerifications(fresh, roomID: Self.room) }
+        }
+    }
+
+    /// Element проверяет собеседника в личном чате: все шаги идут зашифрованными событиями комнаты.
+    @Test func userVerifiedInRoom() async throws {
+        let server = FakeHomeserver()
+        let alice = try await device(server, Self.alice, "A1")
+        let bob = try await device(server, Self.bob, "B1")
+        try await alice.machine.bootstrapCrossSigning(password: nil)
+        try await bob.machine.bootstrapCrossSigning(password: nil)
+        server.setMembers([Self.alice, Self.bob], roomID: Self.room)
+        var seen = 0
+
+        let id = try await alice.machine.requestVerification(userID: Self.bob, inRoom: Self.room)
+        await pumpRoom(server, [alice, bob], seen: &seen)
+        let incoming = try await flow(bob, id)
+        #expect(incoming.state == .requested && incoming.incoming && incoming.roomID == Self.room)
+        #expect(incoming.otherDeviceID == "A1")
+        try await bob.machine.acceptVerification(id)
+        await pumpRoom(server, [alice, bob], seen: &seen)
+        #expect(try await flow(alice, id).otherDeviceID == "B1")
+        try await alice.machine.startSas(id)
+        await pumpRoom(server, [alice, bob], seen: &seen)
+        let atAlice = try await flow(alice, id), atBob = try await flow(bob, id)
+        #expect(atAlice.state == .comparing && atBob.state == .comparing)
+        #expect(atAlice.emoji == atBob.emoji && atAlice.emoji?.count == 7)
+
+        try await alice.machine.confirmSas(id)
+        try await bob.machine.confirmSas(id)
+        await pumpRoom(server, [alice, bob], seen: &seen)
+        #expect(try await flow(alice, id).state == .done)
+        #expect(try await flow(bob, id).state == .done)
+        #expect(await alice.machine.crossSigningIdentity(userID: Self.bob)?.verified == true)
+        #expect(await bob.machine.crossSigningIdentity(userID: Self.alice)?.verified == true)
+
+        // Ничего не ушло через to-device и ничего не лежит в комнате открытым текстом.
+        let events = server.events(roomID: Self.room)
+        #expect(events.count >= 9)
+        #expect(events.allSatisfy { $0.type == EventType.encrypted })
+        #expect(events.first?.eventID == id)
+    }
+
+    /// Чужие запросы, старые события и ссылки из другой комнаты проверку не трогают.
+    @Test func roomEventsForOthersIgnored() async throws {
+        let server = FakeHomeserver()
+        let alice = try await device(server, Self.alice, "A1")
+        let now = Int(Date().timeIntervalSince1970 * 1000)
+        func request(_ id: String, to: String, ts: Int) -> Event {
+            Event(eventID: id, type: EventType.message, sender: Self.bob, originServerTS: ts, content: [
+                "msgtype": "m.key.verification.request", "to": .string(to), "from_device": "B1",
+                "methods": ["m.sas.v1"], "body": "",
+            ])
+        }
+        await alice.machine.receiveRoomVerifications([
+            request("$toCarol", to: "@carol:nyutag.chat", ts: now),
+            request("$old", to: Self.alice, ts: now - 11 * 60 * 1000),
+            request("$ok", to: Self.alice, ts: now),
+        ], roomID: Self.room)
+        #expect(await alice.machine.verification("$toCarol") == nil)
+        #expect(await alice.machine.verification("$old") == nil)
+        #expect(try await flow(alice, "$ok").state == .requested)
+
+        // Отмена с правильной ссылкой, но из другой комнаты, не действует.
+        let cancel = Event(eventID: "$c", type: "m.key.verification.cancel", sender: Self.bob, originServerTS: now,
+                           content: ["code": "m.user", "reason": "", "m.relates_to": ["rel_type": "m.reference",
+                                                                                      "event_id": "$ok"]])
+        await alice.machine.receiveRoomVerifications([cancel], roomID: "!other:nyutag.chat")
+        #expect(try await flow(alice, "$ok").state == .requested)
+        await alice.machine.receiveRoomVerifications([cancel], roomID: Self.room)
+        #expect(try await flow(alice, "$ok").state == .cancelled(code: "m.user", reason: ""))
+    }
+
+    /// На запрос в комнате ответило другое устройство того же человека: у этого запрос закрывается.
+    @Test func otherOwnDeviceTookRoomRequest() async throws {
+        let server = FakeHomeserver()
+        let alice = try await device(server, Self.alice, "A1")
+        let bob1 = try await device(server, Self.bob, "B1")
+        let bob2 = try await device(server, Self.bob, "B2")
+        server.setMembers([Self.alice, Self.bob], roomID: Self.room)
+        var seen = 0
+        let id = try await alice.machine.requestVerification(userID: Self.bob, inRoom: Self.room)
+        await pumpRoom(server, [alice, bob1, bob2], seen: &seen)
+        #expect(try await flow(bob2, id).state == .requested)
+        try await bob1.machine.acceptVerification(id)
+        await pumpRoom(server, [alice, bob1, bob2], seen: &seen)
+        #expect(try await flow(alice, id).otherDeviceID == "B1")
+        #expect(try await flow(bob1, id).state == .ready)
+        #expect(try await flow(bob2, id).state == .cancelled(code: "m.accepted", reason: "Проверку приняло другое устройство"))
+    }
 }
