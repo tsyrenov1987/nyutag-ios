@@ -23,6 +23,10 @@ final class FakeHomeserver: @unchecked Sendable {
     private var timeline: [String: [JSONValue]] = [:]
     private(set) var backup: [String: [String: JSONValue]] = [:]
     private var nextEvent = 0
+    /// Ключи кросс-подписи: пользователь → usage → объект.
+    private var crossSigning: [String: [String: JSONValue]] = [:]
+    /// Требовать подтверждение паролем для `/keys/device_signing/upload`.
+    var requirePassword: String?
     /// Подмена ответа `/keys/query` для проверки подписей.
     var tamperDeviceKeys: ((String, String, JSONValue) -> JSONValue)?
 
@@ -56,6 +60,14 @@ final class FakeHomeserver: @unchecked Sendable {
         lock.withLock { (timeline[roomID] ?? []).compactMap(Event.init(json:)) }
     }
 
+    /// Устройство осталось без одноразовых и запасного ключа.
+    func dropOneTimeKeys(user: String, device: String) {
+        lock.withLock {
+            oneTimeKeys["\(user)|\(device)"] = nil
+            fallbackKeys["\(user)|\(device)"] = nil
+        }
+    }
+
     func oneTimeKeyCount(user: String, device: String) -> Int {
         lock.withLock { oneTimeKeys["\(user)|\(device)"]?.count ?? 0 }
     }
@@ -87,7 +99,52 @@ final class FakeHomeserver: @unchecked Sendable {
                     }
                     result[user] = .object(devices)
                 }
-                return (200, ["device_keys": .object(result), "failures": [:]])
+                var response: [String: JSONValue] = ["device_keys": .object(result), "failures": [:]]
+                for (usage, field) in [("master", "master_keys"), ("self_signing", "self_signing_keys"),
+                                       ("user_signing", "user_signing_keys")] {
+                    var keys: [String: JSONValue] = [:]
+                    for user in result.keys {
+                        // Ключ подписи пользователей виден только его владельцу.
+                        if usage == "user_signing", user != who.user { continue }
+                        if let key = crossSigning[user]?[usage] { keys[user] = key }
+                    }
+                    response[field] = .object(keys)
+                }
+                return (200, .object(response))
+
+            case ("POST", ["keys", "device_signing", "upload"]):
+                if let password = requirePassword {
+                    guard body?["auth", "password"]?.string == password, body?["auth", "session"]?.string == "uia1" else {
+                        return (401, ["flows": [["stages": ["m.login.password"]]], "params": [:], "session": "uia1"])
+                    }
+                }
+                for (usage, field) in [("master", "master_key"), ("self_signing", "self_signing_key"),
+                                       ("user_signing", "user_signing_key")] {
+                    if let key = body?[field] { crossSigning[who.user, default: [:]][usage] = key }
+                }
+                return (200, [:])
+
+            case ("POST", ["keys", "signatures", "upload"]):
+                for (user, keys) in body?.object ?? [:] {
+                    for (keyID, signed) in keys.object ?? [:] {
+                        let added = signed["signatures", user]?.object ?? [:]
+                        func merge(_ target: JSONValue) -> JSONValue {
+                            guard case .object(var fields) = target else { return target }
+                            var signatures = fields["signatures"]?.object ?? [:]
+                            var mine = signatures[user]?.object ?? [:]
+                            for (id, value) in added { mine[id] = value }
+                            signatures[user] = .object(mine)
+                            fields["signatures"] = .object(signatures)
+                            return .object(fields)
+                        }
+                        if let device = deviceKeys[user]?[keyID] {
+                            deviceKeys[user]?[keyID] = merge(device)
+                        } else if let master = crossSigning[user]?["master"], master["keys", "ed25519:\(keyID)"] != nil {
+                            crossSigning[user]?["master"] = merge(master)
+                        }
+                    }
+                }
+                return (200, ["failures": [:]])
 
             case ("POST", ["keys", "claim"]):
                 var result: [String: JSONValue] = [:]

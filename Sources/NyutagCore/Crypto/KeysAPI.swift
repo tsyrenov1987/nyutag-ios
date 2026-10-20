@@ -91,4 +91,22 @@ public extension MatrixClient {
         let json: JSONValue = try await request(.put, "room_keys/keys", query: ["version": version], body: body)
         return json["count"]?.int ?? 0
     }
+
+    /// `/keys/signatures/upload`: пользователь → ключ (устройство или публичный ключ кросс-подписи) → объект с подписью.
+    /// Возвращает `failures`.
+    func uploadSignatures(_ signed: [String: [String: JSONValue]]) async throws(MatrixError) -> JSONValue {
+        let body = JSONValue.object(signed.mapValues { .object($0) })
+        let json: JSONValue = try await request(.post, "keys/signatures/upload", body: body)
+        return json["failures"] ?? .object([:])
+    }
+
+    /// `/keys/device_signing/upload`: ключи кросс-подписи. Сервер может потребовать подтверждение паролем:
+    /// тогда первый ответ — 401 с `session`, и запрос повторяется с `auth`.
+    func uploadCrossSigningKeys(master: JSONValue, selfSigning: JSONValue, userSigning: JSONValue,
+                                auth: JSONValue? = nil) async throws(MatrixError) {
+        var body: [String: JSONValue] = ["master_key": master, "self_signing_key": selfSigning,
+                                         "user_signing_key": userSigning]
+        if let auth { body["auth"] = auth }
+        let _: EmptyResponse = try await request(.post, "keys/device_signing/upload", body: .object(body))
+    }
 }

@@ -16,6 +16,8 @@ public enum E2EEError: Error, Sendable, Equatable {
     case replay
     case noBackup
     case wrongRecoveryKey
+    /// Отправитель отказал в ключе (`m.room_key.withheld`): `m.no_olm`, `m.unverified`, `m.blacklisted` …
+    case withheld(code: String, reason: String?)
 }
 
 /// Расшифрованное событие комнаты и откуда взялся ключ.
@@ -169,6 +171,13 @@ public actor CryptoMachine: SyncObserver {
     /// Расшифровывает to-device сообщения Olm и принимает ключи комнат. Возвращает расшифрованные события.
     public func receiveToDevice(_ events: [Event]) async -> [Event] {
         var decrypted: [Event] = []
+        for event in events {
+            switch event.type {
+            case EventType.roomKeyRequest: _ = try? await answerRoomKeyRequest(event)
+            case Self.withheldType: await acceptWithheld(event)
+            default: break
+            }
+        }
         for event in events where event.type == EventType.encrypted {
             guard let inner = try? await decryptToDevice(event) else { continue }
             decrypted.append(inner)
@@ -248,23 +257,7 @@ public actor CryptoMachine: SyncObserver {
         } catch {
             throw .store("\(error)")
         }
-    }
-
-    private func acceptForwardedRoomKey(_ event: Event) async throws(E2EEError) {
-        // Пересланные ключи принимаем только от своих же устройств.
-        guard event.sender == userID else { return }
-        let content = event.content
-        guard content["algorithm"]?.string == Self.megolmAlgorithm, let roomID = content["room_id"]?.string,
-              let sessionKey = content["session_key"]?.string, let senderKey = content["sender_key"]?.string else {
-            throw .badPayload("m.forwarded_room_key")
-        }
-        let session = try Self.parseExported(sessionKey, sessionID: content["session_id"]?.string)
-        let claimed = content["sender_claimed_ed25519_key"]?.string
-        do {
-            try await store.saveMegolmSession(session, roomID: roomID, senderKey: senderKey, claimedEd25519: claimed)
-        } catch {
-            throw .store("\(error)")
-        }
+        await settleKeyRequest(sessionID: session.sessionID, senderKey: senderKey)
     }
 
     // MARK: Комнаты
@@ -288,7 +281,12 @@ public actor CryptoMachine: SyncObserver {
         } catch {
             throw .store("\(error)")
         }
-        guard let stored, stored.roomID == roomID else { throw .missingSession(sessionID: sessionID) }
+        guard let stored, stored.roomID == roomID else {
+            if let withheld = try? await store.withheld(sessionID: sessionID, senderKey: content["sender_key"]?.string) {
+                throw .withheld(code: withheld.code, reason: withheld.reason)
+            }
+            throw .missingSession(sessionID: sessionID)
+        }
         let result: (plaintext: Data, messageIndex: UInt32)
         do { result = try stored.session.decrypt(ciphertext) } catch { throw .crypto(error) }
         if let eventID = event.eventID {

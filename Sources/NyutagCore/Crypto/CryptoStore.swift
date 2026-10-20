@@ -21,6 +21,17 @@ public struct DeviceInfo: Sendable, Equatable {
     public let curve25519Key: String
     public let ed25519Key: String
     public let displayName: String?
+    /// Подписано ключом самоподписи владельца, который подписан его мастер-ключом.
+    public var crossSigned = false
+}
+
+/// Ключи кросс-подписи пользователя из `/keys/query`.
+public struct CrossSigningIdentity: Sendable, Equatable {
+    public let userID: String
+    public let masterKey: String
+    public let selfSigningKey: String?
+    /// Мастер-ключ подтверждён: свой совпал с ключом из SSSS, чужой подписан нашим ключом подписи пользователей.
+    public let verified: Bool
 }
 
 /// Исходящая сессия Megolm комнаты и кому её ключ уже отдан.
@@ -32,14 +43,18 @@ struct OutboundRecord: Codable, Sendable {
     var messageCount: Int
     /// "пользователь|устройство" → ключ Curve25519 устройства на момент отправки.
     var sharedWith: [String: String]
+    /// Кому уже сообщили, что ключа не будет (нет канала Olm): повторно не шлём.
+    var withheldFrom: [String]?
 
-    init(_ session: MegolmOutboundSession, messageCount: Int = 0, sharedWith: [String: String] = [:]) {
+    init(_ session: MegolmOutboundSession, messageCount: Int = 0, sharedWith: [String: String] = [:],
+         withheldFrom: [String]? = nil) {
         ratchet = session.ratchet.data
         counter = session.ratchet.counter
         signingKey = session.signingKey.rawRepresentation
         createdAt = session.createdAt
         self.messageCount = messageCount
         self.sharedWith = sharedWith
+        self.withheldFrom = withheldFrom
     }
 
     func session() throws -> MegolmOutboundSession {
@@ -191,20 +206,87 @@ extension Store {
         try db.run("DELETE FROM devices WHERE user_id = ?", .text(userID))
         for device in devices {
             let extra: JSONValue = ["display_name": device.displayName.map(JSONValue.string) ?? .null]
-            try db.run("INSERT INTO devices(user_id, device_id, curve_key, ed_key, keys) VALUES(?, ?, ?, ?, ?)",
-                       .text(userID), .text(device.deviceID), .text(device.curve25519Key), .text(device.ed25519Key),
-                       .init(json: extra))
+            try db.run("""
+                INSERT INTO devices(user_id, device_id, curve_key, ed_key, keys, cross_signed) VALUES(?, ?, ?, ?, ?, ?)
+                """, .text(userID), .text(device.deviceID), .text(device.curve25519Key), .text(device.ed25519Key),
+                       .init(json: extra), .integer(device.crossSigned ? 1 : 0))
         }
         try db.run("INSERT INTO tracked_users(user_id, dirty) VALUES(?, 0) ON CONFLICT(user_id) DO UPDATE SET dirty = 0",
                    .text(userID))
     }
 
     func devices(userID: String) throws -> [DeviceInfo] {
-        try db.query("SELECT device_id, curve_key, ed_key, keys FROM devices WHERE user_id = ? ORDER BY device_id",
-                     .text(userID)) { row in
+        try db.query("""
+            SELECT device_id, curve_key, ed_key, keys, cross_signed FROM devices WHERE user_id = ? ORDER BY device_id
+            """, .text(userID)) { row in
             DeviceInfo(userID: userID, deviceID: row.string(0) ?? "", curve25519Key: row.string(1) ?? "",
-                       ed25519Key: row.string(2) ?? "", displayName: row.value(3).json?["display_name"]?.string)
+                       ed25519Key: row.string(2) ?? "", displayName: row.value(3).json?["display_name"]?.string,
+                       crossSigned: row.value(4).int == 1)
         }
+    }
+
+    /// Пересчитать доверие ко всем: после смены своих ключей кросс-подписи.
+    func markAllDeviceListsChanged() throws {
+        try db.run("UPDATE tracked_users SET dirty = 1")
+    }
+
+    // MARK: Кросс-подпись
+
+    func saveCrossSigning(_ identity: CrossSigningIdentity?, userID: String) throws {
+        guard let identity else {
+            try db.run("DELETE FROM cross_signing WHERE user_id = ?", .text(userID))
+            return
+        }
+        try db.run("""
+            INSERT INTO cross_signing(user_id, master, self_signing, verified) VALUES(?, ?, ?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET master = excluded.master, self_signing = excluded.self_signing,
+                verified = excluded.verified
+            """, .text(userID), .text(identity.masterKey), .init(identity.selfSigningKey),
+                   .integer(identity.verified ? 1 : 0))
+    }
+
+    func crossSigning(userID: String) throws -> CrossSigningIdentity? {
+        try db.query("SELECT master, self_signing, verified FROM cross_signing WHERE user_id = ?", .text(userID)) { row in
+            CrossSigningIdentity(userID: userID, masterKey: row.string(0) ?? "", selfSigningKey: row.string(1),
+                                 verified: row.value(2).int == 1)
+        }.first
+    }
+
+    // MARK: Запросы ключей и отказы
+
+    /// Запомнить свой запрос ключа; `false`, если такой уже отправлен.
+    func addKeyRequest(sessionID: String, senderKey: String, roomID: String, requestID: String) throws -> Bool {
+        if try db.scalar("SELECT 1 FROM key_requests WHERE session_id = ? AND sender_key = ?",
+                         .text(sessionID), .text(senderKey)) != nil { return false }
+        try db.run("INSERT INTO key_requests(session_id, sender_key, room_id, request_id) VALUES(?, ?, ?, ?)",
+                   .text(sessionID), .text(senderKey), .text(roomID), .text(requestID))
+        return true
+    }
+
+    func keyRequestID(sessionID: String, senderKey: String) throws -> String? {
+        try db.scalar("SELECT request_id FROM key_requests WHERE session_id = ? AND sender_key = ?",
+                      .text(sessionID), .text(senderKey))?.string
+    }
+
+    func removeKeyRequest(sessionID: String, senderKey: String) throws {
+        try db.run("DELETE FROM key_requests WHERE session_id = ? AND sender_key = ?", .text(sessionID), .text(senderKey))
+    }
+
+    func saveWithheld(sessionID: String, senderKey: String, code: String, reason: String?) throws {
+        try db.run("""
+            INSERT INTO withheld(session_id, sender_key, code, reason) VALUES(?, ?, ?, ?)
+            ON CONFLICT(session_id, sender_key) DO UPDATE SET code = excluded.code, reason = excluded.reason
+            """, .text(sessionID), .text(senderKey), .text(code), .init(reason))
+    }
+
+    /// Отказ в ключе сессии; `senderKey` nil — искать по одному session_id.
+    func withheld(sessionID: String, senderKey: String?) throws -> (code: String, reason: String?)? {
+        let rows = try db.query("SELECT code, reason, sender_key FROM withheld WHERE session_id = ?",
+                                .text(sessionID)) { row in
+            (code: row.string(0) ?? "", reason: row.string(1), senderKey: row.string(2) ?? "")
+        }
+        guard let row = rows.first(where: { senderKey == nil || $0.senderKey == senderKey }) else { return nil }
+        return (row.code, row.reason)
     }
 
     // MARK: Исходящие сессии

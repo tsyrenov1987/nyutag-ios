@@ -58,6 +58,33 @@ enum LiveE2EEEnv {
         try await bobClient.logout()
     }
 
+    /// Ключи кросс-подписи из SSSS по recovery-коду: новое устройство подписывает себя, сервер отдаёт подпись,
+    /// и устройство видно подтверждённым. В конце выход.
+    @Test func crossSigningFromRecoveryKey() async throws {
+        let client = MatrixClient(homeserver: LiveEnv.homeserver!)
+        let session = try await client.login(user: LiveE2EEEnv.user!, password: LiveE2EEEnv.password!,
+                                             deviceDisplayName: "Нютаг тест кросс-подписи (Мак)")
+        do {
+            let machine = try await CryptoMachine(client: client, store: try Store.inMemory(), session: session)
+            try await machine.publishKeys(serverCount: nil)
+            await #expect(throws: E2EEError.wrongRecoveryKey) {
+                try await machine.importCrossSigning(recoveryKey: RecoveryKey.encode(Random.bytes(32)))
+            }
+            try await machine.importCrossSigning(recoveryKey: LiveE2EEEnv.recovery!)
+            let devices = try await machine.devices(for: [session.userID])
+            let me = try #require(devices.first { $0.deviceID == session.deviceID })
+            let verified = await devices.asyncFilter { await machine.isVerified($0) }
+            print("live e2ee: устройств \(devices.count), подтверждено \(verified.count), это устройство \(me.crossSigned)")
+            #expect(me.crossSigned)
+            #expect(await machine.isVerified(me))
+            #expect(await machine.crossSigningIdentity(userID: session.userID)?.verified == true)
+        } catch {
+            try? await client.logout()
+            throw error
+        }
+        try await client.logout()
+    }
+
     private func cleanup(_ roomID: String, _ clients: MatrixClient...) async {
         for client in clients {
             try? await client.leave(roomID: roomID)
@@ -205,5 +232,13 @@ enum LiveE2EEEnv {
         // Доступных зашифрованных событий может не быть (учётка вышла из комнат); тогда проверка — в InteropTests.
         if total > 0 { #expect(ok > 0) }
         #expect(failed.isEmpty)
+    }
+}
+
+private extension Array where Element: Sendable {
+    func asyncFilter(_ keep: (Element) async -> Bool) async -> [Element] {
+        var result: [Element] = []
+        for element in self where await keep(element) { result.append(element) }
+        return result
     }
 }

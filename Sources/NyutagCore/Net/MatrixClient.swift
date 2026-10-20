@@ -19,10 +19,13 @@ public struct MatrixError: Error, Sendable, Equatable {
     public let kind: Kind
     /// Пауза перед повтором для `M_LIMIT_EXCEEDED`.
     public let retryAfter: Duration?
+    /// Сессия подтверждения (401 с `session` и `flows`): запрос надо повторить с `auth`.
+    public let uiaSession: String?
 
-    public init(_ kind: Kind, retryAfter: Duration? = nil) {
+    public init(_ kind: Kind, retryAfter: Duration? = nil, uiaSession: String? = nil) {
         self.kind = kind
         self.retryAfter = retryAfter
+        self.uiaSession = uiaSession
     }
 
     public var errcode: String? {
@@ -211,12 +214,14 @@ public actor MatrixClient {
         if let header = headers["Retry-After"] as? String, let seconds = Double(header) {
             retryAfter = .seconds(seconds)
         }
-        if let json = try? JSONValue(data: data), let errcode = json["errcode"]?.string {
+        let json = try? JSONValue(data: data)
+        let uiaSession = status == 401 && json?["flows"] != nil ? json?["session"]?.string : nil
+        if let json, let errcode = json["errcode"]?.string {
             if let ms = json["retry_after_ms"]?.int { retryAfter = .milliseconds(ms) }
             return MatrixError(.server(status: status, errcode: errcode, message: json["error"]?.string ?? ""),
-                               retryAfter: retryAfter)
+                               retryAfter: retryAfter, uiaSession: uiaSession)
         }
-        return MatrixError(.http(status: status), retryAfter: retryAfter)
+        return MatrixError(.http(status: status), retryAfter: retryAfter, uiaSession: uiaSession)
     }
 
     public enum Method: String, Sendable {

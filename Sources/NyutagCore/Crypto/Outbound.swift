@@ -25,6 +25,9 @@ extension CryptoMachine {
             for user in chunk {
                 // Сервер пользователя не ответил: список остаётся «грязным», спросим в следующий раз.
                 guard let entries = response["device_keys", user]?.object else { continue }
+                let identity = try await crossSigningIdentity(user, in: response)
+                try await storing { try await store.saveCrossSigning(identity, userID: user) }
+                let selfSigning = identity?.selfSigningKey
                 let previous = try await storing { try await store.devices(userID: user) }
                 let known = Dictionary(uniqueKeysWithValues: previous.map { ($0.deviceID, $0.ed25519Key) })
                 var fresh: [DeviceInfo] = []
@@ -35,8 +38,12 @@ extension CryptoMachine {
                           Self.verifySignature(keys, userID: user, keyID: deviceID, publicKey: ed) else { continue }
                     // Ключ подписи устройства не меняется; если сервер прислал другой, устройству не доверяем.
                     if let old = known[deviceID], old != ed { continue }
+                    let crossSigned = selfSigning.map {
+                        Self.verifySignature(keys, userID: user, keyID: $0, publicKey: $0)
+                    } ?? false
                     fresh.append(DeviceInfo(userID: user, deviceID: deviceID, curve25519Key: curve, ed25519Key: ed,
-                                            displayName: keys["unsigned", "device_display_name"]?.string))
+                                            displayName: keys["unsigned", "device_display_name"]?.string,
+                                            crossSigned: crossSigned))
                 }
                 try await storing { try await store.replaceDevices(fresh, userID: user) }
             }
@@ -189,6 +196,16 @@ extension CryptoMachine {
         ]
         let sent = try await sendEncryptedToDevice(type: EventType.roomKey, content: roomKey, to: pending)
         for device in sent { record.sharedWith["\(device.userID)|\(device.deviceID)"] = device.curve25519Key }
+        // Без одноразовых ключей канал Olm не открыть: говорим устройству, почему ключа нет (один раз).
+        let told = Set(record.withheldFrom ?? [])
+        let unreachable = pending.filter {
+            record.sharedWith["\($0.userID)|\($0.deviceID)"] == nil && !told.contains("\($0.userID)|\($0.deviceID)")
+        }
+        if !unreachable.isEmpty {
+            try await sendWithheld(unreachable, roomID: roomID, sessionID: session.sessionID, code: "m.no_olm",
+                                   reason: "Нет одноразовых ключей для устройства")
+            record.withheldFrom = Array(told) + unreachable.map { "\($0.userID)|\($0.deviceID)" }
+        }
         let shared = record
         try await storing { try await store.saveOutbound(shared, roomID: roomID) }
     }
@@ -211,7 +228,8 @@ extension CryptoMachine {
         } catch {
             throw .badPayload("\(error)")
         }
-        let next = OutboundRecord(session, messageCount: record.messageCount + 1, sharedWith: record.sharedWith)
+        let next = OutboundRecord(session, messageCount: record.messageCount + 1, sharedWith: record.sharedWith,
+                                  withheldFrom: record.withheldFrom)
         try await storing { try await store.saveOutbound(next, roomID: roomID) }
         return [
             "algorithm": .string(Self.megolmAlgorithm), "sender_key": .string(curve25519Key),
