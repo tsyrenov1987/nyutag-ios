@@ -110,11 +110,15 @@ import Testing
     private func verifyInRoom(roomID: String, alice: Party, bob: Party, parties: [Party]) async throws {
         let id = try await alice.machine.requestVerification(userID: bob.session.userID, inRoom: roomID)
         try await deliver(parties)
+        await trace("запрос", id, alice, bob)
         #expect(await bob.machine.verification(id)?.state == .requested)
         try await bob.machine.acceptVerification(id)
         try await deliver(parties)
+        await trace("готов", id, alice, bob)
         try await alice.machine.startSas(id)
-        try await deliver(parties)
+        // start → accept → key Алисы → key Боба: Алисе нужен третий /sync, чтобы увидеть ключ Боба.
+        try await deliver(parties, rounds: 3)
+        await trace("начат", id, alice, bob)
         let (a, b) = (await alice.machine.verification(id), await bob.machine.verification(id))
         let emoji = (a?.emoji ?? []).map { SasEmoji.table[$0].emoji }.joined()
         print("live interop: проверка в комнате, эмодзи \(emoji), совпали \(a?.emoji != nil && a?.emoji == b?.emoji)")
@@ -126,6 +130,11 @@ import Testing
         let (atAlice, atBob) = (await alice.machine.verification(id)?.state, await bob.machine.verification(id)?.state)
         print("live interop: проверка в комнате \(String(describing: atAlice)) / \(String(describing: atBob))")
         #expect(atAlice == .done && atBob == .done)
+    }
+
+    private func trace(_ step: String, _ id: String, _ alice: Party, _ bob: Party) async {
+        let (a, b) = (await alice.machine.verification(id)?.state, await bob.machine.verification(id)?.state)
+        print("live interop: после «\(step)» \(String(describing: a)) / \(String(describing: b))")
     }
 
     // MARK: Профиль
@@ -170,26 +179,40 @@ import Testing
 
     /// Вложения, которые зашифровали клиенты форка: ключи комнат — из бэкапа, файлы — с сервера.
     private func forkAttachments(_ bob: Party) async throws {
-        _ = try await bob.machine.restoreBackup(recoveryKey: LiveE2EEEnv.recovery!)
+        let restored = try await bob.machine.restoreBackup(recoveryKey: LiveE2EEEnv.recovery!)
         let version = try #require(try await bob.client.backupVersion()).version
+        let backupRooms = try await bob.client.backupKeys(version: version).keys.sorted()
         var tried = 0, ok = 0, failed: [String] = []
-        rooms: for roomID in try await bob.client.backupKeys(version: version).keys.sorted() {
-            guard let page = try? await bob.client.messages(roomID: roomID, from: nil, limit: 100) else { continue }
-            for event in page.events where event.type == EventType.encrypted && event.sender != bob.session.userID {
-                guard let decrypted = try? await bob.machine.decrypt(event, roomID: roomID).event,
-                      let fileJSON = decrypted.content["file"] else { continue }
-                tried += 1
-                do {
-                    let file = try JSONDecoder().decode(EncryptedFile.self, from: JSONEncoder().encode(fileJSON))
-                    let data = try await bob.client.downloadDecrypted(file)
-                    ok += 1
-                    print("  вложение форка \(decrypted.content["msgtype"]?.string ?? "-") \(data.count) Б")
-                } catch {
-                    failed.append("\(event.eventID ?? "-"): \(error)")
+        var unreachable = 0, encrypted = 0, decrypted = 0, kinds: [String: Int] = [:]
+        rooms: for roomID in backupRooms {
+            var from: String?
+            for _ in 0..<10 {
+                guard let page = try? await bob.client.messages(roomID: roomID, from: from, limit: 100) else {
+                    unreachable += 1
+                    continue rooms
                 }
-                if tried >= 5 { break rooms }
+                for event in page.events where event.type == EventType.encrypted && event.sender != bob.session.userID {
+                    encrypted += 1
+                    guard let plain = try? await bob.machine.decrypt(event, roomID: roomID).event else { continue }
+                    decrypted += 1
+                    kinds[plain.content["msgtype"]?.string ?? plain.type, default: 0] += 1
+                    guard let fileJSON = plain.content["file"] else { continue }
+                    tried += 1
+                    do {
+                        let file = try JSONDecoder().decode(EncryptedFile.self, from: JSONEncoder().encode(fileJSON))
+                        let data = try await bob.client.downloadDecrypted(file)
+                        ok += 1
+                        print("  вложение форка \(plain.content["msgtype"]?.string ?? "-") \(data.count) Б")
+                    } catch {
+                        failed.append("\(event.eventID ?? "-"): \(error)")
+                    }
+                    if tried >= 5 { break rooms }
+                }
+                guard let end = page.end, end != from else { break }
+                from = end
             }
         }
+        print("live interop: бэкап \(restored.imported)/\(restored.total) ключей, комнат \(backupRooms.count) (недоступно \(unreachable)), чужих шифрованных \(encrypted), расшифровано \(decrypted), виды \(kinds)")
         print("live interop: вложений форка \(tried), расшифровано \(ok)")
         for line in failed { print("  ✗ \(line)") }
         #expect(failed.isEmpty)
