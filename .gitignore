@@ -1,0 +1,16 @@
+# Сборка
+.build/
+.swiftpm/
+DerivedData/
+*.xcuserdatad/
+xcuserdata/
+build/
+
+# Секреты: путь кильватера с ключом клиента лежит только локально (образец рядом: *.example)
+App/Resources/nyutag-catalogue.txt
+tools/test-env.local.sh
+
+# Системное
+.DS_Store
+*.ipa
+*.dSYM.zip

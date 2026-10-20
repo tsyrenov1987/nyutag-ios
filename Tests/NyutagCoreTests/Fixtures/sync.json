@@ -1,0 +1,69 @@
+{
+  "next_batch": "s72595_4483_1934",
+  "account_data": {
+    "events": [
+      {"type": "m.direct", "content": {"@b:nyutag.chat": ["!dm:nyutag.chat"]}},
+      {"type": "chat.nyutag.chat_layout", "content": {"pins": ["!group:nyutag.chat"], "folders": [{"id": "f1", "name": "Работа", "rooms": ["!group:nyutag.chat"]}]}}
+    ]
+  },
+  "device_one_time_keys_count": {"signed_curve25519": 50},
+  "device_unused_fallback_key_types": ["signed_curve25519"],
+  "device_lists": {"changed": ["@b:nyutag.chat"], "left": []},
+  "to_device": {
+    "events": [
+      {"type": "m.room.encrypted", "sender": "@b:nyutag.chat", "content": {"algorithm": "m.olm.v1.curve25519-aes-sha2", "sender_key": "k", "ciphertext": {}}}
+    ]
+  },
+  "rooms": {
+    "join": {
+      "!group:nyutag.chat": {
+        "summary": {"m.heroes": ["@b:nyutag.chat", "@c:nyutag.chat"], "m.joined_member_count": 3, "m.invited_member_count": 0},
+        "state": {
+          "events": [
+            {"type": "m.room.create", "state_key": "", "event_id": "$c", "sender": "@a:nyutag.chat", "origin_server_ts": 1, "content": {"creator": "@a:nyutag.chat", "room_version": "10"}},
+            {"type": "m.room.name", "state_key": "", "event_id": "$n", "sender": "@a:nyutag.chat", "origin_server_ts": 2, "content": {"name": "Нютаг тест"}},
+            {"type": "m.room.encryption", "state_key": "", "event_id": "$enc", "sender": "@a:nyutag.chat", "origin_server_ts": 3, "content": {"algorithm": "m.megolm.v1.aes-sha2"}},
+            {"type": "m.room.member", "state_key": "@a:nyutag.chat", "event_id": "$m", "sender": "@a:nyutag.chat", "origin_server_ts": 4, "content": {"membership": "join", "displayname": "Аюр"}}
+          ]
+        },
+        "timeline": {
+          "limited": true,
+          "prev_batch": "t34-23535_0_0",
+          "events": [
+            {"type": "m.room.message", "event_id": "$1", "sender": "@b:nyutag.chat", "origin_server_ts": 1760000000001, "content": {"msgtype": "m.text", "body": "Сайн байна!"}},
+            {"type": "m.room.encrypted", "event_id": "$2", "sender": "@c:nyutag.chat", "origin_server_ts": 1760000000002, "content": {"algorithm": "m.megolm.v1.aes-sha2", "session_id": "s", "sender_key": "k", "ciphertext": "AwgA"}},
+            {"type": "m.room.topic", "state_key": "", "event_id": "$t", "sender": "@a:nyutag.chat", "origin_server_ts": 1760000000003, "content": {"topic": "Тема"}}
+          ]
+        },
+        "ephemeral": {
+          "events": [
+            {"type": "m.typing", "content": {"user_ids": ["@b:nyutag.chat"]}},
+            {"type": "m.receipt", "content": {"$1": {"m.read": {"@b:nyutag.chat": {"ts": 1760000000005}}, "m.read.private": {"@a:nyutag.chat": {"ts": 1760000000006}}}}}
+          ]
+        },
+        "account_data": {"events": [{"type": "m.fully_read", "content": {"event_id": "$1"}}]},
+        "unread_notifications": {"highlight_count": 1, "notification_count": 2}
+      },
+      "!space:nyutag.chat": {
+        "state": {"events": [{"type": "m.room.create", "state_key": "", "event_id": "$sc", "sender": "@a:nyutag.chat", "origin_server_ts": 1, "content": {"type": "m.space"}}]},
+        "timeline": {"events": [], "limited": false}
+      }
+    },
+    "invite": {
+      "!inv:nyutag.chat": {
+        "invite_state": {
+          "events": [
+            {"type": "m.room.name", "state_key": "", "sender": "@d:nyutag.chat", "content": {"name": "Приглашение"}},
+            {"type": "m.room.member", "state_key": "@a:nyutag.chat", "sender": "@d:nyutag.chat", "content": {"membership": "invite", "is_direct": true}}
+          ]
+        }
+      }
+    },
+    "leave": {
+      "!old:nyutag.chat": {
+        "state": {"events": []},
+        "timeline": {"events": [{"type": "m.room.member", "state_key": "@a:nyutag.chat", "event_id": "$l", "sender": "@a:nyutag.chat", "origin_server_ts": 9, "content": {"membership": "leave"}}], "limited": false}
+      }
+    }
+  }
+}
