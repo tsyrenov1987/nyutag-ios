@@ -127,4 +127,27 @@ struct TunnelLogicTests {
         #expect(configuration.proxyConfigurations.count == 1)
         #expect(configuration.proxyConfigurations.first?.allowFailover == false)
     }
+
+    // MARK: клиент за туннелем
+
+    @Test("Клиент следует за путями, пока жив, и не удерживается подпиской")
+    func clientFollowsRoutes() async throws {
+        let (routes, feed) = AsyncStream<Route>.makeStream()
+        var client: MatrixClient? = MatrixClient(homeserver: URL(string: "https://core.nyutag.chat:6167")!,
+                                                 route: .sealed)
+        let following = try #require(client).follow(routes)
+        let proxy = try #require(SocksProxy(port: 50_123, user: "u", password: "p"))
+        feed.yield(.socks5(proxy))
+        for _ in 0..<200 where await client?.route != .socks5(proxy) {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        #expect(await client?.route == .socks5(proxy))
+
+        weak let gone = client
+        client = nil
+        #expect(gone == nil)
+        feed.yield(.sealed)
+        feed.finish()
+        await following.value
+    }
 }

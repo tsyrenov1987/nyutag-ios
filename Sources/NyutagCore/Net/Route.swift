@@ -50,3 +50,18 @@ public enum Route: Sendable, Equatable {
         return configuration
     }
 }
+
+extension MatrixClient {
+    /// Клиент переключается на каждый путь из потока (туннель перезапустился на другом порту), пока сам жив.
+    /// Поток не удерживает клиента: после выхода из учётки клиент освобождается, и подписка кончается
+    /// на следующем пути.
+    @discardableResult
+    public nonisolated func follow(_ routes: AsyncStream<Route>) -> Task<Void, Never> {
+        Task { [weak self] in
+            for await route in routes {
+                guard let self else { return }
+                await self.setRoute(route)
+            }
+        }
+    }
+}

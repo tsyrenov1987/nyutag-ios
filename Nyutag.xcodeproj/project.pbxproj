@@ -12,6 +12,7 @@
 		4CFFC3D6CC0AA0B2E133511C /* TunnelHub.swift in Sources */ = {isa = PBXBuildFile; fileRef = 654525201E59E3E1F15C93EF; };
 		61A078356110FAED60827330 /* NyutagCore in Frameworks */ = {isa = PBXBuildFile; productRef = B13A157FADF36FA882138926; };
 		69A67FA155CFC6A4C5C7EAB0 /* NyutagCore in Frameworks */ = {isa = PBXBuildFile; productRef = DBE052AAC100956CAA6A9101; };
+		6F977AA4264ECAF0BE820CED /* AppAccounts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D6BA244A5F28C94FA3F310D; };
 		7597982682D62FA50E8B1A14 /* NyutagNSE.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = FE32DB90CCCD1F549E9B53C5; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		81400ED92B6E11EE7BFFE6A3 /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26D467D4C2927481B969D41B; };
 		8B4EBDBAB76BB9ABE4596358 /* CoreBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA190F4DA222CD36B1A34E07; };
@@ -39,6 +40,7 @@
 		61283808392941493A9F30AE /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		62844B35EA9637B533456415 /* NetworkWatch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkWatch.swift; sourceTree = "<group>"; };
 		654525201E59E3E1F15C93EF /* TunnelHub.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunnelHub.swift; sourceTree = "<group>"; };
+		6D6BA244A5F28C94FA3F310D /* AppAccounts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppAccounts.swift; sourceTree = "<group>"; };
 		9457957D28199A36BA7D4FFD /* Resources */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Resources; sourceTree = "<group>"; };
 		957FAC9C79F337FB3129F8BA /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		98A33BA1B0E3423CB7853497 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -53,7 +55,7 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		38C0BDA05AD30F3FE486BAFF /* Nyutag */ = {isa = PBXGroup; children = (1B0FB99619B1581C7120F557, 957FAC9C79F337FB3129F8BA, 6BF040F219B28325969F342D, 61283808392941493A9F30AE, 98A33BA1B0E3423CB7853497, 54496AA12ADB629CEE9F1437,); path = Nyutag; sourceTree = "<group>"; };
+		38C0BDA05AD30F3FE486BAFF /* Nyutag */ = {isa = PBXGroup; children = (1B0FB99619B1581C7120F557, 957FAC9C79F337FB3129F8BA, 6D6BA244A5F28C94FA3F310D, 6BF040F219B28325969F342D, 61283808392941493A9F30AE, 98A33BA1B0E3423CB7853497, 54496AA12ADB629CEE9F1437,); path = Nyutag; sourceTree = "<group>"; };
 		3B8C3D6156120C4FC85A03D2 /* Products */ = {isa = PBXGroup; children = (1502CCB7D47595652FF46B79, FE32DB90CCCD1F549E9B53C5,); name = Products; sourceTree = "<group>"; };
 		6BF040F219B28325969F342D /* Tunnel */ = {isa = PBXGroup; children = (EA190F4DA222CD36B1A34E07, 62844B35EA9637B533456415, 654525201E59E3E1F15C93EF,); path = Tunnel; sourceTree = "<group>"; };
 		6CEACBD73A5CFF977D384A31 /* Main */ = {isa = PBXGroup; children = (6E707754F06C2C435B694330, 4EA385A547BE8D27F90AD3EE, 3B8C3D6156120C4FC85A03D2,); sourceTree = "<group>"; };
@@ -76,7 +78,7 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		17AB91A470A72BA606086E8D /* Sources:app */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (F53AF2BA3F0FA0C905B39DAE, 4CA26083586E372AB024C92D, 8B4EBDBAB76BB9ABE4596358, 397F5FA601F1117DD24F8F88, 4CFFC3D6CC0AA0B2E133511C,); runOnlyForDeploymentPostprocessing = 0; };
+		17AB91A470A72BA606086E8D /* Sources:app */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (F53AF2BA3F0FA0C905B39DAE, 4CA26083586E372AB024C92D, 6F977AA4264ECAF0BE820CED, 8B4EBDBAB76BB9ABE4596358, 397F5FA601F1117DD24F8F88, 4CFFC3D6CC0AA0B2E133511C,); runOnlyForDeploymentPostprocessing = 0; };
 		9702AAC9BDACF13C341F4DB6 /* Sources:nse */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (81400ED92B6E11EE7BFFE6A3,); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */
 

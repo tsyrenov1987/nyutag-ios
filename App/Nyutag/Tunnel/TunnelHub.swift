@@ -153,13 +153,14 @@ actor TunnelHub {
     }
 
     /// Клиент к ядру Нютага: стартует с закрытым путём, получает путь туннеля, как только он есть,
-    /// и дальше следует за его изменениями. Пин своего CA включён.
-    func makeClient(accessToken: String? = nil) -> MatrixClient {
-        let client = MatrixClient(homeserver: Self.coreURL, accessToken: accessToken,
+    /// и дальше следует за его изменениями. Пин своего CA включён. Синхронный, чтобы годиться в фабрику
+    /// `AccountKeeper`; подписка на пути оформляется следом, первый путь приходит сразу при подписке.
+    nonisolated func makeClient(homeserver: URL = coreURL, accessToken: String? = nil) -> MatrixClient {
+        let client = MatrixClient(homeserver: homeserver, accessToken: accessToken,
                                   delegate: CertificateTrust.nyutagCore(), route: .sealed)
-        let updates = routes()
-        Task {
-            for await route in updates { await client.setRoute(route) }
+        Task { [weak client] in
+            let updates = await self.routes()
+            client?.follow(updates)
         }
         return client
     }
