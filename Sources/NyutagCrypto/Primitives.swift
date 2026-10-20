@@ -12,6 +12,9 @@ public enum CryptoError: Error, Sendable, Equatable {
     case cipherFailed(Int32)
     case badSignature
     case badMessage(String)
+    case badMAC
+    /// Сообщение раньше первого известного индекса сессии Megolm.
+    case unknownMessageIndex
 }
 
 // MARK: - Base64 без набивки (как в libolm)

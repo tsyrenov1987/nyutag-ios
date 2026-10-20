@@ -207,6 +207,31 @@ public actor Store {
         }
     }
 
+    /// Добавляет историю из `/messages` (dir=b): события приходят от новых к старым и встают перед самым ранним
+    /// сохранённым событием комнаты. Дубликаты пропускаются. Возвращает число добавленных.
+    @discardableResult
+    public func prepend(_ events: [Event], roomID: String) throws -> Int {
+        var ordering = (try db.scalar("SELECT MIN(ordering) FROM events WHERE room_id = ?", .text(roomID))?.int
+            .map(Int64.init) ?? nextOrdering) - 1
+        var added = 0
+        for event in events {
+            guard let eventID = event.eventID else { continue }
+            try db.run("""
+            INSERT OR IGNORE INTO events(event_id, room_id, type, sender, ts, state_key, content, unsigned, ordering)
+            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, [
+                .text(eventID), .text(event.roomID ?? roomID), .text(event.type), .init(event.sender),
+                .init(event.originServerTS ?? 0), .init(event.stateKey), .init(json: event.content),
+                .init(json: event.unsigned), .integer(ordering),
+            ])
+            if db.changes > 0 {
+                ordering -= 1
+                added += 1
+            }
+        }
+        return added
+    }
+
     /// Последние события комнаты, старые первыми.
     public func events(in roomID: String, limit: Int = 50, before ordering: Int64? = nil) throws -> [Event] {
         let rows: [Event]
@@ -260,6 +285,14 @@ public actor Store {
         try db.query("SELECT state_key, sender, content FROM state WHERE room_id = ? AND type = ?", .text(roomID), .text(type)) { row in
             (row.string(0) ?? "", row.string(1), row.value(2).json ?? .object([:]))
         }
+    }
+
+    /// Забытая комната: сервер больше не пришлёт о ней ничего, поэтому стираем всё локально.
+    public func deleteRoom(_ roomID: String) throws {
+        for table in ["rooms", "events", "state", "receipts"] {
+            try db.run("DELETE FROM \(table) WHERE room_id = ?", .text(roomID))
+        }
+        try db.run("DELETE FROM account_data WHERE room_id = ?", .text(roomID))
     }
 
     // MARK: Account data
