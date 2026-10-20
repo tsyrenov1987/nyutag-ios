@@ -85,12 +85,15 @@ public actor MatrixClient {
 
     /// Туннель перезапустился на другом порту: переключаем путь без пересоздания клиента. Запросы, уже идущие по
     /// старому сеансу, дописываются на нём (`finishTasksAndInvalidate`), новые идут по новому. Одинаковый путь не трогаем.
+    /// Исключение — уход с закрытого пути: запросы на нём не падают, а ждут связи (`waitsForConnectivity`) до
+    /// таймаута ресурса, поэтому их снимаем сразу, и вызывающий повторяет запрос уже по туннелю.
     public func setRoute(_ newRoute: Route) {
         guard newRoute != route else { return }
         let old = session
+        let leavingSealed = route == .sealed
         route = newRoute
         session = URLSession(configuration: newRoute.apply(to: baseConfiguration), delegate: delegate, delegateQueue: nil)
-        old.finishTasksAndInvalidate()
+        if leavingSealed { old.invalidateAndCancel() } else { old.finishTasksAndInvalidate() }
     }
 
     public static func defaultConfiguration() -> URLSessionConfiguration {

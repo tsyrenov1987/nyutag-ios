@@ -4,6 +4,14 @@ import Testing
 
 /// Вход, хранение сессии в связке ключей, подъём при запуске и выход.
 @Suite(.serialized) struct AccountKeeperTests {
+    /// Тестовый бандл без приложения-хозяина на симуляторе iOS не имеет права на связку (-34018, errSecMissingEntitlement):
+    /// там тесты связки выключены, на Маке и в приложении они идут.
+    static let keychainReachable: Bool = {
+        let probe = SessionVault(service: "chat.nyutag.test.probe.\(UUID().uuidString)")
+        do { _ = try probe.load() } catch SessionVault.Failure.keychain(-34018) { return false } catch {}
+        return true
+    }()
+
     static let user = "@dorzho:nyutag.chat"
 
     /// Своя служба на тест: связка ключей общая у всех процессов пользователя.
@@ -13,7 +21,7 @@ import Testing
         return (vault, SharedShelf(root: root))
     }
 
-    @Test func vaultKeepsReplacesAndErases() throws {
+    @Test(.enabled(if: keychainReachable, "нет права на связку ключей")) func vaultKeepsReplacesAndErases() throws {
         let (vault, _) = try scratch()
         defer { try? vault.erase() }
         #expect(try vault.load() == nil)
@@ -39,7 +47,7 @@ import Testing
         #expect(folder == shelf.folder(for: Self.user))
     }
 
-    @Test func signInRestoreSignOut() async throws {
+    @Test(.enabled(if: keychainReachable, "нет права на связку ключей")) func signInRestoreSignOut() async throws {
         let server = FakeHomeserver()
         server.setPassword("секрет", user: Self.user)
         let (vault, shelf) = try scratch()

@@ -60,6 +60,15 @@ APP_INFO = plist(
     + arr("BGTaskSchedulerPermittedIdentifiers", [BGTASK])
     + arr("UIBackgroundModes", ["remote-notification", "fetch", "voip", "audio"])
     + "\t<key>ITSAppUsesNonExemptEncryption</key>\n\t<false/>\n"
+    # Ядро подписано нашим CA, которого нет в системных корнях. Без исключения ATS после делегата
+    # повторно проверяет цепочку по системе и рвёт TLS (-9802, MissingIntermediate). Исключение снимает
+    # только эту системную проверку для одного имени; доверие решает CertificateTrust (только наш якорь).
+    # Имя резолвят лишь выходы туннеля, а клиент ходит к нему только по https.
+    + "\t<key>NSAppTransportSecurity</key>\n\t<dict>\n"
+    "\t\t<key>NSExceptionDomains</key>\n\t\t<dict>\n"
+    "\t\t\t<key>core.nyutag.chat</key>\n\t\t\t<dict>\n"
+    "\t\t\t\t<key>NSExceptionAllowsInsecureHTTPLoads</key>\n\t\t\t\t<true/>\n"
+    "\t\t\t</dict>\n\t\t</dict>\n\t</dict>\n"
 )
 
 NSE_INFO = plist(
@@ -105,6 +114,7 @@ def fileref(key, path, kind):
 fileref("app_swift", "NyutagApp.swift", "sourcecode.swift")
 fileref("content_swift", "ContentView.swift", "sourcecode.swift")
 fileref("accounts_swift", "AppAccounts.swift", "sourcecode.swift")
+fileref("selfcheck_swift", "SelfCheck.swift", "sourcecode.swift")
 fileref("tunnel_bridge", "CoreBridge.swift", "sourcecode.swift")
 fileref("tunnel_net", "NetworkWatch.swift", "sourcecode.swift")
 fileref("tunnel_hub", "TunnelHub.swift", "sourcecode.swift")
@@ -114,8 +124,9 @@ fileref("farvater", "Frameworks/FarvaterCore.xcframework", "wrapper.xcframework"
 fileref("assets", "Assets.xcassets", "folder.assetcatalog")
 fileref("app_plist", "Info.plist", "text.plist.xml")
 fileref("app_ent", "Nyutag.entitlements", "text.plist.entitlements")
-# папка-ссылка: если nyutag-catalogue.txt (в gitignore) нет, в бандл попадает только .example
-fileref("resources", "Resources", "folder")
+# папка-ссылка: если nyutag-catalogue.txt (в gitignore) нет, в бандл попадает только .example.
+# Не «Resources»: с такой папкой в корне .app CFBundle считает бандл старым и не находит Info.plist.
+fileref("resources", "Catalogue", "folder")
 fileref("nse_swift", "NotificationService.swift", "sourcecode.swift")
 fileref("nse_plist", "Info.plist", "text.plist.xml")
 fileref("nse_ent", "NyutagNSE.entitlements", "text.plist.entitlements")
@@ -138,12 +149,13 @@ def bf(key, fileid, comment, phase):
 b_swift_app = bf("app_swift", F["app_swift"], "NyutagApp.swift", "Sources")
 b_swift_content = bf("content_swift", F["content_swift"], "ContentView.swift", "Sources")
 b_swift_accounts = bf("accounts_swift", F["accounts_swift"], "AppAccounts.swift", "Sources")
+b_swift_selfcheck = bf("selfcheck_swift", F["selfcheck_swift"], "SelfCheck.swift", "Sources")
 b_tunnel = [bf("tunnel_bridge", F["tunnel_bridge"], "CoreBridge.swift", "Sources"),
             bf("tunnel_net", F["tunnel_net"], "NetworkWatch.swift", "Sources"),
             bf("tunnel_hub", F["tunnel_hub"], "TunnelHub.swift", "Sources")]
 b_farvater = bf("farvater", F["farvater"], "FarvaterCore.xcframework", "Frameworks")
 b_assets = bf("assets", F["assets"], "Assets.xcassets", "Resources")
-b_res = bf("resources", F["resources"], "Resources", "Resources")
+b_res = bf("resources", F["resources"], "Catalogue", "Resources")
 b_swift_nse = bf("nse_swift", F["nse_swift"], "NotificationService.swift", "Sources")
 b_pkg_app = add("bf:pkg_app", "NyutagCore in Frameworks", "PBXBuildFile", [("productRef", PROD_APP)])
 b_pkg_nse = add("bf:pkg_nse", "NyutagCore in Frameworks", "PBXBuildFile", [("productRef", PROD_NSE)])
@@ -157,7 +169,7 @@ def phase(name, isa, files, extra=()):
                [("files", lst(files)), ("runOnlyForDeploymentPostprocessing", "0")])
 
 
-ph_app_src = phase("Sources:app", "PBXSourcesBuildPhase", [b_swift_app, b_swift_content, b_swift_accounts] + b_tunnel)
+ph_app_src = phase("Sources:app", "PBXSourcesBuildPhase", [b_swift_app, b_swift_content, b_swift_accounts, b_swift_selfcheck] + b_tunnel)
 ph_app_fw = phase("Frameworks:app", "PBXFrameworksBuildPhase", [b_pkg_app, b_farvater])
 ph_app_res = phase("Resources:app", "PBXResourcesBuildPhase", [b_assets, b_res])
 ph_embed = phase("Embed Foundation Extensions", "PBXCopyFilesBuildPhase", [b_embed],
@@ -178,7 +190,7 @@ def group(key, comment, children, path=None, name=None):
 
 
 g_tunnel = group("tunnel", "Tunnel", [F["tunnel_bridge"], F["tunnel_net"], F["tunnel_hub"]], "Tunnel")
-g_nyutag = group("nyutag", "Nyutag", [F["app_swift"], F["content_swift"], F["accounts_swift"], g_tunnel, F["assets"], F["app_plist"], F["app_ent"]], "Nyutag")
+g_nyutag = group("nyutag", "Nyutag", [F["app_swift"], F["content_swift"], F["accounts_swift"], F["selfcheck_swift"], g_tunnel, F["assets"], F["app_plist"], F["app_ent"]], "Nyutag")
 g_nse = group("nse", "NyutagNSE", [F["nse_swift"], F["nse_plist"], F["nse_ent"]], "NyutagNSE")
 g_apps = group("apps", "App", [g_nyutag, g_nse, F["resources"]], "App")
 g_products = group("products", "Products", [APP_PROD, NSE_PROD], None, "Products")

@@ -7,6 +7,9 @@ struct NyutagApp: App {
     init() {
         // Ядро туннеля поднимается один раз на процесс; клиенты берут путь у TunnelHub.
         Task { await TunnelHub.shared.begin() }
+        #if DEBUG
+        SelfCheck.runIfAsked()
+        #endif
     }
 
     var body: some Scene {

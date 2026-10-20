@@ -4,6 +4,7 @@
 
 import Foundation
 import NyutagCore
+import Synchronization
 
 actor TunnelHub {
     static let shared = TunnelHub()
@@ -17,6 +18,9 @@ actor TunnelHub {
     private var fallbackStart: Task<Void, Never>?
     private var subscribers: [UUID: AsyncStream<Route>.Continuation] = [:]
     private var lastPublished: Route?
+    /// Тот же путь, что последним ушёл подписчикам, но читается синхронно: новый клиент сразу стартует на нём,
+    /// а не на закрытом пути до первой доставки из потока.
+    private nonisolated let currentRoute = Mutex(Route.sealed)
 
     // MARK: Запуск
 
@@ -90,11 +94,17 @@ actor TunnelHub {
         }
     }
 
-    /// Секрет лежит в бандле (`nyutag-catalogue.txt`, не в git). Содержимое нигде не печатается.
+    /// Секрет лежит в бандле (`Catalogue/nyutag-catalogue.txt`, не в git). Содержимое нигде не печатается.
     private nonisolated static func loadCatalogue() -> String? {
-        guard let url = Bundle.main.url(forResource: "nyutag-catalogue", withExtension: "txt"),
+        guard let url = Bundle.main.url(forResource: "nyutag-catalogue", withExtension: "txt", subdirectory: "Catalogue"),
               let text = try? String(contentsOf: url, encoding: .utf8) else { return nil }
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        var trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        #if DEBUG
+        // Самопроверка по одному входу: оставляем строки каталога с этим именем после «#».
+        if let only = ProcessInfo.processInfo.environment["NYUTAG_CATALOGUE_ONLY"] {
+            trimmed = trimmed.split(whereSeparator: \.isNewline).filter { $0.hasSuffix("#" + only) }.joined(separator: "\n")
+        }
+        #endif
         return trimmed.isEmpty ? nil : trimmed
     }
 
@@ -147,17 +157,19 @@ actor TunnelHub {
     private func publish(_ new: TunnelState) {
         state = new
         let route = Route.forTunnel(new)
+        currentRoute.withLock { $0 = route }
         guard route != lastPublished else { return }
         lastPublished = route
         for continuation in subscribers.values { continuation.yield(route) }
     }
 
-    /// Клиент к ядру Нютага: стартует с закрытым путём, получает путь туннеля, как только он есть,
+    /// Клиент к ядру Нютага: стартует с текущим путём (закрытым, пока туннеля нет), получает путь туннеля, как только он есть,
     /// и дальше следует за его изменениями. Пин своего CA включён. Синхронный, чтобы годиться в фабрику
     /// `AccountKeeper`; подписка на пути оформляется следом, первый путь приходит сразу при подписке.
     nonisolated func makeClient(homeserver: URL = coreURL, accessToken: String? = nil) -> MatrixClient {
         let client = MatrixClient(homeserver: homeserver, accessToken: accessToken,
-                                  delegate: CertificateTrust.nyutagCore(), route: .sealed)
+                                  delegate: CertificateTrust.nyutagCore(),
+                                  route: currentRoute.withLock { $0 })
         Task { [weak client] in
             let updates = await self.routes()
             client?.follow(updates)

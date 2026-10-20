@@ -22,7 +22,7 @@ swift test
 ```
 
 Живые тесты против ядра включаются переменными окружения, см. `tools/test-env.sh`.
-Файл `App/Resources/nyutag-catalogue.txt` с путём до входа в репозиторий не входит (рядом лежит `.example`).
+Файл `App/Catalogue/nyutag-catalogue.txt` с путём до входа в репозиторий не входит (рядом лежит `.example`).
 
 ## Сборка приложения
 
@@ -35,5 +35,5 @@ xcodebuild -project Nyutag.xcodeproj -scheme Nyutag -destination 'generic/platfo
 ```
 
 Цели: `Nyutag` (приложение) и `NyutagNSE` (расширение уведомлений, встроено в приложение). Обе зависят от `NyutagCore`
-через локальный пакет в корне репозитория. `App/Resources` подключена как папка: если `nyutag-catalogue.txt` нет, сборка
+через локальный пакет в корне репозитория. `App/Catalogue` подключена как папка: если `nyutag-catalogue.txt` нет, сборка
 проходит, в бандл попадает только `.example`.
