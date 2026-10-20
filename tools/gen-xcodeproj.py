@@ -104,6 +104,12 @@ def fileref(key, path, kind):
 
 fileref("app_swift", "NyutagApp.swift", "sourcecode.swift")
 fileref("content_swift", "ContentView.swift", "sourcecode.swift")
+fileref("tunnel_bridge", "CoreBridge.swift", "sourcecode.swift")
+fileref("tunnel_net", "NetworkWatch.swift", "sourcecode.swift")
+fileref("tunnel_hub", "TunnelHub.swift", "sourcecode.swift")
+# FarvaterCore.xcframework не в git (tools/fetch-farvater-core.sh кладёт его в Frameworks/). Внутри статический
+# архив, поэтому только линковка: встраивать (Embed & Sign) статический фреймворк в бандл нельзя.
+fileref("farvater", "Frameworks/FarvaterCore.xcframework", "wrapper.xcframework")
 fileref("assets", "Assets.xcassets", "folder.assetcatalog")
 fileref("app_plist", "Info.plist", "text.plist.xml")
 fileref("app_ent", "Nyutag.entitlements", "text.plist.entitlements")
@@ -130,6 +136,10 @@ def bf(key, fileid, comment, phase):
 
 b_swift_app = bf("app_swift", F["app_swift"], "NyutagApp.swift", "Sources")
 b_swift_content = bf("content_swift", F["content_swift"], "ContentView.swift", "Sources")
+b_tunnel = [bf("tunnel_bridge", F["tunnel_bridge"], "CoreBridge.swift", "Sources"),
+            bf("tunnel_net", F["tunnel_net"], "NetworkWatch.swift", "Sources"),
+            bf("tunnel_hub", F["tunnel_hub"], "TunnelHub.swift", "Sources")]
+b_farvater = bf("farvater", F["farvater"], "FarvaterCore.xcframework", "Frameworks")
 b_assets = bf("assets", F["assets"], "Assets.xcassets", "Resources")
 b_res = bf("resources", F["resources"], "Resources", "Resources")
 b_swift_nse = bf("nse_swift", F["nse_swift"], "NotificationService.swift", "Sources")
@@ -145,8 +155,8 @@ def phase(name, isa, files, extra=()):
                [("files", lst(files)), ("runOnlyForDeploymentPostprocessing", "0")])
 
 
-ph_app_src = phase("Sources:app", "PBXSourcesBuildPhase", [b_swift_app, b_swift_content])
-ph_app_fw = phase("Frameworks:app", "PBXFrameworksBuildPhase", [b_pkg_app])
+ph_app_src = phase("Sources:app", "PBXSourcesBuildPhase", [b_swift_app, b_swift_content] + b_tunnel)
+ph_app_fw = phase("Frameworks:app", "PBXFrameworksBuildPhase", [b_pkg_app, b_farvater])
 ph_app_res = phase("Resources:app", "PBXResourcesBuildPhase", [b_assets, b_res])
 ph_embed = phase("Embed Foundation Extensions", "PBXCopyFilesBuildPhase", [b_embed],
                  [("dstPath", '""'), ("dstSubfolderSpec", "13")])
@@ -165,11 +175,12 @@ def group(key, comment, children, path=None, name=None):
     return add("grp:" + key, comment, "PBXGroup", f)
 
 
-g_nyutag = group("nyutag", "Nyutag", [F["app_swift"], F["content_swift"], F["assets"], F["app_plist"], F["app_ent"]], "Nyutag")
+g_tunnel = group("tunnel", "Tunnel", [F["tunnel_bridge"], F["tunnel_net"], F["tunnel_hub"]], "Tunnel")
+g_nyutag = group("nyutag", "Nyutag", [F["app_swift"], F["content_swift"], g_tunnel, F["assets"], F["app_plist"], F["app_ent"]], "Nyutag")
 g_nse = group("nse", "NyutagNSE", [F["nse_swift"], F["nse_plist"], F["nse_ent"]], "NyutagNSE")
 g_apps = group("apps", "App", [g_nyutag, g_nse, F["resources"]], "App")
 g_products = group("products", "Products", [APP_PROD, NSE_PROD], None, "Products")
-g_main = group("main", "Main", [g_apps, g_products])
+g_main = group("main", "Main", [g_apps, F["farvater"], g_products])
 
 PROJ_COMMON = {
     "ALWAYS_SEARCH_USER_PATHS": "NO", "CLANG_ENABLE_MODULES": "YES", "CLANG_ENABLE_OBJC_ARC": "YES",
@@ -187,6 +198,8 @@ PROJ_RELEASE = dict(PROJ_COMMON, DEBUG_INFORMATION_FORMAT="dwarf-with-dsym", SWI
 APP_S = {
     "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon", "ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME": "AccentColor",
     "CODE_SIGN_ENTITLEMENTS": "App/Nyutag/Nyutag.entitlements", "ENABLE_PREVIEWS": "YES",
+    # в FarvaterCore.xcframework симулятор только arm64
+    "EXCLUDED_ARCHS[sdk=iphonesimulator*]": "x86_64",
     "GENERATE_INFOPLIST_FILE": "YES", "INFOPLIST_FILE": "App/Nyutag/Info.plist",
     "INFOPLIST_KEY_CFBundleDisplayName": "Нютаг", "INFOPLIST_KEY_UIApplicationSceneManifest_Generation": "YES",
     "INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents": "YES", "INFOPLIST_KEY_UILaunchScreen_Generation": "YES",
@@ -205,7 +218,7 @@ NSE_S = {
 
 
 def cfg(key, name, s):
-    bs = "{\n" + "".join("\t\t\t\t%s = %s;\n" % (k, q(v)) for k, v in sorted(s.items())) + "\t\t\t}"
+    bs = "{\n" + "".join("\t\t\t\t%s = %s;\n" % (q(k), q(v)) for k, v in sorted(s.items())) + "\t\t\t}"
     return add("cfg:%s:%s" % (key, name), name, "XCBuildConfiguration",
                [("buildSettings", bs), ("name", name)], True)
 

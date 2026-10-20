@@ -7,11 +7,15 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		397F5FA601F1117DD24F8F88 /* NetworkWatch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62844B35EA9637B533456415; };
 		4CA26083586E372AB024C92D /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 957FAC9C79F337FB3129F8BA; };
+		4CFFC3D6CC0AA0B2E133511C /* TunnelHub.swift in Sources */ = {isa = PBXBuildFile; fileRef = 654525201E59E3E1F15C93EF; };
 		61A078356110FAED60827330 /* NyutagCore in Frameworks */ = {isa = PBXBuildFile; productRef = B13A157FADF36FA882138926; };
 		69A67FA155CFC6A4C5C7EAB0 /* NyutagCore in Frameworks */ = {isa = PBXBuildFile; productRef = DBE052AAC100956CAA6A9101; };
 		7597982682D62FA50E8B1A14 /* NyutagNSE.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = FE32DB90CCCD1F549E9B53C5; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		81400ED92B6E11EE7BFFE6A3 /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26D467D4C2927481B969D41B; };
+		8B4EBDBAB76BB9ABE4596358 /* CoreBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA190F4DA222CD36B1A34E07; };
+		AAE426B35B6B5EE25A862D60 /* FarvaterCore.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4EA385A547BE8D27F90AD3EE; };
 		BC6B8F5E7BB744C2FE916167 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 61283808392941493A9F30AE; };
 		E280326A0910C7A5F4524364 /* Resources in Resources */ = {isa = PBXBuildFile; fileRef = 9457957D28199A36BA7D4FFD; };
 		F53AF2BA3F0FA0C905B39DAE /* NyutagApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B0FB99619B1581C7120F557; };
@@ -30,24 +34,29 @@
 		1B0FB99619B1581C7120F557 /* NyutagApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NyutagApp.swift; sourceTree = "<group>"; };
 		26D467D4C2927481B969D41B /* NotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
 		4B5F691BDFAF60E3A1739497 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		4EA385A547BE8D27F90AD3EE /* FarvaterCore.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = Frameworks/FarvaterCore.xcframework; sourceTree = "<group>"; };
 		54496AA12ADB629CEE9F1437 /* Nyutag.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Nyutag.entitlements; sourceTree = "<group>"; };
 		61283808392941493A9F30AE /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		62844B35EA9637B533456415 /* NetworkWatch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkWatch.swift; sourceTree = "<group>"; };
+		654525201E59E3E1F15C93EF /* TunnelHub.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunnelHub.swift; sourceTree = "<group>"; };
 		9457957D28199A36BA7D4FFD /* Resources */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Resources; sourceTree = "<group>"; };
 		957FAC9C79F337FB3129F8BA /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		98A33BA1B0E3423CB7853497 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		B4EBBB4DE8F020DBEF36E4C5 /* NyutagNSE.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = NyutagNSE.entitlements; sourceTree = "<group>"; };
+		EA190F4DA222CD36B1A34E07 /* CoreBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreBridge.swift; sourceTree = "<group>"; };
 		FE32DB90CCCD1F549E9B53C5 /* NyutagNSE.appex */ = {isa = PBXFileReference; explicitFileType = wrapper.app-extension; includeInIndex = 0; path = NyutagNSE.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		0C5647A94EE1EB1E2EE6D830 /* Frameworks:app */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (61A078356110FAED60827330,); runOnlyForDeploymentPostprocessing = 0; };
+		0C5647A94EE1EB1E2EE6D830 /* Frameworks:app */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (61A078356110FAED60827330, AAE426B35B6B5EE25A862D60,); runOnlyForDeploymentPostprocessing = 0; };
 		63F71A692DC30D52C6BE6DEE /* Frameworks:nse */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (69A67FA155CFC6A4C5C7EAB0,); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		38C0BDA05AD30F3FE486BAFF /* Nyutag */ = {isa = PBXGroup; children = (1B0FB99619B1581C7120F557, 957FAC9C79F337FB3129F8BA, 61283808392941493A9F30AE, 98A33BA1B0E3423CB7853497, 54496AA12ADB629CEE9F1437,); path = Nyutag; sourceTree = "<group>"; };
+		38C0BDA05AD30F3FE486BAFF /* Nyutag */ = {isa = PBXGroup; children = (1B0FB99619B1581C7120F557, 957FAC9C79F337FB3129F8BA, 6BF040F219B28325969F342D, 61283808392941493A9F30AE, 98A33BA1B0E3423CB7853497, 54496AA12ADB629CEE9F1437,); path = Nyutag; sourceTree = "<group>"; };
 		3B8C3D6156120C4FC85A03D2 /* Products */ = {isa = PBXGroup; children = (1502CCB7D47595652FF46B79, FE32DB90CCCD1F549E9B53C5,); name = Products; sourceTree = "<group>"; };
-		6CEACBD73A5CFF977D384A31 /* Main */ = {isa = PBXGroup; children = (6E707754F06C2C435B694330, 3B8C3D6156120C4FC85A03D2,); sourceTree = "<group>"; };
+		6BF040F219B28325969F342D /* Tunnel */ = {isa = PBXGroup; children = (EA190F4DA222CD36B1A34E07, 62844B35EA9637B533456415, 654525201E59E3E1F15C93EF,); path = Tunnel; sourceTree = "<group>"; };
+		6CEACBD73A5CFF977D384A31 /* Main */ = {isa = PBXGroup; children = (6E707754F06C2C435B694330, 4EA385A547BE8D27F90AD3EE, 3B8C3D6156120C4FC85A03D2,); sourceTree = "<group>"; };
 		6E707754F06C2C435B694330 /* App */ = {isa = PBXGroup; children = (38C0BDA05AD30F3FE486BAFF, A98AC188A3D299E1CBCCDBC0, 9457957D28199A36BA7D4FFD,); path = App; sourceTree = "<group>"; };
 		A98AC188A3D299E1CBCCDBC0 /* NyutagNSE */ = {isa = PBXGroup; children = (26D467D4C2927481B969D41B, 4B5F691BDFAF60E3A1739497, B4EBBB4DE8F020DBEF36E4C5,); path = NyutagNSE; sourceTree = "<group>"; };
 /* End PBXGroup section */
@@ -67,7 +76,7 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		17AB91A470A72BA606086E8D /* Sources:app */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (F53AF2BA3F0FA0C905B39DAE, 4CA26083586E372AB024C92D,); runOnlyForDeploymentPostprocessing = 0; };
+		17AB91A470A72BA606086E8D /* Sources:app */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (F53AF2BA3F0FA0C905B39DAE, 4CA26083586E372AB024C92D, 8B4EBDBAB76BB9ABE4596358, 397F5FA601F1117DD24F8F88, 4CFFC3D6CC0AA0B2E133511C,); runOnlyForDeploymentPostprocessing = 0; };
 		9702AAC9BDACF13C341F4DB6 /* Sources:nse */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (81400ED92B6E11EE7BFFE6A3,); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */
 
@@ -83,6 +92,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = App/Nyutag/Nyutag.entitlements;
 				ENABLE_PREVIEWS = YES;
+				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = App/Nyutag/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Нютаг";
@@ -129,6 +139,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = App/Nyutag/Nyutag.entitlements;
 				ENABLE_PREVIEWS = YES;
+				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = App/Nyutag/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Нютаг";

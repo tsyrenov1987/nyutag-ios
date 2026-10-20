@@ -14,3 +14,6 @@ tools/test-env.local.sh
 .DS_Store
 *.ipa
 *.dSYM.zip
+
+# Бинарное ядро туннеля: кладётся tools/fetch-farvater-core.sh, в git не хранится
+Frameworks/
