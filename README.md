@@ -23,3 +23,17 @@ swift test
 
 Живые тесты против ядра включаются переменными окружения, см. `tools/test-env.sh`.
 Файл `App/Resources/nyutag-catalogue.txt` с путём до входа в репозиторий не входит (рядом лежит `.example`).
+
+## Сборка приложения
+
+Проект Xcode генерирует свой скрипт на Python 3 (только стандартная библиотека), сторонних генераторов нет.
+`Nyutag.xcodeproj` лежит в репозитории; после добавления или переименования файлов в `App/` перегенерируйте его:
+
+```sh
+python3 tools/gen-xcodeproj.py
+xcodebuild -project Nyutag.xcodeproj -scheme Nyutag -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+```
+
+Цели: `Nyutag` (приложение) и `NyutagNSE` (расширение уведомлений, встроено в приложение). Обе зависят от `NyutagCore`
+через локальный пакет в корне репозитория. `App/Resources` подключена как папка: если `nyutag-catalogue.txt` нет, сборка
+проходит, в бандл попадает только `.example`.
