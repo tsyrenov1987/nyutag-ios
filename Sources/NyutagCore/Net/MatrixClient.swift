@@ -1,6 +1,6 @@
 // Нютаг. HTTP-слой клиент-серверного API Matrix поверх URLSession.
-// Транспорт (SOCKS кильватера, доверие своему CA) задаёт приложение через URLSessionConfiguration и делегат,
-// движок о нём не знает: на Маке тесты ходят в ядро по проброшенному порту без всякого туннеля.
+// Транспорт (SOCKS кильватера, доверие своему CA) задаётся описанием пути `Route` и делегатом `CertificateTrust`;
+// без них (тесты на Маке) клиент ходит напрямую и доверяет системе.
 
 import Foundation
 
@@ -51,8 +51,18 @@ public actor MatrixClient {
 
     public nonisolated let homeserver: URL
     public private(set) var accessToken: String?
-    nonisolated let session: URLSession
+    /// Сеанс изменяемый и изолирован актором: смена пути (`setRoute`) подменяет его целиком. URLSession
+    /// неизменяема после создания (прокси и конфигурацию не поменять), а пересоздавать весь клиент нельзя:
+    /// у него токен, а выше по стеку на него ссылаются синхронизация, медиа и крипто. Поэтому живёт один
+    /// актор, а сеанс под ним меняется; запрос читает `session` внутри актора заново на каждой попытке.
+    private(set) var session: URLSession
     nonisolated let userAgent: String
+    /// База без пути: на неё накладывается `Route` при каждой смене (протоколы-заглушки тестов и таймауты сохраняются).
+    private let baseConfiguration: URLSessionConfiguration
+    /// Один делегат на все сеансы клиента: пин своего CA действует и на JSON-запросы, и на медиа (оба идут через
+    /// `session`), и после смены пути.
+    private let delegate: URLSessionDelegate?
+    public private(set) var route: Route
 
     /// Повторы при 429: не больше этого числа, и не дольше суммарно `maxRetryWait`.
     var maxRateLimitRetries = 4
@@ -62,11 +72,25 @@ public actor MatrixClient {
                 accessToken: String? = nil,
                 configuration: URLSessionConfiguration = MatrixClient.defaultConfiguration(),
                 delegate: URLSessionDelegate? = nil,
+                route: Route = .direct,
                 userAgent: String = "Nyutag") {
         self.homeserver = homeserver
         self.accessToken = accessToken
         self.userAgent = userAgent
-        session = URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
+        self.delegate = delegate
+        self.route = route
+        baseConfiguration = configuration
+        session = URLSession(configuration: route.apply(to: configuration), delegate: delegate, delegateQueue: nil)
+    }
+
+    /// Туннель перезапустился на другом порту: переключаем путь без пересоздания клиента. Запросы, уже идущие по
+    /// старому сеансу, дописываются на нём (`finishTasksAndInvalidate`), новые идут по новому. Одинаковый путь не трогаем.
+    public func setRoute(_ newRoute: Route) {
+        guard newRoute != route else { return }
+        let old = session
+        route = newRoute
+        session = URLSession(configuration: newRoute.apply(to: baseConfiguration), delegate: delegate, delegateQueue: nil)
+        old.finishTasksAndInvalidate()
     }
 
     public static func defaultConfiguration() -> URLSessionConfiguration {
