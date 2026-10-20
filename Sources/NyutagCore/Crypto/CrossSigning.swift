@@ -90,7 +90,10 @@ extension CryptoMachine {
     /// Поднять ключи кросс-подписи из SSSS по recovery-коду и подписать ими это устройство.
     /// Ключи на сервере должны совпасть с сохранёнными: иначе сервер подменил личность.
     public func importCrossSigning(recoveryKey: String) async throws(E2EEError) {
-        let ssss = try await secretStorageKey(recoveryKey: recoveryKey)
+        try await importCrossSigning(ssss: try await secretStorageKey(recoveryKey: recoveryKey))
+    }
+
+    func importCrossSigning(ssss: (id: String, key: Data)) async throws(E2EEError) {
         var pairs: [CrossSigningKind: Ed25519KeyPair] = [:]
         for kind in CrossSigningKind.allCases {
             let secret: String

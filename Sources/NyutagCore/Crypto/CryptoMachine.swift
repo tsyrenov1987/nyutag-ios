@@ -329,6 +329,32 @@ public actor CryptoMachine: SyncObserver {
     public func secretStorageKey(recoveryKey: String) async throws(E2EEError) -> (id: String, key: Data) {
         let key: Data
         do { key = try RecoveryKey.decode(recoveryKey) } catch { throw .wrongRecoveryKey }
+        let (keyID, description) = try await defaultSecretStorageKey()
+        if let iv = description["iv"]?.string, let mac = description["mac"]?.string {
+            guard SecretStorage.check(key: key, iv: iv, mac: mac) else { throw .wrongRecoveryKey }
+        }
+        return (keyID, key)
+    }
+
+    /// Ключ SSSS по парольной фразе (`passphrase` в описании ключа). Ключ без фразы или чужая фраза — `wrongRecoveryKey`.
+    public func secretStorageKey(passphrase: String) async throws(E2EEError) -> (id: String, key: Data) {
+        let (keyID, description) = try await defaultSecretStorageKey()
+        guard let info = description["passphrase"], info["algorithm"]?.string == "m.pbkdf2",
+              let salt = info["salt"]?.string, let iterations = info["iterations"]?.int,
+              let iv = description["iv"]?.string, let mac = description["mac"]?.string else { throw .wrongRecoveryKey }
+        let key: Data
+        do {
+            key = try RecoveryKey.fromPassphrase(passphrase, salt: salt, iterations: iterations,
+                                                 bits: info["bits"]?.int ?? 256)
+        } catch {
+            throw .crypto(error)
+        }
+        guard SecretStorage.check(key: key, iv: iv, mac: mac) else { throw .wrongRecoveryKey }
+        return (keyID, key)
+    }
+
+    /// Описание ключа SSSS по умолчанию; `noBackup`, если хранилища нет.
+    func defaultSecretStorageKey() async throws(E2EEError) -> (id: String, description: JSONValue) {
         let keyID: String
         let description: JSONValue
         do {
@@ -344,10 +370,7 @@ public actor CryptoMachine: SyncObserver {
         guard description["algorithm"]?.string == "m.secret_storage.v1.aes-hmac-sha2" else {
             throw .unsupportedAlgorithm(description["algorithm"]?.string ?? "")
         }
-        if let iv = description["iv"]?.string, let mac = description["mac"]?.string {
-            guard SecretStorage.check(key: key, iv: iv, mac: mac) else { throw .wrongRecoveryKey }
-        }
-        return (keyID, key)
+        return (keyID, description)
     }
 
     /// Секрет из SSSS (`m.megolm_backup.v1`, `m.cross_signing.self_signing` …) как строка.
@@ -371,7 +394,10 @@ public actor CryptoMachine: SyncObserver {
     /// Восстановить ключи комнат из бэкапа на сервере по recovery-коду. Возвращает (новых, всего в бэкапе).
     @discardableResult
     public func restoreBackup(recoveryKey: String) async throws(E2EEError) -> (imported: Int, total: Int) {
-        let ssss = try await secretStorageKey(recoveryKey: recoveryKey)
+        try await restoreBackup(ssss: try await secretStorageKey(recoveryKey: recoveryKey))
+    }
+
+    func restoreBackup(ssss: (id: String, key: Data)) async throws(E2EEError) -> (imported: Int, total: Int) {
         let privateKey = try await secret("m.megolm_backup.v1", keyID: ssss.id, key: ssss.key)
         let (backupKey, version) = try await adoptBackupKey(privateKey)
         return try await importBackup(backupKey, version: version)
