@@ -32,7 +32,8 @@ let package = Package(
         .testTarget(
             name: "NyutagCryptoTests",
             dependencies: ["NyutagCrypto"],
-            path: "Tests/NyutagCryptoTests"
+            path: "Tests/NyutagCryptoTests",
+            resources: [.copy("Fixtures")]
         ),
     ],
     swiftLanguageModes: [.v6]

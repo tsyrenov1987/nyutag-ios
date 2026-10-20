@@ -1,0 +1,124 @@
+{
+ "generator": "vodozemac 0.10.0 (Python-обвязка), одноразовая генерация вне репозитория",
+ "megolm": {
+  "session_id": "Q05axn2Xa6xhDIRBcOMxZghWmpPVmYHdX0U3T4VjTgk",
+  "session_key": "AgAAAADpWXEXN5iCpZwWo4cTQilBs4wdGK7RJJiRmQi0ibWmkiv239AV1y76jwW2+kLaeU8+rpfP6kclkv1xeQJw5jhYVq/dH2DDr+OY49LEyeAXhAfrYLPWRYAwLt3xxZee3cuBmgafKm8zfYXkgGmrG6IIsv3Gz8Qdxhb/bVmLHxteaENOWsZ9l2usYQyEQXDjMWYIVpqT1ZmB3V9FN0+FY04JQenBluNmvkIjMjRku9oq7MLLzvA+7r3jfM7UgB0LHpp1TE5OwQQ+CCOVCvjeyd5lRMcAqBsbp9jwkopXpymmBQ",
+  "export_at_2": "AQAAAALpWXEXN5iCpZwWo4cTQilBs4wdGK7RJJiRmQi0ibWmkiv239AV1y76jwW2+kLaeU8+rpfP6kclkv1xeQJw5jhYVq/dH2DDr+OY49LEyeAXhAfrYLPWRYAwLt3xxZee3cu5ZiH5iE/qm5/kDiJ4CLpdUKWor5uxVwFcxlRMxoAmOkNOWsZ9l2usYQyEQXDjMWYIVpqT1ZmB3V9FN0+FY04J",
+  "messages": [
+   {
+    "index": 0,
+    "ciphertext": "AwgAElBSakec13lf6nMkKrimjdvK9JXLqR+zCsbQIn9KuvawG7lz9CeU5eCqh6Qc3T7B4W1O7DbvzFpvjSBzIY4M8YKbgrieTKFJrmMRy/zJDnmUV1g+yd9aD3lSoep0adOHu0RUgANjTFSdDWS1MMdyxdDKkVMKTbm1+ZRWBUaAu+LNtPaCW0XYa/ScAFZsOasEjCUG7TV+BoEJAg",
+    "plaintext": "{\"type\":\"m.room.message\",\"content\":{\"body\":\"сайн байна 0\"}}"
+   },
+   {
+    "index": 1,
+    "ciphertext": "AwgBElBgBHB2KBB07G/JfwtWKKTvN9hSQ6jGR1CGT2DSag3FyYIRWOXBBrFfKBX2UV+HmY4mNmylXTI9cmA5hmnQtb0PWY8iGukQGTlTkOhbX2Th+aFKnT4W66+fD53OPCrb74i5007pRhTLyfVWp3t3FBlhFSPI0GBgYTjuMa7OutWr6B5qosdqHnMhAiWi7KH7RTylToxXmN7ZDA",
+    "plaintext": "{\"type\":\"m.room.message\",\"content\":{\"body\":\"сайн байна 1\"}}"
+   },
+   {
+    "index": 2,
+    "ciphertext": "AwgCElCzMuyBHs7Ui3jjcNRYSmb9qu8HXFA/49M9dN9aCIbe3aRCd51I2aFV7cGifgFZgAP6qUNN6Z1VxQrMH/dW5hpSM/zvGIR5DCbEB4Bb/cGUQb01KKS2h8SgCnSekK5QU8D52ZrZrPRB2Nc3pempaa/NS5ogW0aztmH/XEQCvnHwWjH+QX6vfojU8uq0sCmNIOZIpjg3OlegCg",
+    "plaintext": "{\"type\":\"m.room.message\",\"content\":{\"body\":\"сайн байна 2\"}}"
+   },
+   {
+    "index": 3,
+    "ciphertext": "AwgDElAora50wiEoYNfTYZwgsZXD2se9K6PQ6NMtWxLnDHz/6/HJw47cOy9QgAA1TU0QWq9m0u1dO4MdyVg1RsSZnYpyhpNtan15qeFjv8rXRWHAsS4NS+hFaKL4rJ5elKspHh9cAGkcxkmUJKQDJpzvNPW5n7BTDuPyQD0S8ZJTiCOKJWaK0bHE5749/AuE60TCWpVzqLCIy1KiAA",
+    "plaintext": "{\"type\":\"m.room.message\",\"content\":{\"body\":\"сайн байна 3\"}}"
+   },
+   {
+    "index": 4,
+    "ciphertext": "AwgEElD0ySItbK9JfNfxBcJpT4AcaKHpezD9gIMEylnZr6nLDu3yQaL9iCYrMQmvHDwFNz84cfC4mqJnUkeMxnGVIEwqeEMvWVDHBBGWgJ8gBgamIA+UN+tIbBZRM/O1ImGOAaqBzQIThOwtfdG4fLTSy7SVQ5ojGUt/Y2RiUzmnCHJobpmgHc61kD7XcI+qnAg3I7H011vzL98nBg",
+    "plaintext": "{\"type\":\"m.room.message\",\"content\":{\"body\":\"сайн байна 4\"}}"
+   }
+  ]
+ },
+ "olm": {
+  "sender_key": "XHQlZTADzQRvZfufntbUindXDSfst0Cmi0dnwmXvVzc",
+  "account": {
+   "identity": "59Obc3yoZEUkByxkXV2h58qq2GazPuJrDR8u8WxiAcM=",
+   "signing": "jhSngtDzBNfUKeXr6STEb73YI0K00+Sn8Vm2yo0Dlo4=",
+   "nextKeyID": 2,
+   "oneTimeKeys": [
+    {
+     "id": "AAAAAQ",
+     "key": "AMjAlCPqwxsZKvsRujzu0EIqMNlm4UsltmPb1Zi4oaM="
+    }
+   ],
+   "unpublished": []
+  },
+  "messages": [
+   {
+    "type": 0,
+    "body": "AwogQ+m4/UvL9iJ/o+Dtf7/jJexa42XZq0b+qunu/YyBsF8SIHcww5HDlwQ374UIPwE53LQCRtW3cSpU9TLJ+f4rlqRGGiBcdCVlMAPNBG9l+5+e1tSKd1cNJ+y3QKaLR2fCZe9XNyI/Awogg+TWjy9Gi084jNbOzM3Ac2vT4JKz4LGZgoq/23sZQEkQACIQuUTtGvqk5RtO3/Qx4EpY/kzp0CuN2J20",
+    "plaintext": "привет"
+   },
+   {
+    "type": 0,
+    "body": "AwogQ+m4/UvL9iJ/o+Dtf7/jJexa42XZq0b+qunu/YyBsF8SIHcww5HDlwQ374UIPwE53LQCRtW3cSpU9TLJ+f4rlqRGGiBcdCVlMAPNBG9l+5+e1tSKd1cNJ+y3QKaLR2fCZe9XNyJPAwogg+TWjy9Gi084jNbOzM3Ac2vT4JKz4LGZgoq/23sZQEkQASIgd8KjHAKynuEExdNTlxJEAfchkVwSzFWaOX2D2vgj25Wp2y/MZuWiGw",
+    "plaintext": "второе до ответа"
+   },
+   {
+    "type": 0,
+    "body": "AwogQ+m4/UvL9iJ/o+Dtf7/jJexa42XZq0b+qunu/YyBsF8SIHcww5HDlwQ374UIPwE53LQCRtW3cSpU9TLJ+f4rlqRGGiBcdCVlMAPNBG9l+5+e1tSKd1cNJ+y3QKaLR2fCZe9XNyI/Awogg+TWjy9Gi084jNbOzM3Ac2vT4JKz4LGZgoq/23sZQEkQAiIQuOWakThjxh4cASPN6TQKCH0kN+r0h7St",
+    "plaintext": "третье"
+   }
+  ]
+ },
+ "backup": {
+  "private_key": "+8uaQDfcY7gYJ+R+8AENoJf09Lpl4Aq2IRaDWvX06eQ",
+  "public_key": "s8D41HSxbxpEvVAaCHho7l5Qmi9VExbN4hRoq6cWOiI",
+  "records": [
+   {
+    "ephemeral": "Uq0HFsaucrHJ1kF5tTYzNsLgbrIT20+X274PUScbiB0",
+    "ciphertext": "GWIG6let5VTEWp+bFfFRKCGSBJ6+abs7bQQArfo04ZyA5Jht1KkwHcTyrejzv8+UA3wkshVzUI7Eq5vEFUDgBA",
+    "mac": "6ppmlz+l2Vw",
+    "plaintext": "{\"algorithm\":\"m.megolm.v1.aes-sha2\",\"session_key\":\"x\"}"
+   },
+   {
+    "ephemeral": "BIMOxwD2qSuu98ZrIuy840LzKBaknz+kgh7szxsbrzM",
+    "ciphertext": "oJTtVNFWwVgLimJplObbWyonc2algY/U1PrrTshnRPvozG0xgCQUPqs5vWclhXhONUGQjfr+LmksAWbajGI+eDJeSK6sUgIzaOT/8YFBfCYG869RE0jZj/KJQdT2YASYM1NYi6Xj7u1TPYGA8vbK1Q",
+    "mac": "LgKL632c1eQ",
+    "plaintext": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   }
+  ]
+ },
+ "peer": {
+  "identity": "iVD43H1t3N2hMOr8cbHwkdUy/nMvUegVcgY311qn5lo",
+  "one_time_key": "/QXvINJcJigtUo9RG/f85LJZmjSEYib7uPU/5/biFDM"
+ },
+ "reverse": {
+  "verified": [
+   "megolm",
+   "backup",
+   "olm"
+  ],
+  "our_session": {
+   "senderRatchet": "QBopXMVIrUqY85dLcUBM3P34MCEwUsLOtDhNP/0m23A=",
+   "aliceIdentityKey": "hhHGMqwATLzxhtM8qznZ+jbGAb6EbF0fqujAV758PWM=",
+   "skippedKeys": [],
+   "rootKey": "vbElQ2tgE2oXdf4CVgc4pVKA6N1eW4bw4hOPQpMlnhU=",
+   "receivedMessage": false,
+   "aliceBaseKey": "JNfcdw84NZRmSq/sxlesr/k/SQcIdy38Xvty6teCvXo=",
+   "receiverChains": [],
+   "bobOneTimeKey": "/QXvINJcJigtUo9RG/f85LJZmjSEYib7uPU/5/biFDM=",
+   "theirIdentityKey": "iVD43H1t3N2hMOr8cbHwkdUy/nMvUegVcgY311qn5lo",
+   "lastUsed": 814217895.112074,
+   "senderChain": {
+    "index": 1,
+    "key": "CNlVucPa3e2ehKMEFag3VfG9Wky5aae0UDJmfVpQO4Y="
+   }
+  },
+  "replies": [
+   {
+    "type": 1,
+    "body": "AwogEYCHKClpXwHtvhqFbO9ic1kXgIn0uS+6hpCIYBOFUhkQACIgLiR3P387YOh5mxQ5tIJD6Qe3O+cJk7V/WDw9lHK4j+Z80TrxDXp7kg",
+    "plaintext": "ответ эталона"
+   },
+   {
+    "type": 1,
+    "body": "AwogEYCHKClpXwHtvhqFbO9ic1kXgIn0uS+6hpCIYBOFUhkQASIgOfs13pKIKmAzD8SoZWnu6wopQm0etJuT3aScjimoOQMRoFr4brTxrg",
+    "plaintext": "второй ответ"
+   }
+  ]
+ }
+}

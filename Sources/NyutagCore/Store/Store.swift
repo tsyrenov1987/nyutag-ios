@@ -44,7 +44,7 @@ public struct RoomRecord: Sendable, Equatable, Identifiable {
 
 /// Хранилище на SQLite. Актор: один писатель, читатели ждут своей очереди.
 public actor Store {
-    public static let schemaVersion = 1
+    public static let schemaVersion = 2
 
     let db: SQLite
     /// Сквозной порядок событий таймлайна: события из /sync идут в хронологии получения, события из `/messages` в прошлое.
@@ -115,6 +115,36 @@ public actor Store {
                 PRIMARY KEY (room_id, user_id)
             );
             PRAGMA user_version = 1;
+            """)
+        }
+        if version < 2 {
+            // Ключи шифрования. Пока лежат в той же базе; на телефоне база под защитой файлов iOS (NSFileProtection).
+            try db.exec("""
+            CREATE TABLE IF NOT EXISTS crypto_meta (key TEXT PRIMARY KEY, value BLOB NOT NULL);
+            CREATE TABLE IF NOT EXISTS olm_sessions (
+                session_id TEXT PRIMARY KEY,
+                sender_key TEXT NOT NULL,
+                data BLOB NOT NULL,
+                last_used REAL NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS olm_sessions_sender ON olm_sessions(sender_key);
+            CREATE TABLE IF NOT EXISTS megolm_inbound (
+                sender_key TEXT NOT NULL,
+                session_id TEXT NOT NULL,
+                room_id TEXT NOT NULL,
+                exported TEXT NOT NULL,
+                first_index INTEGER NOT NULL,
+                verified INTEGER NOT NULL DEFAULT 0,
+                backed_up INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (sender_key, session_id)
+            );
+            CREATE TABLE IF NOT EXISTS megolm_seen (
+                session_id TEXT NOT NULL,
+                message_index INTEGER NOT NULL,
+                event_id TEXT NOT NULL,
+                PRIMARY KEY (session_id, message_index)
+            );
+            PRAGMA user_version = 2;
             """)
         }
     }
@@ -325,7 +355,7 @@ public actor Store {
 
     /// Стереть всё (выход из аккаунта).
     public func wipe() throws {
-        try db.exec("DELETE FROM meta; DELETE FROM rooms; DELETE FROM events; DELETE FROM state; DELETE FROM account_data; DELETE FROM receipts;")
+        try db.exec("DELETE FROM meta; DELETE FROM rooms; DELETE FROM events; DELETE FROM state; DELETE FROM account_data; DELETE FROM receipts; DELETE FROM crypto_meta; DELETE FROM olm_sessions; DELETE FROM megolm_inbound; DELETE FROM megolm_seen;")
         nextOrdering = 1
     }
 }
