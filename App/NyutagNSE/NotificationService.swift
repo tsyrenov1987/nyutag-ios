@@ -1,6 +1,7 @@
-// Нютаг. Расширение уведомлений: пуш приходит пустым (только room_id и event_id), текст собираем на устройстве.
-// Сессия и база общие с приложением (связка и контейнер группы). Туннеля в расширении нет: событие берём из общей
-// базы, иначе пробуем ядро напрямую с пином нашего CA. Не вышло — оставляем подпись шлюза или «Новое сообщение».
+// Нютаг. Расширение уведомлений: текст пуша собираем на устройстве. Сессия и база общие с приложением (связка
+// и контейнер группы). Туннеля в расширении нет: событие берём из общей базы или из шифротекста, который шлюз
+// вложил в пуш; только если нет ни того ни другого — пробуем ядро напрямую с пином нашего CA.
+// Не вышло — оставляем подпись шлюза или «Новое сообщение».
 
 import Foundation
 import NyutagCore
@@ -17,8 +18,9 @@ final class NotificationService: UNNotificationServiceExtension {
             return delivery.finish(nil)
         }
         let delivery = delivery
+        let carried = ApplePusher.carriedEvent(in: userInfo)
         Task {
-            delivery.finish(await Self.preview(roomID: roomID, eventID: eventID))
+            delivery.finish(await Self.preview(roomID: roomID, eventID: eventID, carried: carried))
         }
     }
 
@@ -26,7 +28,7 @@ final class NotificationService: UNNotificationServiceExtension {
         delivery.finish(nil)
     }
 
-    private static func preview(roomID: String, eventID: String) async -> PushPreview? {
+    private static func preview(roomID: String, eventID: String, carried: Event?) async -> PushPreview? {
         guard let shelf = SharedShelf(appGroup: SharedShelf.appGroup),
               let session = try? SessionVault.shared.load(),
               let store = try? shelf.openStore(for: session.userID) else { return nil }
@@ -37,7 +39,7 @@ final class NotificationService: UNNotificationServiceExtension {
         let client = MatrixClient(homeserver: session.homeserver, accessToken: session.accessToken,
                                   configuration: configuration, delegate: CertificateTrust.nyutagCore())
         return try? await PushReader(client: client, store: store, session: session)
-            .preview(roomID: roomID, eventID: eventID)
+            .preview(roomID: roomID, eventID: eventID, carried: carried)
     }
 }
 

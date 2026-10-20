@@ -1,5 +1,5 @@
-// Нютаг. Текст пуша для расширения уведомлений (NSE). Пуш несёт только room_id и event_id; событие берём из общего
-// хранилища в группе приложений или с сервера, расшифровываем ключами из того же хранилища и решаем, что показать.
+// Нютаг. Текст пуша для расширения уведомлений (NSE). Пуш несёт room_id, event_id и, если влезло, шифротекст;
+// событие берём из общего хранилища, из самого пуша или с сервера, расшифровываем ключами из того же хранилища.
 // Расширение только читает: не синкается, не создаёт Olm-аккаунт и не рассылает ключи — это дело приложения.
 
 import Foundation
@@ -38,10 +38,13 @@ public actor PushReader {
         self.session = session
     }
 
-    public func preview(roomID: String, eventID: String) async throws(MatrixError) -> PushPreview {
+    /// `carried` — событие, вложенное шлюзом в сам пуш (`ApplePusher.carriedEvent`): с ним сеть не нужна.
+    public func preview(roomID: String, eventID: String, carried: Event? = nil) async throws(MatrixError) -> PushPreview {
         var event: Event
         if let local = try? await store.event(eventID) {
             event = local
+        } else if let carried {
+            event = carried
         } else {
             event = try await client.event(roomID: roomID, eventID: eventID)
         }

@@ -72,4 +72,76 @@ import Testing
         #expect(PushReader.withoutReplyQuote("> цитата без ответа") == "> цитата без ответа")
         #expect(PushReader.withoutReplyQuote("просто текст") == "просто текст")
     }
+
+    /// Пуш в том виде, в каком его собирает шлюз с флагом `nyutag_cipher`.
+    static func gatewayPush(_ event: Event) throws -> [AnyHashable: Any] {
+        let carried = try JSONSerialization.jsonObject(with: JSONEncoder().encode(
+            JSONValue.object(["sender": .string(event.sender ?? ""), "content": event.content])))
+        return ["aps": ["alert": ["loc-key": "MSG_FROM_USER"], "mutable-content": 1],
+                "room_id": event.roomID ?? Self.room, "event_id": event.eventID ?? "", "nyutag_event": carried]
+    }
+
+    @Test func carriedCipherDecryptsWithoutServer() async throws {
+        let server = FakeHomeserver()
+        let aliceSession = server.session(user: Self.alice, device: "A1")
+        let alice = try await CryptoMachine(client: server.client(for: aliceSession), store: try Store.inMemory(),
+                                            session: aliceSession)
+        try await alice.publishKeys(serverCount: nil)
+        let bobSession = server.session(user: Self.bob, device: "B1")
+        let bobStore = try Store.inMemory()
+        let bob = try await CryptoMachine(client: server.client(for: bobSession), store: bobStore, session: bobSession)
+        try await bob.publishKeys(serverCount: nil)
+        server.setMembers([Self.alice, Self.bob], roomID: Self.room)
+        try await alice.sendEncrypted(roomID: Self.room, type: EventType.message,
+                                      content: ["msgtype": "m.image", "body": "кот.jpg"])
+        _ = await bob.receiveToDevice(server.takeToDevice(user: Self.bob, device: "B1"))
+        let sent = try #require(server.events(roomID: Self.room).last)
+        let eventID = try #require(sent.eventID)
+
+        // Расширение без пути к ядру: другой сервер, где события нет и токен чужой.
+        let offline = FakeHomeserver().client(accessToken: nil)
+        let reader = PushReader(client: offline, store: bobStore, session: bobSession)
+        await #expect(throws: MatrixError.self) { try await reader.preview(roomID: Self.room, eventID: eventID) }
+
+        let carried = try #require(ApplePusher.carriedEvent(in: try Self.gatewayPush(sent)))
+        #expect(carried.eventID == eventID && carried.sender == Self.alice && carried.type == EventType.encrypted)
+        let preview = try await reader.preview(roomID: Self.room, eventID: eventID, carried: carried)
+        #expect(preview.kind == .image)
+        #expect(preview.sender == Self.alice)
+    }
+
+    @Test func carriedEventNeedsCipher() throws {
+        let event = Event(eventID: "$e", type: EventType.encrypted, sender: Self.alice,
+                          content: ["algorithm": "m.megolm.v1.aes-sha2", "ciphertext": "c", "session_id": "s"],
+                          roomID: Self.room)
+        var push = try Self.gatewayPush(event)
+        #expect(ApplePusher.carriedEvent(in: push)?.content == event.content)
+        // Шлюз не вложил шифротекст (не влез или старый пушер) — расширение идёт прежним путём.
+        push["nyutag_event"] = nil
+        #expect(ApplePusher.carriedEvent(in: push) == nil)
+        #expect(ApplePusher.carriedEvent(in: try Self.gatewayPush(Event(eventID: "$e", type: EventType.encrypted,
+            sender: Self.alice, content: ["algorithm": "m.megolm.v1.aes-sha2"], roomID: Self.room))) == nil)
+        push = try Self.gatewayPush(event)
+        push["event_id"] = nil
+        #expect(ApplePusher.carriedEvent(in: push) == nil)
+    }
+
+    @Test func pusherAsksGatewayForCipher() async throws {
+        let server = FakeHomeserver()
+        let session = server.session(user: Self.bob, device: "B1")
+        let client = server.client(for: session)
+        let token = Data([0x0a, 0xff, 0x01])
+        try await client.registerApplePush(token: token, environment: .production, deviceName: "iPhone", language: "ru")
+        try await client.registerApplePush(token: token, environment: .production, deviceName: "iPhone", language: "ru")
+        let pusher = try #require(server.pushers(user: Self.bob).first)
+        #expect(server.pushers(user: Self.bob).count == 1)
+        #expect(pusher["app_id"] == "chat.nyutag.messenger.ios.prod")
+        #expect(pusher["pushkey"] == "0aff01")
+        #expect(pusher["data", "url"] == "http://127.0.0.1:5000/_matrix/push/v1/notify")
+        #expect(pusher["data", "nyutag_cipher"] == 1)
+        #expect(pusher["data", "default_payload", "aps", "mutable-content"] == 1)
+        #expect(pusher["data", "format"] == nil)
+        try await client.removeApplePush(token: token, environment: .production)
+        #expect(server.pushers(user: Self.bob).isEmpty)
+    }
 }

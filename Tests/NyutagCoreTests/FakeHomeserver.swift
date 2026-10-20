@@ -53,6 +53,10 @@ final class FakeHomeserver: @unchecked Sendable {
 
     func isTokenValid(_ token: String) -> Bool { lock.withLock { tokens[token] != nil } }
 
+    /// Пушеры по пользователю: ключ — app_id и pushkey, как на настоящем сервере.
+    private var pusherTable: [String: [String: JSONValue]] = [:]
+    func pushers(user: String) -> [JSONValue] { lock.withLock { Array(pusherTable[user, default: [:]].values) } }
+
     /// Клиент с любым токеном или без него (для входа).
     func client(accessToken: String?) -> MatrixClient {
         let configuration = URLSessionConfiguration.ephemeral
@@ -121,6 +125,12 @@ final class FakeHomeserver: @unchecked Sendable {
                 return (200, ["user_id": .string(who.user), "device_id": .string(who.device)])
             case ("POST", ["logout"]):
                 tokens[token] = nil
+                return (200, [:])
+            case ("POST", ["pushers", "set"]):
+                guard let appID = body?["app_id"]?.string, let pushKey = body?["pushkey"]?.string else {
+                    return (400, ["errcode": "M_MISSING_PARAM", "error": "нет app_id/pushkey"])
+                }
+                pusherTable[who.user, default: [:]]["\(appID)|\(pushKey)"] = body?["kind"] == .null ? nil : body
                 return (200, [:])
             case ("POST", ["keys", "upload"]):
                 if let keys = body?["device_keys"] { deviceKeys[who.user, default: [:]][who.device] = keys }
