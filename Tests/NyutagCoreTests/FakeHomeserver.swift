@@ -188,6 +188,12 @@ final class FakeHomeserver: @unchecked Sendable {
                 }
                 return (200, [:])
 
+            case ("GET", let p) where p.count == 4 && p[0] == "rooms" && p[2] == "event":
+                guard let event = (timeline[p[1]] ?? []).first(where: { $0["event_id"]?.string == p[3] }) else {
+                    return (404, ["errcode": "M_NOT_FOUND", "error": "нет события"])
+                }
+                return (200, event)
+
             case ("GET", let p) where p.count == 3 && p[0] == "rooms" && p[2] == "members":
                 let chunk = (members[p[1]] ?? []).sorted().map { user -> JSONValue in
                     ["type": "m.room.member", "state_key": .string(user), "sender": .string(user),
