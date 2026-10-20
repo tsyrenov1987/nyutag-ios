@@ -114,4 +114,13 @@ struct ChatDigestTests {
         #expect(ChatDigest.localpart("@arjuna:nyutag.chat") == "arjuna")
         #expect(ChatDigest.localpart("bare") == "bare")
     }
+
+    @Test("старое приглашение в чате, куда уже вошли, не показывается последней репликой")
+    func staleInvite() async throws {
+        let store = try Store.inMemory()
+        try await store.upsert(RoomRecord(id: "!g", membership: .join))
+        try await store.append([member(me, "!g", membership: "invite")])
+        let line = try #require(try await ChatDigest.lines(store: store, me: me).first)
+        #expect(line.last == nil)
+    }
 }

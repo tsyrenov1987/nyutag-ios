@@ -16,6 +16,8 @@ final class AppSession {
     private(set) var me: String?
     /// Чем кончилась попытка открыть историю паролем; `needsRecoveryKey`/`needsOtherDevice` разберёт экран ключей.
     private(set) var history: PasswordUnlockOutcome?
+    /// Растёт на каждой синхронизации: открытый чат по нему перечитывает ленту из базы.
+    private(set) var revision = 0
 
     @ObservationIgnored private let keeper: AccountKeeper?
     @ObservationIgnored private var account: SignedInAccount?
@@ -75,7 +77,63 @@ final class AppSession {
         phase = .signedOut
     }
 
+    // MARK: Открытый чат
+
+    func feed(_ roomID: String, limit: Int) async -> [FeedItem] {
+        guard let account, let me else { return [] }
+        return (try? await ChatFeed.items(roomID: roomID, store: account.store, me: me, limit: limit, decrypt: opener())) ?? []
+    }
+
+    /// Докачать историю назад. `false` — дальше начало чата (или нет сети).
+    func older(_ roomID: String) async -> Bool {
+        guard let engine else { return false }
+        let page = try? await engine.backfill(roomID: roomID)
+        return page?.hasMore ?? false
+    }
+
+    /// Отправка текста, в шифрованный чат — через машину. Тот же `transactionID` при повторе сервер не дублирует.
+    func send(_ text: String, to roomID: String, replyTo: String?, transactionID: String) async -> String? {
+        guard let account else { return nil }
+        var content: [String: JSONValue] = ["msgtype": "m.text", "body": .string(text)]
+        if let replyTo { content["m.relates_to"] = ["m.in_reply_to": ["event_id": .string(replyTo)]] }
+        let encrypted = (try? await account.store.room(roomID))?.isEncrypted ?? false
+        if encrypted {
+            guard let machine else { return nil }
+            return try? await machine.sendEncrypted(roomID: roomID, type: EventType.message, content: .object(content),
+                                                    transactionID: transactionID)
+        }
+        return try? await account.client.send(roomID: roomID, type: EventType.message, content: .object(content),
+                                              transactionID: transactionID)
+    }
+
+    /// Отметка прочтения: публичная, чтобы у собеседника загорелись две галочки.
+    func markRead(_ roomID: String, upTo eventID: String) async {
+        try? await account?.client.setReadMarkers(roomID: roomID, fullyRead: eventID, read: eventID)
+    }
+
+    #if DEBUG
+    /// Самопроверка: свой шифрованный чат без участников, чтобы пробные реплики никому не уходили.
+    func ensurePrivateRoom(named name: String) async {
+        guard let account, !lines.contains(where: { $0.title == name }) else { return }
+        let id = try? await account.client.createRoom(.init(name: name))
+        print("ui-check: свой чат \(id == nil ? "не создан" : "создан")")
+    }
+    #endif
+
     // MARK: Внутреннее
+
+    /// Расшифровка для списка и ленты через общий кэш: одно событие не открываем дважды.
+    private func opener() -> @Sendable (Event, String) async -> Event? {
+        let machine = machine
+        let opened = opened
+        return { event, roomID in
+            guard let id = event.eventID else { return nil }
+            if let known = await opened.get(id) { return known }
+            guard let machine, let clear = try? await machine.decrypt(event, roomID: roomID).event else { return nil }
+            await opened.put(clear, id: id)
+            return clear
+        }
+    }
 
     private func start(_ account: SignedInAccount, password: String?) async {
         self.account = account
@@ -100,6 +158,7 @@ final class AppSession {
         pump = Task { [weak self] in
             for await _ in updates {
                 await self?.refresh()
+                self?.revision += 1
             }
         }
         await engine.start()
@@ -116,15 +175,7 @@ final class AppSession {
 
     private func refresh() async {
         guard let account, let me else { return }
-        let machine = machine
-        let opened = opened
-        let fresh = try? await ChatDigest.lines(store: account.store, me: me) { event, roomID in
-            guard let id = event.eventID else { return nil }
-            if let known = await opened.get(id) { return known }
-            guard let machine, let clear = try? await machine.decrypt(event, roomID: roomID).event else { return nil }
-            await opened.put(clear, id: id)
-            return clear
-        }
+        let fresh = try? await ChatDigest.lines(store: account.store, me: me, decrypt: opener())
         if let fresh, fresh != lines { lines = fresh }
     }
 

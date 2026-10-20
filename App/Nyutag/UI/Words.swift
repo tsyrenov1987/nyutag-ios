@@ -43,6 +43,13 @@ final class Words {
         case .en: phrase.en
         }
     }
+
+    /// Фраза с подстановками `{1}`, `{2}`: имена в служебных плашках.
+    func callAsFunction(_ phrase: Phrase, _ values: String...) -> String {
+        var text = self(phrase)
+        for (index, value) in values.enumerated() { text = text.replacingOccurrences(of: "{\(index + 1)}", with: value) }
+        return text
+    }
 }
 
 struct Phrase {
@@ -104,4 +111,30 @@ extension Phrase {
                                    en: "Sign out on this device?")
     static let cancel = Phrase(bxr: "Болюулха", ru: "Отмена", en: "Cancel")
     static let done = Phrase(bxr: "Бэлэн", ru: "Готово", en: "Done")
+
+    // Экран чата
+    static let messageField = Phrase(bxr: "Бэшэг", ru: "Сообщение", en: "Message")
+    static let send = Phrase(bxr: "Эльгээхэ", ru: "Отправить", en: "Send")
+    static let reply = Phrase(bxr: "Харюусаха", ru: "Ответить", en: "Reply")
+    static let copy = Phrase(bxr: "Хуулаха", ru: "Копировать", en: "Copy")
+    static let edited = Phrase(bxr: "заһагдаһан", ru: "изм.", en: "edited")
+    static let deleted = Phrase(bxr: "Бэшэг усадхагдаһан", ru: "Сообщение удалено", en: "Message deleted")
+    static let waitingKey = Phrase(bxr: "Түлхюур хүлеэгдэнэ", ru: "Ждём ключ от отправителя", en: "Waiting for the key")
+    static let notSent = Phrase(bxr: "Ошоогүй. Дахин эльгээхын тула дарагты", ru: "Не отправлено. Нажмите, чтобы повторить",
+                                en: "Not sent. Tap to retry")
+    static let today = Phrase(bxr: "Мүнөөдэр", ru: "Сегодня", en: "Today")
+
+    // Служебные плашки
+    static let noticeCreated = Phrase(bxr: "Хөөрэлдөөн бии болобо", ru: "Чат создан", en: "Chat created")
+    static let noticeJoined = Phrase(bxr: "Шэнэ гэшүүн: {1}", ru: "Новый участник: {1}", en: "{1} joined")
+    static let noticeLeft = Phrase(bxr: "Хөөрэлдөөнһөө гараба: {1}", ru: "Вышли из чата: {1}", en: "{1} left")
+    static let noticeInvited = Phrase(bxr: "Урилга: {1}", ru: "Приглашение: {1}", en: "{2} invited {1}")
+    static let noticeRemoved = Phrase(bxr: "Хөөрэлдөөнһөө гаргагдаба: {1}", ru: "Удалены из чата: {1}", en: "{2} removed {1}")
+    static let noticeBanned = Phrase(bxr: "Хаагдаба: {1}", ru: "Заблокированы: {1}", en: "{2} banned {1}")
+    static let noticeRenamed = Phrase(bxr: "{1} → {2}", ru: "{1} теперь {2}", en: "{1} is now {2}")
+    static let noticeRoomName = Phrase(bxr: "Шэнэ нэрэ: {1}", ru: "Новое название: {1}", en: "New name: {1}")
+    static let noticeRoomPhoto = Phrase(bxr: "Хөөрэлдөөнэй шэнэ зураг", ru: "Новое фото чата", en: "New chat photo")
+    static let noticeTopic = Phrase(bxr: "Тайлбари: {1}", ru: "Описание: {1}", en: "Description: {1}")
+    static let noticeEncrypted = Phrase(bxr: "Бэшэгүүд нюуса шифрээр хамгаалагдана", ru: "Сообщения защищены сквозным шифрованием",
+                                        en: "Messages are end-to-end encrypted")
 }

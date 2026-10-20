@@ -1,0 +1,167 @@
+// Лента чата из базы: правки, удаления, реакции, ответы, служебные плашки, прочтение своих реплик.
+
+import Foundation
+import Testing
+@testable import NyutagCore
+
+@Suite("Лента чата")
+struct ChatFeedTests {
+    let me = "@me:nyutag.chat"
+    let arjuna = "@arjuna:nyutag.chat"
+    let room = "!r"
+
+    func member(_ user: String, name: String? = nil, membership: String = "join", by sender: String? = nil,
+                id: String? = nil, ts: Int = 0, before: JSONValue? = nil) -> Event {
+        var content: [String: JSONValue] = ["membership": .string(membership)]
+        if let name { content["displayname"] = .string(name) }
+        return Event(eventID: id ?? "$m-\(user)", type: EventType.member, sender: sender ?? user, originServerTS: ts,
+                     stateKey: user, content: .object(content),
+                     unsigned: before.map { ["prev_content": $0] }, roomID: room)
+    }
+
+    func text(_ id: String, from sender: String, ts: Int, _ body: String, extra: [String: JSONValue] = [:]) -> Event {
+        var content: [String: JSONValue] = ["msgtype": "m.text", "body": .string(body)]
+        for (key, value) in extra { content[key] = value }
+        return Event(eventID: id, type: EventType.message, sender: sender, originServerTS: ts, content: .object(content), roomID: room)
+    }
+
+    func prepared() async throws -> Store {
+        let store = try Store.inMemory()
+        try await store.upsert(RoomRecord(id: room, membership: .join))
+        for event in [member(me, name: "Я"), member(arjuna, name: "Арюна")] { try await store.setState(event) }
+        return store
+    }
+
+    @Test("правка подставляется в реплику, чужая правка не принимается, сама правка в ленту не попадает")
+    func edits() async throws {
+        let store = try await prepared()
+        try await store.append([
+            text("$1", from: arjuna, ts: 100, "сайн"),
+            text("$2", from: arjuna, ts: 110, "* сайн байна", extra: [
+                "m.new_content": ["msgtype": "m.text", "body": "сайн байна"],
+                "m.relates_to": ["rel_type": "m.replace", "event_id": "$1"],
+            ]),
+            text("$3", from: me, ts: 120, "моё"),
+            text("$4", from: arjuna, ts: 130, "* чужая правка", extra: [
+                "m.new_content": ["msgtype": "m.text", "body": "подмена"],
+                "m.relates_to": ["rel_type": "m.replace", "event_id": "$3"],
+            ]),
+        ])
+        let items = try await ChatFeed.items(roomID: room, store: store, me: me)
+        #expect(items.map(\.id) == ["$1", "$3"])
+        let first = try #require(items.first { $0.id == "$1" })
+        #expect(first.body == .text("сайн байна"))
+        #expect(first.edited)
+        #expect(first.senderName == "Арюна")
+        let mine = try #require(items.first { $0.id == "$3" })
+        #expect(mine.body == .text("моё"))
+        #expect(!mine.edited)
+        #expect(mine.isMine)
+    }
+
+    @Test("реакции считаются по ключу, удалённая реплика без текста и реакций, удаление само не видно")
+    func reactionsAndRedactions() async throws {
+        let store = try await prepared()
+        func react(_ id: String, _ sender: String, _ key: String, on target: String) -> Event {
+            Event(eventID: id, type: EventType.reaction, sender: sender, originServerTS: 200,
+                  content: ["m.relates_to": ["rel_type": "m.annotation", "event_id": .string(target), "key": .string(key)]],
+                  roomID: room)
+        }
+        try await store.append([
+            text("$1", from: arjuna, ts: 100, "хурдан"),
+            text("$2", from: arjuna, ts: 101, "удалю"),
+            react("$r1", me, "👍", on: "$1"),
+            react("$r2", arjuna, "👍", on: "$1"),
+            react("$r3", arjuna, "🔥", on: "$1"),
+            react("$r4", me, "👍", on: "$2"),
+            Event(eventID: "$x", type: EventType.redaction, sender: arjuna, originServerTS: 300,
+                  content: ["redacts": "$2"], roomID: room),
+        ])
+        let items = try await ChatFeed.items(roomID: room, store: store, me: me)
+        let first = try #require(items.first { $0.id == "$1" })
+        #expect(first.reactions == [.init(key: "👍", count: 2, mine: true), .init(key: "🔥", count: 1, mine: false)])
+        let gone = try #require(items.first { $0.id == "$2" })
+        #expect(gone.body == .deleted)
+        #expect(gone.reactions.isEmpty)
+        #expect(!items.contains { $0.id == "$x" || $0.id.hasPrefix("$r") })
+    }
+
+    @Test("ответ несёт цитату; без ключа — замок; с расшифровкой — текст")
+    func repliesAndEncryption() async throws {
+        let store = try await prepared()
+        let sealed = Event(eventID: "$s", type: EventType.encrypted, sender: arjuna, originServerTS: 100,
+                           content: ["algorithm": "m.megolm.v1.aes-sha2"], roomID: room)
+        try await store.append([
+            sealed,
+            text("$a", from: me, ts: 110, "> <@arjuna> ...\n\nответ", extra: [
+                "m.relates_to": ["m.in_reply_to": ["event_id": "$s"]],
+            ]),
+        ])
+        let locked = try await ChatFeed.items(roomID: room, store: store, me: me)
+        #expect(locked.first { $0.id == "$s" }?.body == .locked)
+        #expect(locked.first { $0.id == "$a" }?.reply?.preview == .locked)
+
+        let room = room
+        let opened = try await ChatFeed.items(roomID: room, store: store, me: me) { event, _ in
+            guard event.eventID == "$s" else { return nil }
+            return Event(eventID: "$s", type: EventType.message, sender: event.sender, originServerTS: 100,
+                         content: ["msgtype": "m.text", "body": "тайна"], roomID: room)
+        }
+        #expect(opened.first { $0.id == "$s" }?.body == .text("тайна"))
+        let answer = try #require(opened.first { $0.id == "$a" })
+        #expect(answer.body == .text("ответ"))
+        #expect(answer.reply == .init(eventID: "$s", senderName: "Арюна", preview: .text("тайна")))
+    }
+
+    @Test("служебные плашки: создание, вход, приглашение, смена имени, исключение, шифрование")
+    func notices() async throws {
+        let store = try await prepared()
+        let joined: JSONValue = ["membership": "join", "displayname": "Арюна"]
+        try await store.append([
+            Event(eventID: "$c", type: EventType.create, sender: me, originServerTS: 1, stateKey: "", content: [:], roomID: room),
+            member(me, name: "Я", id: "$own", ts: 1),
+            Event(eventID: "$e", type: EventType.encryption, sender: me, originServerTS: 2, stateKey: "",
+                  content: ["algorithm": "m.megolm.v1.aes-sha2"], roomID: room),
+            member(arjuna, name: "Арюна", membership: "invite", by: me, id: "$i", ts: 3),
+            member(arjuna, name: "Арюна", id: "$j", ts: 4, before: ["membership": "invite"]),
+            member(arjuna, name: "Арюна Д.", id: "$n", ts: 5, before: joined),
+            member(arjuna, id: "$same", ts: 6, before: ["membership": "join", "displayname": "Арюна Д."]),
+            member(arjuna, membership: "leave", by: me, id: "$k", ts: 7, before: ["membership": "join", "displayname": "Арюна Д."]),
+        ])
+        let items = try await ChatFeed.items(roomID: room, store: store, me: me)
+        let notices = items.compactMap { item -> FeedItem.Notice? in if case .notice(let n) = item.body { n } else { nil } }
+        #expect(notices == [
+            .created(by: "Я"), .encryptionOn(by: "Я"), .invited("Арюна", by: "Я"), .joined("Арюна"),
+            .renamedSelf(from: "Арюна", to: "Арюна Д."), .removed("Арюна Д.", by: "Я"),
+        ])
+    }
+
+    @Test("своя реплика прочитана, если собеседник отметил её или более позднюю")
+    func readMarks() async throws {
+        let store = try await prepared()
+        try await store.append([
+            text("$1", from: me, ts: 100, "раз"),
+            text("$2", from: arjuna, ts: 200, "два"),
+            text("$3", from: me, ts: 300, "три"),
+        ])
+        try await store.setReceipt(roomID: room, userID: arjuna, eventID: "$2", ts: 250)
+        let items = try await ChatFeed.items(roomID: room, store: store, me: me)
+        #expect(items.first { $0.id == "$1" }?.isRead == true)
+        #expect(items.first { $0.id == "$2" }?.isRead == false)
+        #expect(items.first { $0.id == "$3" }?.isRead == false)
+    }
+
+    @Test("вложение: вид и подпись отдельно от имени файла")
+    func attachments() async throws {
+        let store = try await prepared()
+        try await store.append([
+            Event(eventID: "$p", type: EventType.message, sender: arjuna, originServerTS: 1,
+                  content: ["msgtype": "m.image", "body": "IMG_1.jpg", "url": "mxc://x/y"], roomID: room),
+            Event(eventID: "$q", type: EventType.message, sender: arjuna, originServerTS: 2,
+                  content: ["msgtype": "m.image", "body": "Байкал", "filename": "IMG_2.jpg", "url": "mxc://x/z"], roomID: room),
+        ])
+        let items = try await ChatFeed.items(roomID: room, store: store, me: me)
+        #expect(items.first { $0.id == "$p" }?.body == .attachment(.image, caption: nil))
+        #expect(items.first { $0.id == "$q" }?.body == .attachment(.image, caption: "Байкал"))
+    }
+}

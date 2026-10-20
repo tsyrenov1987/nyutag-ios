@@ -69,6 +69,8 @@ public enum ChatDigest {
                 kind = PushReader.kind(of: event, me: me)
             }
             if kind == .other || isEdit(shown) { continue }
+            // Своё старое приглашение в чате, куда уже вошли, — не реплика.
+            if kind == .invite, record.membership != .invite { continue }
             last = kind
             lastEvent = shown
             break

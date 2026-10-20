@@ -20,9 +20,10 @@ struct ChatListView: View {
     @Environment(Words.self) private var words
     @Environment(AppSession.self) private var session
     @State private var menu = false
+    @State private var path: [String] = []
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             ScrollView {
                 if session.lines.isEmpty {
                     Text(words(.chatsEmpty))
@@ -31,7 +32,9 @@ struct ChatListView: View {
                 } else {
                     LazyVStack(spacing: 8) {
                         ForEach(session.lines) { line in
-                            ChatRow(line: line)
+                            NavigationLink(value: line.id) { ChatRow(line: line) }
+                                .buttonStyle(.plain)
+                                .accessibilityIdentifier("chat-\(line.id)")
                         }
                     }
                     .padding(.horizontal, 12)
@@ -49,9 +52,23 @@ struct ChatListView: View {
                     .accessibilityIdentifier("me-menu")
                 }
             }
+            .navigationDestination(for: String.self) { roomID in ChatView(roomID: roomID) }
             .sheet(isPresented: $menu) { MeMenu() }
+            #if DEBUG
+            .onChange(of: session.lines.count, initial: true) { openForScreenshots() }
+            #endif
         }
     }
+
+    #if DEBUG
+    /// Снимки экранов: открыть чат по части названия из SIMCTL_CHILD_NYUTAG_UI_OPEN_CHAT.
+    private func openForScreenshots() {
+        guard path.isEmpty, let wanted = ProcessInfo.processInfo.environment["NYUTAG_UI_OPEN_CHAT"],
+              let line = session.lines.first(where: { $0.title.localizedCaseInsensitiveContains(wanted) }) else { return }
+        path = [line.id]
+        print("ui-check: открыт чат, событий в списке \(session.lines.count)")
+    }
+    #endif
 }
 
 struct ChatRow: View {
@@ -108,15 +125,43 @@ struct ChatRow: View {
         case .audio: "🎙 " + words(.audio)
         case .file: "📎 " + words(.file)
         case .location: "📍 " + words(.location)
-        case .sticker: words(.sticker)
         case .poll: "📊 " + words(.poll)
         case .call: "📞 " + words(.call)
-        case .invite: words(.invited)
-        case .locked, .other: words(.newMessage)
+        default: Self.label(last, words: words)
         }
         if line.lastIsMine { return "\(words(.you)): \(body)" }
         if !line.isDirect, let name = line.lastSenderName { return "\(name): \(body)" }
         return body
+    }
+
+    /// Подпись вида реплики без значка: для цитаты, вложения в пузыре и списка.
+    static func label(_ kind: PushPreview.Kind, words: Words) -> String {
+        switch kind {
+        case .text(let text): text
+        case .image: words(.image)
+        case .video: words(.video)
+        case .audio: words(.audio)
+        case .file: words(.file)
+        case .location: words(.location)
+        case .sticker: words(.sticker)
+        case .poll: words(.poll)
+        case .call: words(.call)
+        case .invite: words(.invited)
+        case .locked, .other: words(.newMessage)
+        }
+    }
+
+    static func symbol(_ kind: PushPreview.Kind) -> String {
+        switch kind {
+        case .image: "photo"
+        case .video: "film"
+        case .audio: "waveform"
+        case .location: "mappin.and.ellipse"
+        case .sticker: "face.smiling"
+        case .poll: "chart.bar"
+        case .call: "phone"
+        default: "paperclip"
+        }
     }
 
     static func time(_ ms: Int, words: Words) -> String {
@@ -135,18 +180,20 @@ struct ChatRow: View {
 /// Своя реплика: одна галочка — дошла до сервера, две зелёные — прочитана.
 struct Ticks: View {
     let delivery: ChatLine.Delivery
+    /// На синем своём пузыре: серый и тёмно-зелёный там не читаются.
+    var onBlue = false
 
     var body: some View {
         switch delivery {
         case .none: EmptyView()
         case .sent:
-            Image(systemName: "checkmark").font(.caption2.bold()).foregroundStyle(Theme.quiet)
+            Image(systemName: "checkmark").font(.caption2.bold()).foregroundStyle(onBlue ? .white.opacity(0.75) : Theme.quiet)
         case .read:
             ZStack(alignment: .leading) {
                 Image(systemName: "checkmark")
                 Image(systemName: "checkmark").offset(x: 5)
             }
-            .font(.caption2.bold()).foregroundStyle(Theme.read).padding(.trailing, 5)
+            .font(.caption2.bold()).foregroundStyle(onBlue ? Theme.readOnBlue : Theme.read).padding(.trailing, 5)
         }
     }
 }

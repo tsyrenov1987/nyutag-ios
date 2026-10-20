@@ -13,6 +13,11 @@ enum Theme {
     static let ink = Color(light: 0x18202E, dark: 0xECEFF5)
     static let quiet = Color(light: 0x6B7280, dark: 0x9AA3B5)
     static let read = Color(light: 0x1F8A5B, dark: 0x4FD39A)
+    static let readOnBlue = Color(light: 0x8FF0C0, dark: 0x8FF0C0)
+    /// Подложка служебных плашек и разделителей дней: темнее фона, чтобы не сливаться с ним.
+    static let plate = Color(light: 0xE4DDCB, dark: 0x222C40)
+    /// Свои пузыри: синий неба с белым текстом; чужие — белая карточка.
+    static let mine = Color(light: 0x2347A6, dark: 0x2F55B8)
 
     /// Пять цветов для аватаров без картинки; цвет выбирается по идентификатору и не меняется.
     static let avatarTints: [Color] = [

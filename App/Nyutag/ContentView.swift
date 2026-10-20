@@ -36,6 +36,9 @@ struct ContentView: View {
     private func signInForScreenshots() async {
         let env = ProcessInfo.processInfo.environment
         if env["NYUTAG_UI_SIGNOUT"] != nil { return await session.signOut() }
+        defer {
+            if let room = env["NYUTAG_UI_MAKE_ROOM"] { Task { await session.ensurePrivateRoom(named: room) } }
+        }
         guard session.phase == .signedOut, let user = env["NYUTAG_UI_USER"], let password = env["NYUTAG_UI_PASSWORD"] else { return }
         // Туннель поднимается параллельно: первые попытки могут не дойти до ядра.
         for attempt in 1...6 {
