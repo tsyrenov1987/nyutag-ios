@@ -120,5 +120,37 @@
     "plaintext": "второй ответ"
    }
   ]
+ },
+ "sas": {
+  "our_private": "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA",
+  "our_public": "B6N8vBQgk8i3VdwbEOhstCY3StFqqFPtC9/AsrhtHHw",
+  "their_public": "zmt9FytfyDPlFfXwMB3oYo6h7Z1OYejbN4zhPt4/qTo",
+  "info": "MATRIX_KEY_VERIFICATION_SAS|@alice:nyutag.chat|A1|zmt9FytfyDPlFfXwMB3oYo6h7Z1OYejbN4zhPt4/qTo|@bob:nyutag.chat|B1|B6N8vBQgk8i3VdwbEOhstCY3StFqqFPtC9/AsrhtHHw|txn1",
+  "emoji_indices": [
+   36,
+   20,
+   37,
+   28,
+   21,
+   56,
+   52
+  ],
+  "decimals": [
+   5649,
+   2393,
+   4014
+  ],
+  "macs": [
+   {
+    "input": "aliceEd25519Key",
+    "info": "MATRIX_KEY_VERIFICATION_MAC@alice:nyutag.chatA1@bob:nyutag.chatB1txn1ed25519:A1",
+    "mac": "+mntUP2YBi5X471OIGOOSuTRgA5LN3D57Iqge4bkHN0"
+   },
+   {
+    "input": "ed25519:A1,ed25519:MASTER",
+    "info": "MATRIX_KEY_VERIFICATION_MAC@alice:nyutag.chatA1@bob:nyutag.chatB1txn1KEY_IDS",
+    "mac": "eZStACcoghlDe93A5P+R0X3vlv31UNMFu2oWxXX85uA"
+   }
+  ]
  }
 }

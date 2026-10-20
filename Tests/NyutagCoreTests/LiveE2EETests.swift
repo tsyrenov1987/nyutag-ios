@@ -85,6 +85,88 @@ enum LiveE2EEEnv {
         try await client.logout()
     }
 
+    /// Проверка по эмодзи через настоящий /sync: устройство с ключами кросс-подписи (поднятыми по коду) подписывает
+    /// новое устройство той же учётки; затем test17 проверяет test14. В конце выход всех устройств.
+    @Test(.enabled(if: LiveEnv.available, "нет NYUTAG_TEST_USER")) func verifyByEmoji() async throws {
+        let hs = LiveEnv.homeserver!
+        var parties: [(MatrixClient, Session)] = []
+        do {
+            for (user, password, name) in [(LiveE2EEEnv.user!, LiveE2EEEnv.password!, "Нютаг тест проверки (Мак, с ключами)"),
+                                           (LiveE2EEEnv.user!, LiveE2EEEnv.password!, "Нютаг тест проверки (Мак, новое)"),
+                                           (LiveEnv.user!, LiveEnv.password!, "Нютаг тест проверки (Мак)")] {
+                let client = MatrixClient(homeserver: hs)
+                parties.append((client, try await client.login(user: user, password: password, deviceDisplayName: name)))
+            }
+            try await verify(parties)
+        } catch {
+            print("live verify: ошибка \(error)")
+            for (client, _) in parties { try? await client.logout() }
+            throw error
+        }
+        for (client, _) in parties { try await client.logout() }
+    }
+
+    private func verify(_ parties: [(MatrixClient, Session)]) async throws {
+        var machines: [CryptoMachine] = [], engines: [SyncEngine] = []
+        for (client, session) in parties {
+            let store = try Store.inMemory()
+            let machine = try await CryptoMachine(client: client, store: store, session: session)
+            try await machine.publishKeys(serverCount: nil)
+            let engine = SyncEngine(client: client, store: store, session: session)
+            await engine.addObserver(machine)
+            _ = try await engine.syncOnce()
+            machines.append(machine)
+            engines.append(engine)
+        }
+        func deliver() async throws {
+            for _ in 0..<2 { for engine in engines { _ = try await engine.syncOnce(timeout: .seconds(1)) } }
+        }
+        func state(_ i: Int, _ id: String) async -> VerificationFlow.State? { await machines[i].verification(id)?.state }
+        let (keeper, fresh, other) = (machines[0], machines[1], machines[2])
+        let mine = parties[0].1, freshSession = parties[1].1
+        try await keeper.importCrossSigning(recoveryKey: LiveE2EEEnv.recovery!)
+
+        // Своё новое устройство: просит проверку, отвечает устройство с ключами.
+        // Запрос только устройству теста: остальные устройства учётки его не увидят.
+        let id = try await fresh.requestVerification(userID: mine.userID, deviceIDs: [mine.deviceID])
+        try await deliver()
+        #expect(await state(0, id) == .requested)
+        try await keeper.acceptVerification(id)
+        try await deliver()
+        try await fresh.startSas(id)
+        try await deliver()
+        let a = await keeper.verification(id), b = await fresh.verification(id)
+        let emoji = (a?.emoji ?? []).map { SasEmoji.table[$0].emoji }.joined()
+        print("live verify: эмодзи \(emoji), совпали \(a?.emoji != nil && a?.emoji == b?.emoji)")
+        #expect(a?.state == .comparing && b?.state == .comparing)
+        #expect(a?.emoji != nil && a?.emoji == b?.emoji)
+        try await keeper.confirmSas(id)
+        try await fresh.confirmSas(id)
+        try await deliver()
+        #expect(await state(0, id) == .done)
+        #expect(await state(1, id) == .done)
+        let signed = try await keeper.devices(for: [mine.userID]).first { $0.deviceID == freshSession.deviceID }
+        print("live verify: новое устройство подписано \(signed?.crossSigned == true)")
+        #expect(signed?.crossSigned == true)
+
+        // Другой пользователь: test17 проверяет test14 (ключей кросс-подписи у test17 на этом устройстве нет).
+        let userID = try await other.requestVerification(userID: mine.userID, deviceIDs: [mine.deviceID])
+        try await deliver()
+        try await keeper.acceptVerification(userID)
+        try await deliver()
+        try await other.startSas(userID)
+        try await deliver()
+        let (k, o) = (await keeper.verification(userID), await other.verification(userID))
+        #expect(k?.state == .comparing && o?.state == .comparing)
+        #expect(k?.emoji != nil && k?.emoji == o?.emoji)
+        try await other.confirmSas(userID)
+        try await keeper.confirmSas(userID)
+        try await deliver()
+        let (atKeeper, atOther) = (await state(0, userID), await state(2, userID))
+        print("live verify: test17↔test14 \(String(describing: atOther)) / \(String(describing: atKeeper))")
+        #expect(atKeeper == .done && atOther == .done)
+    }
+
     private func cleanup(_ roomID: String, _ clients: MatrixClient...) async {
         for client in clients {
             try? await client.leave(roomID: roomID)

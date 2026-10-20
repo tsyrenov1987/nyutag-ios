@@ -84,6 +84,21 @@ import Testing
     }
 
     /// Наша сторона для эталона: пишется только при перегенерации фикстуры.
+    /// SAS: эталон знает только наш открытый ключ; эмодзи, числа и MAC должны совпасть у обеих сторон.
+    @Test func sasMatchesReference() throws {
+        let sas = try section("sas")
+        let ours = try Sas(privateKey: try Base64.decode(sas["our_private"] as! String))
+        #expect(ours.publicKeyBase64 == sas["our_public"] as? String)
+        let established = try ours.establish(theirPublicKey: sas["their_public"] as! String)
+        let info = sas["info"] as! String
+        #expect(established.emojiIndices(info: info) == sas["emoji_indices"] as? [Int])
+        #expect(established.decimals(info: info) == sas["decimals"] as? [Int])
+        for mac in try list(sas, "macs") {
+            #expect(established.calculateMac(mac["input"] as! String, info: mac["info"] as! String) == mac["mac"] as? String)
+        }
+        #expect(SasEmoji.table.count == 64)
+    }
+
     @Test(.enabled(if: ProcessInfo.processInfo.environment["NYUTAG_INTEROP_OUT"] != nil))
     func emitOurSide() throws {
         let peer = try section("peer")

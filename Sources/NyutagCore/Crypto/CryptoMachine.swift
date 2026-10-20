@@ -45,6 +45,8 @@ public actor CryptoMachine: SyncObserver {
     /// Комнаты, где сейчас идёт шифрование, и кто ждёт своей очереди.
     var busyRooms: Set<String> = []
     var roomWaiters: [String: [CheckedContinuation<Void, Never>]] = [:]
+    /// Идущие проверки по эмодзи; ключи SAS живут только в памяти.
+    var verifications: [String: VerificationSession] = [:]
 
     public init(client: MatrixClient, store: Store, session: Session) async throws(E2EEError) {
         self.client = client
@@ -175,6 +177,7 @@ public actor CryptoMachine: SyncObserver {
             switch event.type {
             case EventType.roomKeyRequest: _ = try? await answerRoomKeyRequest(event)
             case Self.withheldType: await acceptWithheld(event)
+            case let type where VerificationEvent.all.contains(type): await receiveVerification(event)
             default: break
             }
         }
@@ -184,6 +187,7 @@ public actor CryptoMachine: SyncObserver {
             switch inner.type {
             case EventType.roomKey: try? await acceptRoomKey(inner)
             case EventType.forwardedRoomKey: try? await acceptForwardedRoomKey(inner)
+            case let type where VerificationEvent.all.contains(type): await receiveVerification(inner)
             default: break
             }
         }

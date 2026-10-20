@@ -127,13 +127,16 @@ final class FakeHomeserver: @unchecked Sendable {
             case ("POST", ["keys", "signatures", "upload"]):
                 for (user, keys) in body?.object ?? [:] {
                     for (keyID, signed) in keys.object ?? [:] {
-                        let added = signed["signatures", user]?.object ?? [:]
+                        // Подписать чужой ключ может кто угодно (мастер-ключ собеседника — ключом подписи пользователей).
+                        let added = signed["signatures"]?.object ?? [:]
                         func merge(_ target: JSONValue) -> JSONValue {
                             guard case .object(var fields) = target else { return target }
                             var signatures = fields["signatures"]?.object ?? [:]
-                            var mine = signatures[user]?.object ?? [:]
-                            for (id, value) in added { mine[id] = value }
-                            signatures[user] = .object(mine)
+                            for (signer, entries) in added {
+                                var theirs = signatures[signer]?.object ?? [:]
+                                for (id, value) in entries.object ?? [:] { theirs[id] = value }
+                                signatures[signer] = .object(theirs)
+                            }
                             fields["signatures"] = .object(signatures)
                             return .object(fields)
                         }
