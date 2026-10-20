@@ -1,0 +1,221 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		4CA26083586E372AB024C92D /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 957FAC9C79F337FB3129F8BA; };
+		61A078356110FAED60827330 /* NyutagCore in Frameworks */ = {isa = PBXBuildFile; productRef = B13A157FADF36FA882138926; };
+		69A67FA155CFC6A4C5C7EAB0 /* NyutagCore in Frameworks */ = {isa = PBXBuildFile; productRef = DBE052AAC100956CAA6A9101; };
+		7597982682D62FA50E8B1A14 /* NyutagNSE.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = FE32DB90CCCD1F549E9B53C5; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		81400ED92B6E11EE7BFFE6A3 /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26D467D4C2927481B969D41B; };
+		BC6B8F5E7BB744C2FE916167 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 61283808392941493A9F30AE; };
+		E280326A0910C7A5F4524364 /* Resources in Resources */ = {isa = PBXBuildFile; fileRef = 9457957D28199A36BA7D4FFD; };
+		F53AF2BA3F0FA0C905B39DAE /* NyutagApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B0FB99619B1581C7120F557; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		846F73D9F3908DB8970EBDEE /* PBXContainerItemProxy */ = {isa = PBXContainerItemProxy; containerPortal = 96A9583171FA2F7CAB0092E4; proxyType = 1; remoteGlobalIDString = 99F232348FFBC8453C4760DE; remoteInfo = NyutagNSE; };
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		D086A72FFA010D1F05A60D33 /* Embed Foundation Extensions */ = {isa = PBXCopyFilesBuildPhase; buildActionMask = 2147483647; dstPath = ""; dstSubfolderSpec = 13; files = (7597982682D62FA50E8B1A14,); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		1502CCB7D47595652FF46B79 /* Nyutag.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Nyutag.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		1B0FB99619B1581C7120F557 /* NyutagApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NyutagApp.swift; sourceTree = "<group>"; };
+		26D467D4C2927481B969D41B /* NotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
+		4B5F691BDFAF60E3A1739497 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		54496AA12ADB629CEE9F1437 /* Nyutag.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Nyutag.entitlements; sourceTree = "<group>"; };
+		61283808392941493A9F30AE /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		9457957D28199A36BA7D4FFD /* Resources */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Resources; sourceTree = "<group>"; };
+		957FAC9C79F337FB3129F8BA /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		98A33BA1B0E3423CB7853497 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		B4EBBB4DE8F020DBEF36E4C5 /* NyutagNSE.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = NyutagNSE.entitlements; sourceTree = "<group>"; };
+		FE32DB90CCCD1F549E9B53C5 /* NyutagNSE.appex */ = {isa = PBXFileReference; explicitFileType = wrapper.app-extension; includeInIndex = 0; path = NyutagNSE.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		0C5647A94EE1EB1E2EE6D830 /* Frameworks:app */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (61A078356110FAED60827330,); runOnlyForDeploymentPostprocessing = 0; };
+		63F71A692DC30D52C6BE6DEE /* Frameworks:nse */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (69A67FA155CFC6A4C5C7EAB0,); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		38C0BDA05AD30F3FE486BAFF /* Nyutag */ = {isa = PBXGroup; children = (1B0FB99619B1581C7120F557, 957FAC9C79F337FB3129F8BA, 61283808392941493A9F30AE, 98A33BA1B0E3423CB7853497, 54496AA12ADB629CEE9F1437,); path = Nyutag; sourceTree = "<group>"; };
+		3B8C3D6156120C4FC85A03D2 /* Products */ = {isa = PBXGroup; children = (1502CCB7D47595652FF46B79, FE32DB90CCCD1F549E9B53C5,); name = Products; sourceTree = "<group>"; };
+		6CEACBD73A5CFF977D384A31 /* Main */ = {isa = PBXGroup; children = (6E707754F06C2C435B694330, 3B8C3D6156120C4FC85A03D2,); sourceTree = "<group>"; };
+		6E707754F06C2C435B694330 /* App */ = {isa = PBXGroup; children = (38C0BDA05AD30F3FE486BAFF, A98AC188A3D299E1CBCCDBC0, 9457957D28199A36BA7D4FFD,); path = App; sourceTree = "<group>"; };
+		A98AC188A3D299E1CBCCDBC0 /* NyutagNSE */ = {isa = PBXGroup; children = (26D467D4C2927481B969D41B, 4B5F691BDFAF60E3A1739497, B4EBBB4DE8F020DBEF36E4C5,); path = NyutagNSE; sourceTree = "<group>"; };
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		8C5B5649D72579542F0CCFA2 /* Nyutag */ = {isa = PBXNativeTarget; buildConfigurationList = 2557045A2D9BC71FFC91688C; buildPhases = (17AB91A470A72BA606086E8D, 0C5647A94EE1EB1E2EE6D830, A8AAEB42379E8075EA923455, D086A72FFA010D1F05A60D33,); buildRules = (); dependencies = (9A83AAF960D6A5E51B4111CE,); name = Nyutag; packageProductDependencies = (B13A157FADF36FA882138926,); productName = Nyutag; productReference = 1502CCB7D47595652FF46B79; productType = "com.apple.product-type.application"; };
+		99F232348FFBC8453C4760DE /* NyutagNSE */ = {isa = PBXNativeTarget; buildConfigurationList = E9224A0D09EB72855EEDA1A7; buildPhases = (9702AAC9BDACF13C341F4DB6, 63F71A692DC30D52C6BE6DEE, D1A0F41403ECA2195162FB11,); buildRules = (); dependencies = (); name = NyutagNSE; packageProductDependencies = (DBE052AAC100956CAA6A9101,); productName = NyutagNSE; productReference = FE32DB90CCCD1F549E9B53C5; productType = "com.apple.product-type.app-extension"; };
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		96A9583171FA2F7CAB0092E4 /* Project object */ = {isa = PBXProject; attributes = {BuildIndependentTargetsInParallel = 1; LastSwiftUpdateCheck = 2600; LastUpgradeCheck = 2600; TargetAttributes = {8C5B5649D72579542F0CCFA2 = {CreatedOnToolsVersion = 26.0; }; 99F232348FFBC8453C4760DE = {CreatedOnToolsVersion = 26.0; }; }; }; buildConfigurationList = DF32A961B334FFEC8E5CB8FE; compatibilityVersion = "Xcode 14.0"; developmentRegion = ru; hasScannedForEncodings = 0; knownRegions = (ru, en, Base, ); mainGroup = 6CEACBD73A5CFF977D384A31; packageReferences = (F378CDE9A0B9911AF3A02252,); productRefGroup = 3B8C3D6156120C4FC85A03D2; projectDirPath = ""; projectRoot = ""; targets = (8C5B5649D72579542F0CCFA2, 99F232348FFBC8453C4760DE,); };
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A8AAEB42379E8075EA923455 /* Resources:app */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (BC6B8F5E7BB744C2FE916167, E280326A0910C7A5F4524364,); runOnlyForDeploymentPostprocessing = 0; };
+		D1A0F41403ECA2195162FB11 /* Resources:nse */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		17AB91A470A72BA606086E8D /* Sources:app */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (F53AF2BA3F0FA0C905B39DAE, 4CA26083586E372AB024C92D,); runOnlyForDeploymentPostprocessing = 0; };
+		9702AAC9BDACF13C341F4DB6 /* Sources:nse */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (81400ED92B6E11EE7BFFE6A3,); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		9A83AAF960D6A5E51B4111CE /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = 99F232348FFBC8453C4760DE; targetProxy = 846F73D9F3908DB8970EBDEE; };
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		2571937257B335BC794EE017 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = App/Nyutag/Nyutag.entitlements;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = App/Nyutag/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Нютаг";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				PRODUCT_BUNDLE_IDENTIFIER = chat.nyutag.messenger;
+				PRODUCT_NAME = Nyutag;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+			};
+			name = Debug;
+		};
+		3B3F769EB8FD41DA85033390 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 643UT34CF8;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 0.1.0;
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		52812EE737198D52C1828D7E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = App/Nyutag/Nyutag.entitlements;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = App/Nyutag/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Нютаг";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				PRODUCT_BUNDLE_IDENTIFIER = chat.nyutag.messenger;
+				PRODUCT_NAME = Nyutag;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+			};
+			name = Release;
+		};
+		7D14476F7650EB9608FED3BD /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = App/NyutagNSE/NyutagNSE.entitlements;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = App/NyutagNSE/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Нютаг";
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
+				PRODUCT_BUNDLE_IDENTIFIER = chat.nyutag.messenger.nse;
+				PRODUCT_NAME = NyutagNSE;
+				SKIP_INSTALL = YES;
+			};
+			name = Release;
+		};
+		C2B143156CE18E1504B59BCE /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = App/NyutagNSE/NyutagNSE.entitlements;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = App/NyutagNSE/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Нютаг";
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
+				PRODUCT_BUNDLE_IDENTIFIER = chat.nyutag.messenger.nse;
+				PRODUCT_NAME = NyutagNSE;
+				SKIP_INSTALL = YES;
+			};
+			name = Debug;
+		};
+		D026512BB17E8F68D96860FC /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = 643UT34CF8;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 0.1.0;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		2557045A2D9BC71FFC91688C /* Build configuration list for PBXNativeTarget "Nyutag" */ = {isa = XCConfigurationList; buildConfigurations = (2571937257B335BC794EE017, 52812EE737198D52C1828D7E,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		DF32A961B334FFEC8E5CB8FE /* Build configuration list for PBXProject "Nyutag" */ = {isa = XCConfigurationList; buildConfigurations = (D026512BB17E8F68D96860FC, 3B3F769EB8FD41DA85033390,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		E9224A0D09EB72855EEDA1A7 /* Build configuration list for PBXNativeTarget "NyutagNSE" */ = {isa = XCConfigurationList; buildConfigurations = (C2B143156CE18E1504B59BCE, 7D14476F7650EB9608FED3BD,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		F378CDE9A0B9911AF3A02252 /* XCLocalSwiftPackageReference "." */ = {isa = XCLocalSwiftPackageReference; relativePath = .; };
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		B13A157FADF36FA882138926 /* NyutagCore */ = {isa = XCSwiftPackageProductDependency; package = F378CDE9A0B9911AF3A02252; productName = NyutagCore; };
+		DBE052AAC100956CAA6A9101 /* NyutagCore */ = {isa = XCSwiftPackageProductDependency; package = F378CDE9A0B9911AF3A02252; productName = NyutagCore; };
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 96A9583171FA2F7CAB0092E4 /* Project object */;
+}
