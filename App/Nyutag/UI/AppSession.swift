@@ -67,6 +67,8 @@ final class AppSession {
     @ObservationIgnored private var layoutWrites = 0
     @ObservationIgnored private var scheduler: Task<Void, Never>?
     @ObservationIgnored private var sendingScheduled: Set<String> = []
+    /// Приглашения, которые уже пробовали принять: отказ сервера не повторяем на каждом /sync.
+    @ObservationIgnored private var autoJoined: Set<String> = []
 
     init(keeper: AccountKeeper? = .app()) {
         self.keeper = keeper
@@ -130,6 +132,7 @@ final class AppSession {
         lines = []
         layout = ChatLayout()
         savedRoom = nil
+        autoJoined = []
         setScheduled(scheduled.removingAccount(account.session.userID))
         typing = [:]
         me = nil
@@ -977,6 +980,22 @@ final class AppSession {
             layout = saved
         }
         if let saved = try? await SavedMessages.load(store: account.store), saved != savedRoom { savedRoom = saved }
+        await acceptInvites()
+    }
+
+    /// Сервер закрытый, чужих на нём нет: приглашение от участника принимаем сразу, как в Telegram.
+    /// Новая переписка или группа появляется в списке готовой, без «Вас приглашают».
+    private func acceptInvites() async {
+        guard let account, let invited = try? await account.store.rooms(membership: .invite) else { return }
+        for room in invited where !autoJoined.contains(room.id) {
+            autoJoined.insert(room.id)
+            let joined = (try? await account.client.join(room.id)) != nil
+            #if DEBUG
+            print("ui-check: приглашение \(room.id) \(joined ? "принято" : "не принято")")
+            #else
+            _ = joined
+            #endif
+        }
     }
 
     static func needsResolve(_ identifier: String) -> Bool {
