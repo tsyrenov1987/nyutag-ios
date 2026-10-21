@@ -28,8 +28,16 @@ final class Words {
     /// `nil` — язык ещё не выбран: показываем экран выбора.
     private(set) var lang: Lang?
 
+    static let lettersKey = "nyutag.bxrLetters"
+
+    /// Строка «ө ү һ» над полем ввода и замена «h», «y», «θ» внутри кириллицы. По умолчанию включена.
+    var buryatLetters: Bool {
+        didSet { UserDefaults.standard.set(buryatLetters, forKey: Self.lettersKey) }
+    }
+
     init() {
         lang = UserDefaults.standard.string(forKey: Self.key).flatMap(Lang.init(rawValue:))
+        buryatLetters = UserDefaults.standard.object(forKey: Self.lettersKey) as? Bool ?? true
     }
 
     func choose(_ lang: Lang) {
@@ -198,6 +206,25 @@ extension Phrase {
     static let yesterday = Phrase(bxr: "Үсэгэлдэр", ru: "Вчера", en: "Yesterday")
 
     static let language = Phrase(bxr: "Хэлэн", ru: "Язык", en: "Language")
+    static let calendar = Phrase(bxr: "Хуанли", ru: "Календарь", en: "Calendar")
+    static let sagaalgan = Phrase(bxr: "Сагаалган", ru: "Сагаалган", en: "Sagaalgan")
+    static let sagaalganLeft = Phrase(bxr: "Үлэһэн үдэр: {1}", ru: "Осталось дней: {1}", en: "Days left: {1}")
+    static let sagaalganToday = Phrase(bxr: "Мүнөөдэр Сагаалган. Сагаан һараар!", ru: "Сегодня Сагаалган. Сагаан һараар!",
+                                       en: "Sagaalgan is today. Sagaan haraar!")
+    static let eastYearOf = Phrase(bxr: "Жэл: {1}", ru: "Год по восточному календарю: {1}", en: "Eastern year: {1}")
+    static let sagaalganYears = Phrase(bxr: "Сагаалган жэл бүри", ru: "Сагаалган по годам", en: "Sagaalgan by year")
+    static let zurkhaiToday = Phrase(bxr: "Мүнөөдэр зурхайгаар", ru: "Сегодня по зурхаю", en: "Today by zurkhai")
+    static let lunarDay = Phrase(bxr: "Сарын {1} хоног", ru: "{1}-е лунные сутки", en: "Lunar day {1}")
+    static let haircut = Phrase(bxr: "Үһэ абахуу", ru: "Стрижка", en: "Haircut")
+    static let favorable = Phrase(bxr: "Һайн", ru: "Благоприятно", en: "Favorable")
+    static let unfavorable = Phrase(bxr: "Муу", ru: "Неблагоприятно", en: "Unfavorable")
+    static let zurkhaiSource = Phrase(bxr: "Пхугпын ёһоор тоолоо. Мэдээн «Зурхай» программаһаа.",
+                                      ru: "Расчёт по системе Пхугпа, данные нашего приложения «Зурхай».",
+                                      en: "Phugpa system, data from our Zurkhai app.")
+    static let buryatLetters = Phrase(bxr: "Буряад үсэгүүд", ru: "Бурятские буквы", en: "Buryat letters")
+    static let buryatLettersHint = Phrase(bxr: "Бэшэхэдэ «ө ү һ» товшуурнууд. Латин h, y, θ кирилл үгэ соо өөрөө һэлгэгдэнэ.",
+                                          ru: "Кнопки «ө ү һ» над полем ввода. Латинские h, y, θ внутри русского слова сами станут бурятскими буквами.",
+                                          en: "Buttons «ө ү һ» above the message field. Latin h, y, θ inside a Cyrillic word turn into Buryat letters.")
     static let advanced = Phrase(bxr: "Нэмэлтэ", ru: "Дополнительно", en: "Advanced")
     static let signOut = Phrase(bxr: "Гараха", ru: "Выйти", en: "Sign out")
     static let signOutAsk = Phrase(bxr: "Энэ түхеэрэлгэ дээрэ аккаунтһаа гарахадаа итгэлтэй гүт?",

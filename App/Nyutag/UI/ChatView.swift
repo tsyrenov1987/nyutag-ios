@@ -28,6 +28,7 @@ struct ChatView: View {
     @State private var loadingOlder = false
     @State private var outbox: [Outgoing] = []
     @State private var draft = ""
+    @State private var draftSelection: TextSelection?
     @State private var replyTo: FeedItem?
     @State private var editing: FeedItem?
     @State private var deleting: FeedItem?
@@ -188,7 +189,10 @@ struct ChatView: View {
             ViewOnceViewer(image: shot.image) { closeOnce(shot) }
         }
         .onChange(of: previewURL) { if previewURL == nil { OpenedFiles.clear() } }
-        .onChange(of: draft) { noteTyping() }
+        .onChange(of: draft) {
+            noteTyping()
+            fixLetters()
+        }
         .onAppear { PushDoor.shared.openRoom = roomID }
         .onDisappear {
             stopTyping()
@@ -324,6 +328,7 @@ struct ChatView: View {
             } else if let replyTo {
                 banner(title: replyTo.senderName, text: summary(replyTo.body), symbol: nil) { self.replyTo = nil }
             }
+            if typing, words.buryatLetters { letterRow }
             HStack(alignment: .bottom, spacing: 8) {
                 if editing == nil {
                     Menu {
@@ -353,7 +358,7 @@ struct ChatView: View {
                     .accessibilityLabel(words(.stickers))
                     .accessibilityIdentifier("chat-stickers")
                 }
-                TextField(words(.messageField), text: $draft, axis: .vertical)
+                TextField(words(.messageField), text: $draft, selection: $draftSelection, axis: .vertical)
                     .lineLimit(1...6)
                     .focused($typing)
                     .padding(.horizontal, 14).padding(.vertical, 10)
@@ -378,6 +383,49 @@ struct ChatView: View {
             .padding(.horizontal, 10).padding(.vertical, 8)
         }
         .background(Theme.card)
+    }
+
+    /// Строка «ө ү һ»: на русской раскладке этих букв нет.
+    private var letterRow: some View {
+        HStack(spacing: 8) {
+            ForEach(BuryatLetters.row, id: \.self) { letter in
+                Button { insertLetter(letter) } label: {
+                    Text(String(letter)).font(.title3.weight(.semibold)).foregroundStyle(Theme.ink)
+                        .frame(width: 52, height: 34)
+                        .background(Theme.milk, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("chat-letter-\(letter)")
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 10).padding(.top, 8)
+    }
+
+    /// Курсор в знаках от начала черновика; без выделения — конец текста.
+    private var caretRange: Range<Int> {
+        let end = draft.count
+        guard case .selection(let range)? = draftSelection?.indices,
+              range.upperBound <= draft.endIndex, range.lowerBound >= draft.startIndex else { return end..<end }
+        let lower = draft.distance(from: draft.startIndex, to: range.lowerBound)
+        return lower..<(lower + draft.distance(from: range.lowerBound, to: range.upperBound))
+    }
+
+    private func insertLetter(_ base: Character) {
+        let range = caretRange
+        let lower = draft.index(draft.startIndex, offsetBy: range.lowerBound)
+        let upper = draft.index(draft.startIndex, offsetBy: range.upperBound)
+        draft.replaceSubrange(lower..<upper, with: String(BuryatLetters.letter(base, after: draft[..<lower])))
+        draftSelection = TextSelection(insertionPoint: draft.index(draft.startIndex, offsetBy: range.lowerBound + 1))
+    }
+
+    /// «hайн» → «һайн» прямо при наборе; длина не меняется, курсор ставим туда же.
+    private func fixLetters() {
+        guard words.buryatLetters, let fixed = BuryatLetters.fix(draft) else { return }
+        let range = caretRange
+        draft = fixed
+        draftSelection = TextSelection(range: draft.index(draft.startIndex, offsetBy: range.lowerBound)
+                                       ..< draft.index(draft.startIndex, offsetBy: range.upperBound))
     }
 
     /// Отложенные этого чата, ближайшие первыми.
@@ -821,6 +869,19 @@ struct ChatView: View {
             if sheet == "schedule" { draft = env["NYUTAG_UI_SEND"] ?? "Проверка"; askSchedule() } else { showingScheduled = true }
             print("ui-check: открыто окно \(sheet)")
         }
+        // NYUTAG_UI_DRAFT=текст — набрать черновик с заменителями и поставить курсор в поле, строка «ө ү һ» видна.
+        if let text = env["NYUTAG_UI_DRAFT"], !Self.draftedForScreenshots {
+            Self.draftedForScreenshots = true
+            draft = text
+            // Выделение осталось от пустого поля: без сброса буква встала бы не в конец.
+            draftSelection = nil
+            typing = true
+            if let letter = env["NYUTAG_UI_LETTER"].flatMap(\.first) { insertLetter(letter) }
+            Task {
+                try? await Task.sleep(for: .milliseconds(300))
+                print("ui-check: черновик «\(draft)»")
+            }
+        }
         // NYUTAG_UI_OPEN=once — ждать чужое исчезающее фото и открыть его.
         let once = env["NYUTAG_UI_OPEN"] == "once"
         if env["NYUTAG_UI_OPEN"] != nil, !Self.openedForScreenshots,
@@ -845,6 +906,7 @@ struct ChatView: View {
     private static var ruledForScreenshots = false
     private static var openedForScreenshots = false
     private static var sheetForScreenshots = false
+    private static var draftedForScreenshots = false
 
     /// NYUTAG_UI_ATTACH: `photo` — нарисованный снимок 1600×1200 (`once` — он же исчезающим), `file` — небольшой
     /// текстовый файл, `video` — нарисованный ролик на 2 секунды через тот же путь, что и из галереи.

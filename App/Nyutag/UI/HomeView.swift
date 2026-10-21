@@ -1,4 +1,4 @@
-// Нютаг. Главный экран: вкладки Чаты | Контакты | Сообщества, заголовок по центру, свой аватар слева открывает меню.
+// Нютаг. Главный экран: вкладки Чаты | Контакты | Сообщества | Календарь, заголовок по центру, свой аватар слева открывает меню.
 // Строка чата — карточка: аватар-подушка, имя, время, последняя реплика, галочки у своей, золотой счётчик.
 
 import NyutagCore
@@ -17,6 +17,7 @@ struct HomeView: View {
                 Tab(words(.chats), systemImage: "bubble.left.and.bubble.right", value: 0) { ChatListView() }
                 Tab(words(.contacts), systemImage: "person.2", value: 1) { ContactsView() }
                 Tab(words(.communities), systemImage: "circle.hexagongrid", value: 2) { CommunitiesView() }
+                Tab(words(.calendar), systemImage: "moon.stars", value: 3) { CalendarView() }
             }
         }
         .background(Theme.milk.ignoresSafeArea())
@@ -30,6 +31,7 @@ struct HomeView: View {
         .onAppear {
             if ProcessInfo.processInfo.environment["NYUTAG_UI_CONTACTS"] != nil { tab = 1 }
             if ProcessInfo.processInfo.environment["NYUTAG_UI_COMMUNITY"] != nil { tab = 2 }
+            if ProcessInfo.processInfo.environment["NYUTAG_UI_CALENDAR"] != nil { tab = 3 }
         }
         // Сброс пароля живёт на экране входа; NYUTAG_UI_RESET показывает его и без выхода из аккаунта.
         .sheet(isPresented: .constant(ProcessInfo.processInfo.environment["NYUTAG_UI_RESET"] != nil)) { PasswordResetView() }
@@ -671,7 +673,7 @@ struct MeMenu: View {
                     }
                     .accessibilityIdentifier("menu-donate")
                 }
-                Section(words(.language)) {
+                Section {
                     ForEach(Lang.allCases) { lang in
                         Button { words.choose(lang) } label: {
                             HStack {
@@ -681,6 +683,13 @@ struct MeMenu: View {
                             }
                         }
                     }
+                    Toggle(words(.buryatLetters), isOn: Bindable(words).buryatLetters)
+                        .tint(Theme.gold)
+                        .accessibilityIdentifier("menu-bxr-letters")
+                } header: {
+                    Text(words(.language))
+                } footer: {
+                    Text(words(.buryatLettersHint))
                 }
                 Section(words(.advanced)) {
                     Button(words(.signOut)) { askSignOut = true }
