@@ -144,6 +144,12 @@ struct ChatListView: View {
             .task { await tryLayout() }
             .task {
                 let env = ProcessInfo.processInfo.environment
+                if env["NYUTAG_UI_DELETE_ACCOUNT"] != nil {
+                    // Свежая учётка без чатов: ждём только вход.
+                    while session.phase != .signedIn { try? await Task.sleep(for: .milliseconds(300)) }
+                    menu = true
+                    return
+                }
                 guard env["NYUTAG_UI_INVITE"] != nil || env["NYUTAG_UI_ABOUT"] != nil || env["NYUTAG_UI_DONATE"] != nil else { return }
                 while session.lines.isEmpty { try? await Task.sleep(for: .milliseconds(300)) }
                 menu = true
@@ -446,6 +452,7 @@ struct MeMenu: View {
     @Environment(AppSession.self) private var session
     @Environment(\.dismiss) private var dismiss
     @State private var askSignOut = false
+    @State private var deletingAccount = false
     @State private var inviting = false
     @State private var choosingWallpaper = false
     @State private var donating = false
@@ -514,6 +521,8 @@ struct MeMenu: View {
                     Button(words(.signOut)) { askSignOut = true }
                         .foregroundStyle(Theme.ink)
                         .accessibilityIdentifier("sign-out")
+                    Button(words(.deleteAccount), role: .destructive) { deletingAccount = true }
+                        .accessibilityIdentifier("delete-account")
                 }
                 Section {
                     VStack(spacing: 8) {
@@ -533,9 +542,11 @@ struct MeMenu: View {
             .sheet(isPresented: $inviting) { InviteView() }
             .sheet(isPresented: $choosingWallpaper) { WallpaperPicker() }
             .sheet(isPresented: $donating) { DonateView() }
+            .sheet(isPresented: $deletingAccount) { DeleteAccountView() }
             #if DEBUG
             .onAppear {
                 if ProcessInfo.processInfo.environment["NYUTAG_UI_INVITE"] != nil { inviting = true }
+                if ProcessInfo.processInfo.environment["NYUTAG_UI_DELETE_ACCOUNT"] != nil { deletingAccount = true }
                 if ProcessInfo.processInfo.environment["NYUTAG_UI_DONATE"] != nil { donating = true }
                 if ProcessInfo.processInfo.environment["NYUTAG_UI_ABOUT"] != nil { editingProfile = true }
             }
@@ -547,6 +558,82 @@ struct MeMenu: View {
                 }
                 Button(words(.cancel), role: .cancel) {}
             }
+        }
+    }
+}
+
+/// Удаление аккаунта: предупреждение, пароль, красная кнопка. После удаления приложение само уходит на экран входа.
+struct DeleteAccountView: View {
+    @Environment(Words.self) private var words
+    @Environment(AppSession.self) private var session
+    @Environment(\.dismiss) private var dismiss
+    @State private var password = ""
+    @State private var busy = false
+    @State private var failure: String?
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    Text(words(.deleteAccountLead)).foregroundStyle(Theme.ink)
+                    Text(words(.deleteAccountPassword)).font(.footnote).foregroundStyle(Theme.quiet)
+                    SecureField(words(.password), text: $password)
+                        .textContentType(.password)
+                        .padding(16)
+                        .background(Theme.card, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        .accessibilityIdentifier("delete-account-password")
+                    if let failure { FailureNote(text: failure) }
+                    Button {
+                        Task { await deleteAccount() }
+                    } label: {
+                        HStack {
+                            if busy { ProgressView().tint(.white) }
+                            Text(words(.deleteAccount)).font(.headline)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.red)
+                    .disabled(busy || password.isEmpty)
+                    .accessibilityIdentifier("delete-account-confirm")
+                }
+                .padding(20)
+            }
+            .scrollDismissesKeyboard(.interactively)
+            .background(Theme.milk.ignoresSafeArea())
+            .navigationTitle(words(.deleteAccount))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button(words(.cancel)) { dismiss() } }
+            }
+            #if DEBUG
+            // Самопроверка: NYUTAG_UI_DELETE_ACCOUNT=<пароль> — удаляем без касаний (пустое значение только открывает экран).
+            .task {
+                guard let value = ProcessInfo.processInfo.environment["NYUTAG_UI_DELETE_ACCOUNT"], !value.isEmpty else { return }
+                password = value
+                await deleteAccount()
+            }
+            #endif
+        }
+    }
+
+    private func deleteAccount() async {
+        busy = true
+        defer { busy = false }
+        failure = nil
+        do {
+            try await session.deleteAccount(password: password)
+            #if DEBUG
+            print("ui-check: аккаунт удалён, фаза \(session.phase)")
+            #endif
+            dismiss()
+        } catch .wrongPassword {
+            failure = words(.wrongPassword)
+        } catch .noNetwork {
+            failure = words(.noNetwork)
+        } catch {
+            failure = words(.deleteAccountFailed)
         }
     }
 }

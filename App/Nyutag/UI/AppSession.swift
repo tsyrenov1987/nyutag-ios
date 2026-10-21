@@ -21,6 +21,8 @@ final class AppSession {
 
     private(set) var phase: Phase = .launching
     private(set) var lines: [ChatLine] = []
+    /// Блокированные (`m.ignored_user_list`): их реплики не показываем, сервер их события не присылает.
+    private(set) var ignored: Set<String> = []
     /// Сообщества (`m.space`), где мы участники: в список чатов не попадают, живут на своей вкладке.
     private(set) var communities: [ChatLine] = []
     /// Закреплённые чаты и папки.
@@ -126,12 +128,35 @@ final class AppSession {
             try? await account.client.removeVoipPush(token: token, environment: PushDoor.environment)
         }
         try? await keeper.signOut(account)
+        await forgetLocally(account)
+    }
+
+    /// Удалить аккаунт на сервере навсегда (App Store 5.1.1(v)) и стереть всё местное. Сервер просит пароль.
+    func deleteAccount(password: String) async throws(SignInFailure) {
+        guard let account, let keeper else { throw .broken }
+        guard await TunnelHub.shared.waitUntilUp() else { throw .noNetwork }
+        do {
+            try await account.client.deactivate(userID: account.session.userID, password: password)
+        } catch {
+            #if DEBUG
+            print("ui-check: отказ удаления аккаунта: \(error)")
+            #endif
+            throw Self.failure(error)
+        }
+        await stop()
+        try? keeper.forget(userID: account.session.userID)
+        await forgetLocally(account)
+    }
+
+    /// Общий хвост выхода и удаления: стираем всё, что знали об учётке, и уходим на экран входа.
+    private func forgetLocally(_ account: SignedInAccount) async {
         Self.rememberHistory(nil, for: account.session.userID)
         try? await media?.clear()
         media = nil
         heldPassword = nil
         self.account = nil
         lines = []
+        ignored = []
         layout = ChatLayout()
         savedRoom = nil
         autoJoined = []
@@ -326,7 +351,38 @@ final class AppSession {
 
     func feed(_ roomID: String, limit: Int) async -> [FeedItem] {
         guard let account, let me else { return [] }
-        return (try? await ChatFeed.items(roomID: roomID, store: account.store, me: me, limit: limit, decrypt: opener())) ?? []
+        return (try? await ChatFeed.items(roomID: roomID, store: account.store, me: me, limit: limit, ignored: ignored,
+                                          decrypt: opener())) ?? []
+    }
+
+    // MARK: Блокировка и жалоба
+
+    func isBlocked(_ userID: String) -> Bool { ignored.contains(userID) }
+
+    /// Заблокировать или разблокировать: список уходит на сервер и в базу, лента и список чатов перестраиваются.
+    func setBlocked(_ userID: String, _ blocked: Bool) async -> Bool {
+        guard let account, let me else { return false }
+        var users = ignored
+        if blocked { users.insert(userID) } else { users.remove(userID) }
+        guard users != ignored else { return true }
+        do {
+            try await account.client.setIgnoredUsers(users, userID: me, store: account.store)
+        } catch {
+            #if DEBUG
+            print("ui-check: блокировка не записалась: \(error)")
+            #endif
+            return false
+        }
+        ignored = users
+        await refresh()
+        revision += 1
+        return true
+    }
+
+    /// Жалоба администратору сервера на сообщение.
+    func report(_ eventID: String, in roomID: String, reason: String) async -> Bool {
+        guard let account else { return false }
+        return (try? await account.client.report(roomID: roomID, eventID: eventID, reason: reason)) != nil
     }
 
     /// Докачать историю назад. `false` — дальше начало чата (или нет сети).
@@ -1072,7 +1128,8 @@ final class AppSession {
 
     private func refresh() async {
         guard let account, let me else { return }
-        if let fresh = try? await ChatDigest.lines(store: account.store, me: me, decrypt: opener()) {
+        if let list = try? await IgnoredUsers.load(store: account.store), list != ignored { ignored = list }
+        if let fresh = try? await ChatDigest.lines(store: account.store, me: me, ignored: ignored, decrypt: opener()) {
             let chats = fresh.filter { !$0.isSpace }
             let spaces = fresh.filter { $0.isSpace && $0.membership == .join }
             if chats != lines { lines = chats }

@@ -72,11 +72,14 @@ public struct FeedItem: Sendable, Equatable, Identifiable {
 
     /// Своё можно удалить, пока оно не удалено.
     public var canDelete: Bool { isMine && !isNotice && body != .deleted }
+    /// Пожаловаться можно на чужую реплику, которую видно.
+    public var canReport: Bool { !isMine && !isNotice && body != .deleted && body != .locked }
 }
 
 public enum ChatFeed {
     /// Последние `limit` событий комнаты, собранные в ленту: старые первыми.
-    public static func items(roomID: String, store: Store, me: String, limit: Int = 80,
+    /// `ignored` — блокированные: их реплики, реакции и правки в ленту не попадают.
+    public static func items(roomID: String, store: Store, me: String, limit: Int = 80, ignored: Set<String> = [],
                              decrypt: @Sendable (Event, String) async -> Event? = { _, _ in nil }) async throws -> [FeedItem] {
         let members = try await store.state(roomID, type: EventType.member)
         var names: [String: String] = [:]
@@ -87,6 +90,7 @@ public enum ChatFeed {
 
         var opened: [Event] = []
         for event in try await store.events(in: roomID, limit: limit) {
+            if let sender = event.sender, ignored.contains(sender), event.type != EventType.member { continue }
             if event.type == EventType.encrypted, !event.isRedacted, let clear = await decrypt(event, roomID) {
                 opened.append(clear)
             } else {

@@ -58,6 +58,9 @@ APP_INFO = plist(
     + arr("CFBundleURLSchemes", ["nyutag"], "\t\t\t")
     + "\t\t</dict>\n\t</array>\n"
     + arr("BGTaskSchedulerPermittedIdentifiers", [BGTASK])
+    # Экран запуска: лого на синем (цвет и картинка из Assets.xcassets), без сториборда.
+    + "\t<key>UILaunchScreen</key>\n\t<dict>\n\t\t<key>UIColorName</key>\n\t\t<string>LogoBlue</string>\n"
+    + "\t\t<key>UIImageName</key>\n\t\t<string>LogoMark</string>\n\t</dict>\n"
     + arr("UIBackgroundModes", ["remote-notification", "fetch", "voip", "audio"])
     + "\t<key>ITSAppUsesNonExemptEncryption</key>\n\t<false/>\n"
     + "\t<key>NSContactsUsageDescription</key>\n\t<string>Нютаг сверяет номера из книжки с сервером, чтобы показать, кто из знакомых уже здесь. Номера не сохраняются.</string>\n"
@@ -136,6 +139,9 @@ fileref("assets", "Assets.xcassets", "folder.assetcatalog")
 # Иконка в формате Icon Composer (слои юрты и соёмбо на синем); каталог ассетов иконки не держит.
 fileref("appicon", "AppIcon.icon", "folder.iconcomposer.icon")
 fileref("app_plist", "Info.plist", "text.plist.xml")
+# Переводы запросов доступа (контакты, камера, микрофон) на английский: ревьюер и люди с английским телефоном.
+# Бурятского языка в iOS нет, его запросы системы показать не могут.
+fileref("infoplist_strings", "InfoPlist.xcstrings", "text.json.xcstrings")
 fileref("app_ent", "Nyutag.entitlements", "text.plist.entitlements")
 # папка-ссылка: если nyutag-catalogue.txt (в gitignore) нет, в бандл попадает только .example.
 # Не «Resources»: с такой папкой в корне .app CFBundle считает бандл старым и не находит Info.plist.
@@ -173,6 +179,7 @@ b_farvater = bf("farvater", F["farvater"], "FarvaterCore.xcframework", "Framewor
 b_assets = bf("assets", F["assets"], "Assets.xcassets", "Resources")
 b_appicon = bf("appicon", F["appicon"], "AppIcon.icon", "Resources")
 b_res = bf("resources", F["resources"], "Catalogue", "Resources")
+b_infoplist_strings = bf("infoplist_strings", F["infoplist_strings"], "InfoPlist.xcstrings", "Resources")
 b_swift_nse = bf("nse_swift", F["nse_swift"], "NotificationService.swift", "Sources")
 b_pkg_app = add("bf:pkg_app", "NyutagCore in Frameworks", "PBXBuildFile", [("productRef", PROD_APP)])
 b_pkg_nse = add("bf:pkg_nse", "NyutagCore in Frameworks", "PBXBuildFile", [("productRef", PROD_NSE)])
@@ -188,7 +195,7 @@ def phase(name, isa, files, extra=()):
 
 ph_app_src = phase("Sources:app", "PBXSourcesBuildPhase", [b_swift_app, b_swift_content, b_swift_accounts, b_swift_selfcheck, b_swift_pushdoor, b_swift_ringer] + b_tunnel + b_ui)
 ph_app_fw = phase("Frameworks:app", "PBXFrameworksBuildPhase", [b_pkg_app, b_farvater])
-ph_app_res = phase("Resources:app", "PBXResourcesBuildPhase", [b_assets, b_appicon, b_res])
+ph_app_res = phase("Resources:app", "PBXResourcesBuildPhase", [b_assets, b_appicon, b_res, b_infoplist_strings])
 ph_embed = phase("Embed Foundation Extensions", "PBXCopyFilesBuildPhase", [b_embed],
                  [("dstPath", '""'), ("dstSubfolderSpec", "13")])
 ph_nse_src = phase("Sources:nse", "PBXSourcesBuildPhase", [b_swift_nse])
@@ -208,7 +215,7 @@ def group(key, comment, children, path=None, name=None):
 
 g_tunnel = group("tunnel", "Tunnel", [F["tunnel_bridge"], F["tunnel_net"], F["tunnel_hub"]], "Tunnel")
 g_ui = group("ui", "UI", [F["ui:" + n] for n in UI_FILES], "UI")
-g_nyutag = group("nyutag", "Nyutag", [F["app_swift"], F["content_swift"], F["accounts_swift"], F["selfcheck_swift"], F["pushdoor_swift"], F["ringer_swift"], g_tunnel, g_ui, F["assets"], F["appicon"], F["app_plist"], F["app_ent"]], "Nyutag")
+g_nyutag = group("nyutag", "Nyutag", [F["app_swift"], F["content_swift"], F["accounts_swift"], F["selfcheck_swift"], F["pushdoor_swift"], F["ringer_swift"], g_tunnel, g_ui, F["assets"], F["appicon"], F["app_plist"], F["infoplist_strings"], F["app_ent"]], "Nyutag")
 g_nse = group("nse", "NyutagNSE", [F["nse_swift"], F["nse_plist"], F["nse_ent"]], "NyutagNSE")
 g_apps = group("apps", "App", [g_nyutag, g_nse, F["resources"]], "App")
 g_products = group("products", "Products", [APP_PROD, NSE_PROD], None, "Products")

@@ -18,6 +18,7 @@
 		4CA26083586E372AB024C92D /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 957FAC9C79F337FB3129F8BA; };
 		4CFFC3D6CC0AA0B2E133511C /* TunnelHub.swift in Sources */ = {isa = PBXBuildFile; fileRef = 654525201E59E3E1F15C93EF; };
 		4DE1F0B80819530CFAFC06C8 /* AttachmentViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C0E20E50206C907E98DA602; };
+		5DC160E65EF45450B3D7AD7A /* InfoPlist.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 1697868CE6A261B40FB00D8B; };
 		61A078356110FAED60827330 /* NyutagCore in Frameworks */ = {isa = PBXBuildFile; productRef = B13A157FADF36FA882138926; };
 		69A67FA155CFC6A4C5C7EAB0 /* NyutagCore in Frameworks */ = {isa = PBXBuildFile; productRef = DBE052AAC100956CAA6A9101; };
 		6E0365222B4DB6B707FBC353 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200C7D2A4763224FEFC142E4; };
@@ -57,6 +58,7 @@
 /* Begin PBXFileReference section */
 		0E3840AE9448F2FE3B89C794 /* PushDoor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushDoor.swift; sourceTree = "<group>"; };
 		1502CCB7D47595652FF46B79 /* Nyutag.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Nyutag.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		1697868CE6A261B40FB00D8B /* InfoPlist.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = InfoPlist.xcstrings; sourceTree = "<group>"; };
 		1B0FB99619B1581C7120F557 /* NyutagApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NyutagApp.swift; sourceTree = "<group>"; };
 		200C7D2A4763224FEFC142E4 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		22B521192310C1397485934C /* Words.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Words.swift; sourceTree = "<group>"; };
@@ -103,7 +105,7 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		38C0BDA05AD30F3FE486BAFF /* Nyutag */ = {isa = PBXGroup; children = (1B0FB99619B1581C7120F557, 957FAC9C79F337FB3129F8BA, 6D6BA244A5F28C94FA3F310D, 49C8146EB3200663DC3C6545, 0E3840AE9448F2FE3B89C794, 4B0913F9C751812FCEE40A00, 6BF040F219B28325969F342D, E863A4678D3B6FD3D7CE36DE, 61283808392941493A9F30AE, 78C039DB401AB96140C64C8B, 98A33BA1B0E3423CB7853497, 54496AA12ADB629CEE9F1437,); path = Nyutag; sourceTree = "<group>"; };
+		38C0BDA05AD30F3FE486BAFF /* Nyutag */ = {isa = PBXGroup; children = (1B0FB99619B1581C7120F557, 957FAC9C79F337FB3129F8BA, 6D6BA244A5F28C94FA3F310D, 49C8146EB3200663DC3C6545, 0E3840AE9448F2FE3B89C794, 4B0913F9C751812FCEE40A00, 6BF040F219B28325969F342D, E863A4678D3B6FD3D7CE36DE, 61283808392941493A9F30AE, 78C039DB401AB96140C64C8B, 98A33BA1B0E3423CB7853497, 1697868CE6A261B40FB00D8B, 54496AA12ADB629CEE9F1437,); path = Nyutag; sourceTree = "<group>"; };
 		3B8C3D6156120C4FC85A03D2 /* Products */ = {isa = PBXGroup; children = (1502CCB7D47595652FF46B79, FE32DB90CCCD1F549E9B53C5,); name = Products; sourceTree = "<group>"; };
 		6BF040F219B28325969F342D /* Tunnel */ = {isa = PBXGroup; children = (EA190F4DA222CD36B1A34E07, 62844B35EA9637B533456415, 654525201E59E3E1F15C93EF,); path = Tunnel; sourceTree = "<group>"; };
 		6CEACBD73A5CFF977D384A31 /* Main */ = {isa = PBXGroup; children = (6E707754F06C2C435B694330, 4EA385A547BE8D27F90AD3EE, 3B8C3D6156120C4FC85A03D2,); sourceTree = "<group>"; };
@@ -122,7 +124,7 @@
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		A8AAEB42379E8075EA923455 /* Resources:app */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (BC6B8F5E7BB744C2FE916167, 7FD418F98AFBDD2DA78CBEE0, E280326A0910C7A5F4524364,); runOnlyForDeploymentPostprocessing = 0; };
+		A8AAEB42379E8075EA923455 /* Resources:app */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (BC6B8F5E7BB744C2FE916167, 7FD418F98AFBDD2DA78CBEE0, E280326A0910C7A5F4524364, 5DC160E65EF45450B3D7AD7A,); runOnlyForDeploymentPostprocessing = 0; };
 		D1A0F41403ECA2195162FB11 /* Resources:nse */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXResourcesBuildPhase section */
 
@@ -149,7 +151,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = "Нютаг β";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = NO;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				NYUTAG_APP_GROUP = group.chat.nyutag.messenger.dev;
@@ -197,7 +199,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = "Нютаг";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = NO;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				NYUTAG_APP_GROUP = group.chat.nyutag.messenger;

@@ -28,6 +28,8 @@ struct ChatView: View {
     @State private var replyTo: FeedItem?
     @State private var editing: FeedItem?
     @State private var deleting: FeedItem?
+    @State private var reporting: FeedItem?
+    @State private var reportSent = false
     @State private var failed = false
     @State private var typingSentAt: Date?
     @State private var lastMarked: String?
@@ -118,6 +120,8 @@ struct ChatView: View {
         .sheet(isPresented: Binding { scheduling != nil } set: { if !$0 { scheduling = nil } }) { schedulePicker }
         .sheet(isPresented: $showingScheduled) { scheduledList }
         .sheet(isPresented: $showingPartner) { if let partner { PersonCard(userID: partner) } }
+        .sheet(item: $reporting) { item in ReportSheet(item: item, roomID: roomID) { reportSent = true } }
+        .alert(words(.reportSent), isPresented: $reportSent) { Button(words(.done)) {} }
         .sheet(isPresented: $choosingWallpaper) { WallpaperPicker(roomID: roomID) }
         .task {
             partner = await session.partner(in: roomID)
@@ -452,6 +456,8 @@ struct ChatView: View {
             run { await session.toggleReaction(key, on: item, in: roomID) }
         case .open:
             open(item)
+        case .report:
+            reporting = item
         }
     }
 
@@ -708,10 +714,13 @@ struct ChatView: View {
     private static var actedForScreenshots = false
 
     private func actForScreenshots(_ step: String) {
-        guard !Self.actedForScreenshots, let target = items.last(where: \.canEdit) else { return }
-        Self.actedForScreenshots = true
+        guard !Self.actedForScreenshots else { return }
         let (verb, rest) = (step.prefix { $0 != ":" }, step.drop { $0 != ":" }.dropFirst())
-        print("ui-check: действие \(verb) над \(target.id.prefix(8))…")
+        // report/block/unblock — над чужой репликой, остальное — над своей.
+        let foreign = ["report", "block", "unblock"].contains(verb)
+        guard let target = items.last(where: { foreign ? $0.canReport : $0.canEdit }) else { return }
+        Self.actedForScreenshots = true
+        print("ui-check: действие \(verb) над \(target.id.prefix(8))… от \(target.sender), в ленте \(items.count)")
         switch verb {
         case "react": act(.react(String(rest)), on: target)
         case "edit":
@@ -719,6 +728,15 @@ struct ChatView: View {
             draft = String(rest)
             sendDraft()
         case "delete": run { await session.delete(target.id, in: roomID) }
+        case "report": run { await session.report(target.id, in: roomID, reason: String(rest)) }
+        case "block", "unblock":
+            // «unblock:@кто:сервер» — конкретный человек, без него — автор последней чужой реплики.
+            let who = rest.isEmpty ? target.sender : String(rest)
+            run {
+                let done = await session.setBlocked(who, verb == "block")
+                print("ui-check: блок \(who) \(session.isBlocked(who)), в ленте \(items.count)")
+                return done
+            }
         default: break
         }
     }
@@ -748,7 +766,7 @@ struct ChatView: View {
 
 /// Одна строка ленты: плашка или пузырь со своей стороны.
 struct FeedRow: View {
-    enum Action { case reply, edit, delete, react(String), open }
+    enum Action { case reply, edit, delete, react(String), open, report }
 
     /// Быстрые реакции в меню, по порядку.
     static let quick = ["👍", "❤️", "😂", "😮", "😢", "🙏"]
@@ -796,6 +814,9 @@ struct FeedRow: View {
         }
         if item.canDelete {
             Button(words(.deleteAction), systemImage: "trash", role: .destructive) { perform(.delete) }
+        }
+        if item.canReport {
+            Button(words(.reportAction), systemImage: "exclamationmark.bubble", role: .destructive) { perform(.report) }
         }
     }
 }
@@ -1029,5 +1050,63 @@ enum NoticeText {
         case .roomTopic(let topic, _): words(.noticeTopic, topic)
         case .encryptionOn: words(.noticeEncrypted)
         }
+    }
+}
+
+/// Жалоба администратору на чужую реплику, с кнопкой «пожаловаться и заблокировать» автора.
+struct ReportSheet: View {
+    @Environment(Words.self) private var words
+    @Environment(AppSession.self) private var session
+    @Environment(\.dismiss) private var dismiss
+    let item: FeedItem
+    let roomID: String
+    let onSent: () -> Void
+    @State private var reason = ""
+    @State private var busy = false
+    @State private var failed = false
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    Text(words(.reportLead)).foregroundStyle(Theme.ink)
+                    TextField(words(.reportReason), text: $reason, axis: .vertical)
+                        .lineLimit(3...6)
+                        .padding(16)
+                        .background(Theme.card, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        .accessibilityIdentifier("report-reason")
+                    BigButton(title: words(.send), busy: busy, enabled: !busy, id: "report-send") {
+                        Task { await send(block: false) }
+                    }
+                    Button(words(.reportAndBlock), role: .destructive) { Task { await send(block: true) } }
+                        .font(.callout.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .disabled(busy)
+                        .accessibilityIdentifier("report-block")
+                }
+                .padding(20)
+            }
+            .scrollDismissesKeyboard(.interactively)
+            .background(Theme.milk.ignoresSafeArea())
+            .navigationTitle(words(.reportTitle))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button(words(.cancel)) { dismiss() } }
+            }
+            .alert(words(.cantDo), isPresented: $failed) { Button(words(.done)) {} }
+        }
+    }
+
+    private func send(block: Bool) async {
+        busy = true
+        defer { busy = false }
+        let text = reason.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard await session.report(item.id, in: roomID, reason: text.isEmpty ? words(.reportAction) : text) else {
+            failed = true
+            return
+        }
+        if block { _ = await session.setBlocked(item.sender, true) }
+        dismiss()
+        onSent()
     }
 }

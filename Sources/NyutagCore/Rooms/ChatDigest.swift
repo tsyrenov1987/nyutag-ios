@@ -33,11 +33,12 @@ public enum ChatDigest {
     static let lookback = 300
 
     /// Все комнаты, кроме покинутых: приглашения сверху, дальше по времени последнего события.
-    public static func lines(store: Store, me: String,
+    /// `ignored` — блокированные: их реплики не становятся последней строкой чата.
+    public static func lines(store: Store, me: String, ignored: Set<String> = [],
                              decrypt: @Sendable (Event, String) async -> Event? = { _, _ in nil }) async throws -> [ChatLine] {
         var lines: [ChatLine] = []
         for record in try await store.rooms() where record.membership != .leave {
-            lines.append(try await line(for: record, store: store, me: me, decrypt: decrypt))
+            lines.append(try await line(for: record, store: store, me: me, ignored: ignored, decrypt: decrypt))
         }
         return lines.sorted { a, b in
             if (a.membership == .invite) != (b.membership == .invite) { return a.membership == .invite }
@@ -46,7 +47,7 @@ public enum ChatDigest {
         }
     }
 
-    static func line(for record: RoomRecord, store: Store, me: String,
+    static func line(for record: RoomRecord, store: Store, me: String, ignored: Set<String> = [],
                      decrypt: @Sendable (Event, String) async -> Event?) async throws -> ChatLine {
         let members = try await store.state(record.id, type: EventType.member)
         var names: [String: String] = [:]
@@ -66,6 +67,7 @@ public enum ChatDigest {
                 continue
             }
             if event.isRedacted || event.eventID.map(removed.contains) == true { continue }
+            if let sender = event.sender, ignored.contains(sender) { continue }
             var shown = event
             var kind: PushPreview.Kind
             if event.type == EventType.encrypted {

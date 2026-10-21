@@ -81,6 +81,7 @@ public enum EventType {
     public static let direct = "m.direct"
     public static let pushRules = "m.push_rules"
     public static let fullyRead = "m.fully_read"
+    public static let ignoredUsers = "m.ignored_user_list"
 
     // Свои типы Нютага; форматы общие с Android-клиентом.
     public static let chatLayout = "chat.nyutag.chat_layout"

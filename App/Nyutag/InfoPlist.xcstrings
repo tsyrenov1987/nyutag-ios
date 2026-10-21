@@ -1,0 +1,57 @@
+{
+  "sourceLanguage": "ru",
+  "strings": {
+    "NSContactsUsageDescription": {
+      "extractionState": "manual",
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Нютаг сверяет номера из книжки с сервером, чтобы показать, кто из знакомых уже здесь. Номера не сохраняются."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nyutag checks the numbers in your address book against the server to show which of your contacts are already here. The numbers are not stored."
+          }
+        }
+      }
+    },
+    "NSCameraUsageDescription": {
+      "extractionState": "manual",
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Камера нужна для видеозвонков: картинка уходит собеседнику зашифрованной."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The camera is used for video calls. The picture goes to the other person encrypted."
+          }
+        }
+      }
+    },
+    "NSMicrophoneUsageDescription": {
+      "extractionState": "manual",
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Микрофон нужен для звонков: голос уходит собеседнику зашифрованным."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The microphone is used for calls. Your voice goes to the other person encrypted."
+          }
+        }
+      }
+    }
+  },
+  "version": "1.0"
+}

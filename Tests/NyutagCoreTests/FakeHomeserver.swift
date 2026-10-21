@@ -28,6 +28,10 @@ final class FakeHomeserver: @unchecked Sendable {
     /// Account data: пользователь → тип → содержимое.
     private var accountData: [String: [String: JSONValue]] = [:]
     private var nextEvent = 0
+    /// Удалённые аккаунты и жалобы на события.
+    private(set) var deactivated: Set<String> = []
+    private(set) var erased = false
+    private(set) var reports: [(user: String, roomID: String, eventID: String, reason: String, score: Int)] = []
     /// Ключи кросс-подписи: пользователь → usage → объект.
     private var crossSigning: [String: [String: JSONValue]] = [:]
     /// Требовать подтверждение паролем для `/keys/device_signing/upload`.
@@ -127,6 +131,19 @@ final class FakeHomeserver: @unchecked Sendable {
                 return (200, ["user_id": .string(who.user), "device_id": .string(who.device)])
             case ("POST", ["logout"]):
                 tokens[token] = nil
+                return (200, [:])
+            case ("POST", ["account", "deactivate"]):
+                // Подтверждение паролем, как у настоящего сервера.
+                guard let password = passwords[who.user], body?["auth", "password"]?.string == password,
+                      body?["auth", "session"]?.string == "uia-deactivate" else {
+                    return (401, ["flows": [["stages": ["m.login.password"]]], "params": [:], "session": "uia-deactivate"])
+                }
+                deactivated.insert(who.user)
+                erased = body?["erase"]?.bool == true
+                for (key, value) in tokens where value.user == who.user { tokens[key] = nil }
+                return (200, ["id_server_unbind_result": "no-support"])
+            case ("POST", let p) where p.count == 4 && p[0] == "rooms" && p[2] == "report":
+                reports.append((who.user, p[1], p[3], body?["reason"]?.string ?? "", body?["score"]?.int ?? 0))
                 return (200, [:])
             case ("POST", ["pushers", "set"]):
                 guard let appID = body?["app_id"]?.string, let pushKey = body?["pushkey"]?.string else {

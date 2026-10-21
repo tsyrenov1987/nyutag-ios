@@ -191,6 +191,35 @@ extension Phrase {
     static let cancel = Phrase(bxr: "Болюулха", ru: "Отмена", en: "Cancel")
     static let done = Phrase(bxr: "Бэлэн", ru: "Готово", en: "Done")
 
+    // Удаление аккаунта (App Store 5.1.1(v)); бурятский не сверен с носителем
+    static let deleteAccount = Phrase(bxr: "Аккаунт усадхаха", ru: "Удалить аккаунт", en: "Delete account")
+    static let deleteAccountLead = Phrase(
+        bxr: "Аккаунт, профиль, шифрлэлгын түлхюурнүүд сервер дээрэ хэтэдээ усадхагдаха. Бусад хүнүүдэй чадуудта танай бэшэгүүд үлэхэ. Аккаунтые һөөргэнь бусааха аргагүй.",
+        ru: "Аккаунт, профиль и ключи шифрования будут удалены на сервере навсегда. Ваши сообщения в чатах других людей останутся у них. Восстановить аккаунт нельзя.",
+        en: "Your account, profile and encryption keys will be deleted from the server for good. Messages you sent to other people stay with them. This cannot be undone.")
+    static let deleteAccountPassword = Phrase(bxr: "Баталхын тула нюуса үгэеэ оруулагты",
+                                              ru: "Введите пароль, чтобы подтвердить", en: "Enter your password to confirm")
+    static let deleteAccountFailed = Phrase(bxr: "Аккаунт усадхагдабагүй. Нюуса үгэеэ болон холбоогоо шалгагты.",
+                                            ru: "Не удалось удалить аккаунт. Проверьте пароль и связь.",
+                                            en: "Could not delete the account. Check the password and the connection.")
+
+    // Блокировка и жалоба (App Store 1.2); бурятский не сверен с носителем
+    static let block = Phrase(bxr: "Хориглохо", ru: "Заблокировать", en: "Block")
+    static let unblock = Phrase(bxr: "Хоригыень болюулха", ru: "Разблокировать", en: "Unblock")
+    static let blocked = Phrase(bxr: "Хориглогдоһон", ru: "Заблокирован", en: "Blocked")
+    static let blockAsk = Phrase(bxr: "Энэ хүниие хориглохо гүт? Тэрэнэй бэшэгүүд таанадта ерэхэеэ болихо.",
+                                 ru: "Заблокировать этого человека? Его сообщения перестанут приходить.",
+                                 en: "Block this person? Their messages will stop reaching you.")
+    static let reportAction = Phrase(bxr: "Гомдол бэшэхэ", ru: "Пожаловаться", en: "Report")
+    static let reportTitle = Phrase(bxr: "Бэшэг тухай гомдол", ru: "Жалоба на сообщение", en: "Report message")
+    static let reportLead = Phrase(bxr: "Юун буруу бэ гэжэ бэшэгты. Гомдолые Нютагай захиргаан абаха.",
+                                   ru: "Опишите, что не так. Жалобу получит администратор Нютага.",
+                                   en: "Tell us what is wrong. The Nyutag administrator will receive the report.")
+    static let reportReason = Phrase(bxr: "Шалтагаан", ru: "Причина", en: "Reason")
+    static let reportAndBlock = Phrase(bxr: "Гомдол бэшээд хориглохо", ru: "Пожаловаться и заблокировать",
+                                       en: "Report and block")
+    static let reportSent = Phrase(bxr: "Гомдол эльгээгдээ", ru: "Жалоба отправлена", en: "Report sent")
+
     // Старая история под прежним ключом
     static let historyLockedTitle = Phrase(bxr: "Хуушан бэшэгүүд хаалтатай", ru: "Старые сообщения закрыты",
                                            en: "Older messages are locked")

@@ -156,6 +156,8 @@ struct PersonCard: View {
     @Environment(\.dismiss) private var dismiss
     let userID: String
     @State private var profile: Profile?
+    @State private var askBlock = false
+    @State private var failed = false
 
     var body: some View {
         NavigationStack {
@@ -165,6 +167,9 @@ struct PersonCard: View {
                         Pillow(seed: userID, title: profile?.displayName ?? ChatDigest.localpart(userID), size: 88)
                         Text(profile?.displayName ?? ChatDigest.localpart(userID)).font(.title2.bold())
                         Text(userID).font(.footnote).foregroundStyle(Theme.quiet).textSelection(.enabled)
+                        if session.isBlocked(userID) {
+                            Label(words(.blocked), systemImage: "hand.raised.fill").font(.footnote).foregroundStyle(Theme.quiet)
+                        }
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 8)
@@ -180,12 +185,29 @@ struct PersonCard: View {
                         }
                     }
                 }
+                if userID != session.me {
+                    Section {
+                        if session.isBlocked(userID) {
+                            Button(words(.unblock)) { Task { failed = !(await session.setBlocked(userID, false)) } }
+                                .foregroundStyle(Theme.ink)
+                                .accessibilityIdentifier("person-unblock")
+                        } else {
+                            Button(words(.block), role: .destructive) { askBlock = true }
+                                .accessibilityIdentifier("person-block")
+                        }
+                    }
+                }
             }
             .scrollContentBackground(.hidden)
             .background(Theme.milk.ignoresSafeArea())
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button(words(.done)) { dismiss() } }
             }
+            .confirmationDialog(words(.blockAsk), isPresented: $askBlock, titleVisibility: .visible) {
+                Button(words(.block), role: .destructive) { Task { failed = !(await session.setBlocked(userID, true)) } }
+                Button(words(.cancel), role: .cancel) {}
+            }
+            .alert(words(.cantDo), isPresented: $failed) { Button(words(.done)) {} }
             .task {
                 profile = await session.profile(of: userID)
                 #if DEBUG
