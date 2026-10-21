@@ -4,6 +4,7 @@
 import Foundation
 import NyutagCore
 import Observation
+import UIKit
 import UserNotifications
 
 @MainActor @Observable
@@ -32,6 +33,8 @@ final class AppSession {
     /// Комната «Избранного», если уже заведена.
     private(set) var savedRoom: String?
     private(set) var me: String?
+    /// Свой аватар (`mxc://…`) из профиля; меняется после загрузки нового.
+    private(set) var myAvatarURL: String?
     /// Чем кончилась попытка открыть историю паролем; `needsRecoveryKey`/`needsOtherDevice` разберёт экран ключей.
     private(set) var history: PasswordUnlockOutcome?
     /// Растёт на каждой синхронизации: открытый чат по нему перечитывает ленту из базы.
@@ -155,6 +158,7 @@ final class AppSession {
         media = nil
         heldPassword = nil
         self.account = nil
+        myAvatarURL = nil
         lines = []
         ignored = []
         layout = ChatLayout()
@@ -659,6 +663,50 @@ final class AppSession {
         }
     }
 
+    /// Свой аватар: квадратный JPEG загружаем на сервер и записываем адрес в профиль; `nil` — убрать аватар.
+    func setAvatar(_ jpeg: Data?) async -> Bool {
+        guard let account, let me else { return false }
+        do {
+            if let jpeg {
+                let mxc = try await account.client.uploadMedia(jpeg, contentType: "image/jpeg", filename: "avatar.jpg")
+                try await account.client.setAvatarURL(userID: me, mxc.description)
+                try? await media?.store(jpeg, for: mxc)
+                myAvatarURL = mxc.description
+            } else {
+                try await account.client.setAvatarURL(userID: me, "")
+                myAvatarURL = nil
+            }
+            #if DEBUG
+            print("ui-check: аватар \(myAvatarURL ?? "убран")")
+            #endif
+            return true
+        } catch {
+            #if DEBUG
+            print("ui-check: аватар не загружен: \(error)")
+            #endif
+            return false
+        }
+    }
+
+    /// Квадратная миниатюра аватара. Размер округляем до трёх ступеней, чтобы кэш не множился.
+    func avatar(_ url: String, pixels: Int) async -> UIImage? {
+        guard let mxc = MXC(url) else { return nil }
+        let side = pixels <= 96 ? 96 : pixels <= 192 ? 192 : 384
+        let key = "avatar:\(url)#\(side)"
+        if let known = ImageMemory.get(key) { return known }
+        guard let media, let data = try? await media.data(mxc, size: (side, side), method: .crop) else { return nil }
+        guard let image = await Task.detached(priority: .userInitiated, operation: { ImageMemory.downsample(data, maxPixels: side) }).value
+        else { return nil }
+        ImageMemory.put(image, key)
+        return image
+    }
+
+    /// Аватар целиком, для показа во весь экран.
+    func avatarFull(_ url: String) async -> UIImage? {
+        guard let mxc = MXC(url), let media, let data = try? await media.data(mxc) else { return nil }
+        return await Task.detached(priority: .userInitiated) { ImageMemory.downsample(data, maxPixels: 2048) }.value
+    }
+
     /// Собеседник личного чата.
     func partner(in roomID: String) async -> String? {
         guard let account, let me else { return nil }
@@ -882,6 +930,10 @@ final class AppSession {
         media = try? MediaCache(client: account.client, directory: caches.appending(path: "media", directoryHint: .isDirectory))
         phase = .signedIn
         await refresh()
+        Task { [weak self] in
+            let profile = try? await account.client.profile(userID: account.session.userID)
+            if let self, me == account.session.userID { myAvatarURL = profile?.avatarURL }
+        }
         do {
             let machine = try await CryptoMachine(client: account.client, store: account.store, session: account.session)
             self.machine = machine

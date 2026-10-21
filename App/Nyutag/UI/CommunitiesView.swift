@@ -11,6 +11,7 @@ struct Community: Hashable, Identifiable {
     var topic: String?
     var members: Int?
     var joinRule: String?
+    var avatarURL: String?
 
     init(_ room: PublicRoom) {
         id = room.roomID
@@ -18,11 +19,13 @@ struct Community: Hashable, Identifiable {
         topic = room.topic
         members = room.numJoinedMembers
         joinRule = room.joinRule
+        avatarURL = room.avatarURL?.description
     }
 
     init(_ line: ChatLine) {
         id = line.id
         name = line.title
+        avatarURL = line.avatarURL
     }
 
     var isClosed: Bool { joinRule == "knock" }
@@ -141,7 +144,8 @@ struct CommunityRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Pillow(seed: community.id, title: community.name.isEmpty ? "·" : community.name, size: 44)
+            Pillow(seed: community.id, title: community.name.isEmpty ? "·" : community.name, size: 44,
+                   avatar: community.avatarURL)
             VStack(alignment: .leading, spacing: 2) {
                 Text(community.name.isEmpty ? words(.communities) : community.name)
                     .font(.headline).foregroundStyle(Theme.ink).lineLimit(1)
@@ -177,7 +181,8 @@ struct CommunityView: View {
         List {
             Section {
                 VStack(spacing: 10) {
-                    Pillow(seed: community.id, title: community.name.isEmpty ? "·" : community.name, size: 76)
+                    Pillow(seed: community.id, title: community.name.isEmpty ? "·" : community.name, size: 76,
+                           avatar: community.avatarURL)
                     Text(community.name).font(.title2.bold()).foregroundStyle(Theme.ink).multilineTextAlignment(.center)
                     if let topic = community.topic, !topic.isEmpty {
                         Text(topic).font(.subheadline).foregroundStyle(Theme.quiet).multilineTextAlignment(.center)
@@ -210,7 +215,8 @@ struct CommunityView: View {
                 ForEach(groups ?? [], id: \.roomID) { group in
                     Button { open(group.roomID) } label: {
                         HStack(spacing: 12) {
-                            Pillow(seed: group.roomID, title: group.name ?? "·", size: 40)
+                            Pillow(seed: group.roomID, title: group.name ?? "·", size: 40,
+                                   avatar: group.avatarURL?.description)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(group.name ?? words(.emptyChat)).foregroundStyle(Theme.ink).lineLimit(1)
                                 Text(words(.communityMembers, String(group.numJoinedMembers)))

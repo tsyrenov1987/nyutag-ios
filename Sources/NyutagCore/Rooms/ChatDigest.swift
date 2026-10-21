@@ -114,12 +114,21 @@ public enum ChatDigest {
             title = others.prefix(3).map(name(of:)).joined(separator: ", ")
         }
 
+        // Картинка: у комнаты своя, иначе у личного чата — аватар собеседника из его записи участника.
+        var avatarURL = record.avatarURL
+        if avatarURL == nil {
+            let others = members.filter { member in
+                member.stateKey != me && ["join", "invite"].contains(member.content["membership"]?.string ?? "")
+            }
+            if others.count == 1 { avatarURL = others[0].content["avatar_url"]?.string }
+        }
+
         let sender = lastEvent?.sender
         var delivery = ChatLine.Delivery.none
         if let lastEvent, sender == me {
             delivery = try await isRead(lastEvent, roomID: record.id, members: members, me: me, store: store) ? .read : .sent
         }
-        return ChatLine(id: record.id, title: title, avatarURL: record.avatarURL, membership: record.membership,
+        return ChatLine(id: record.id, title: title, avatarURL: avatarURL, membership: record.membership,
                         isDirect: record.isDirect, isEncrypted: record.isEncrypted, isSpace: record.isSpace,
                         last: last, lastSenderName: sender.map(name(of:)), lastIsMine: sender == me, delivery: delivery,
                         lastTS: lastEvent?.originServerTS ?? record.latestTS,

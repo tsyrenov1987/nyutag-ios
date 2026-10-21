@@ -50,21 +50,28 @@ struct NyutagLogo: View {
     }
 }
 
-/// Аватар: картинка (позже, из медиа) или первая буква на цвете из пятёрки.
+/// Аватар: картинка из медиа (`avatar` — адрес mxc://) поверх первой буквы на цвете из пятёрки.
+/// Пока картинка грузится или если её нет, видна буква.
 struct Pillow: View {
     let seed: String
     let title: String
     var size: CGFloat = 52
+    var avatar: String? = nil
 
     var body: some View {
         let tint = Theme.avatarTints[Int(Self.stableHash(seed) % UInt32(Theme.avatarTints.count))]
-        RoundedRectangle(cornerRadius: size * 0.34, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: size * 0.34, style: .continuous)
+        shape
             .fill(tint.gradient)
             .overlay {
                 Text(Self.initial(title))
                     .font(.system(size: size * 0.42, weight: .semibold, design: .rounded))
                     .foregroundStyle(.white)
             }
+            .overlay {
+                if let avatar { AvatarPicture(url: avatar, size: size) }
+            }
+            .clipShape(shape)
             .frame(width: size, height: size)
             .accessibilityHidden(true)
     }
@@ -77,5 +84,24 @@ struct Pillow: View {
     /// FNV-1a: `hashValue` у строк меняется между запусками, а цвет должен быть постоянным.
     static func stableHash(_ text: String) -> UInt32 {
         text.utf8.reduce(2_166_136_261) { ($0 ^ UInt32($1)) &* 16_777_619 }
+    }
+}
+
+/// Квадратная миниатюра аватара из кэша медиа; не загрузилась — пусто, снизу остаётся буква.
+struct AvatarPicture: View {
+    @Environment(AppSession.self) private var session
+    let url: String
+    let size: CGFloat
+    @State private var image: UIImage?
+
+    var body: some View {
+        ZStack {
+            if let image {
+                Image(uiImage: image).resizable().scaledToFill()
+            }
+        }
+        .frame(width: size, height: size)
+        .clipped()
+        .task(id: url) { image = await session.avatar(url, pixels: Int(size * 3)) }
     }
 }

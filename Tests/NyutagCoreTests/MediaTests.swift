@@ -19,6 +19,8 @@ struct MediaTests {
         #expect(full.count == 64)
         #expect(full != MediaCache.key(mxc, size: (96, 96)))
         #expect(MediaCache.key(mxc, size: (96, 96)) != MediaCache.key(mxc, size: (320, 320)))
+        #expect(MediaCache.key(mxc, size: (96, 96), method: .crop) != MediaCache.key(mxc, size: (96, 96)))
+        #expect(MediaCache.key(mxc, size: nil, method: .crop) == full)
     }
 
     @Test func cacheEvictsOldestOverLimit() async throws {

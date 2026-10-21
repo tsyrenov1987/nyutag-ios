@@ -186,7 +186,7 @@ struct ChatView: View {
                         if roomID == session.savedRoom {
                             SavedPillow(size: 32)
                         } else {
-                            Pillow(seed: roomID, title: line?.title ?? "·", size: 32)
+                            Pillow(seed: roomID, title: line?.title ?? "·", size: 32, avatar: line?.avatarURL)
                         }
                     }
                         .overlay(alignment: .bottomTrailing) {

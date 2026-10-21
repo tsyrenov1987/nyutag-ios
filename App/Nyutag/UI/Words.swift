@@ -405,6 +405,10 @@ extension Phrase {
     static let inviteRevoke = Phrase(bxr: "Болюулха", ru: "Отозвать", en: "Revoke")
     static let profile = Phrase(bxr: "Профиль", ru: "Профиль", en: "Profile")
     static let profileAbout = Phrase(bxr: "Өөрын тухай", ru: "О себе", en: "About")
+    static let avatarChange = Phrase(bxr: "Фото һэлгэхэ", ru: "Сменить фото", en: "Change photo")
+    static let avatarRemove = Phrase(bxr: "Фото усадхаха", ru: "Убрать фото", en: "Remove photo")
+    static let avatarFailed = Phrase(bxr: "Фото табигдабагүй. Дахин оролдыт.", ru: "Фото не загрузилось. Попробуйте ещё раз.",
+                                     en: "The photo wasn't uploaded. Try again.")
     static let profileAboutPlaceholder = Phrase(bxr: "Өөрынгөө тухай хэдэн үгэ", ru: "Пару слов о себе",
                                                 en: "A few words about yourself")
     static let profileToonto = Phrase(bxr: "Тоонто нютаг", ru: "Тоонто нютаг", en: "Toonto nyutag (homeland)")

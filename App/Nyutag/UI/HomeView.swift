@@ -103,7 +103,8 @@ struct ChatListView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button { menu = true } label: {
-                        Pillow(seed: session.me ?? "", title: ChatDigest.localpart(session.me ?? ""), size: 32)
+                        Pillow(seed: session.me ?? "", title: ChatDigest.localpart(session.me ?? ""), size: 32,
+                               avatar: session.myAvatarURL)
                     }
                     .accessibilityIdentifier("me-menu")
                 }
@@ -150,7 +151,8 @@ struct ChatListView: View {
                     menu = true
                     return
                 }
-                guard env["NYUTAG_UI_INVITE"] != nil || env["NYUTAG_UI_ABOUT"] != nil || env["NYUTAG_UI_DONATE"] != nil else { return }
+                guard env["NYUTAG_UI_INVITE"] != nil || env["NYUTAG_UI_ABOUT"] != nil || env["NYUTAG_UI_DONATE"] != nil
+                        || env["NYUTAG_UI_AVATAR"] != nil else { return }
                 while session.lines.isEmpty { try? await Task.sleep(for: .milliseconds(300)) }
                 menu = true
             }
@@ -248,7 +250,7 @@ struct ChatRow: View {
             if line.id == session.savedRoom {
                 SavedPillow()
             } else {
-                Pillow(seed: line.id, title: line.title.isEmpty ? "·" : line.title)
+                Pillow(seed: line.id, title: line.title.isEmpty ? "·" : line.title, avatar: line.avatarURL)
             }
             VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -467,7 +469,8 @@ struct MeMenu: View {
                         ProfileEditView()
                     } label: {
                         HStack(spacing: 14) {
-                            Pillow(seed: session.me ?? "", title: ChatDigest.localpart(session.me ?? ""), size: 64)
+                            Pillow(seed: session.me ?? "", title: ChatDigest.localpart(session.me ?? ""), size: 64,
+                                   avatar: session.myAvatarURL)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(ChatDigest.localpart(session.me ?? "")).font(.title3.bold())
                                 Text(session.me ?? "").font(.footnote).foregroundStyle(Theme.quiet)
@@ -549,6 +552,7 @@ struct MeMenu: View {
                 if ProcessInfo.processInfo.environment["NYUTAG_UI_DELETE_ACCOUNT"] != nil { deletingAccount = true }
                 if ProcessInfo.processInfo.environment["NYUTAG_UI_DONATE"] != nil { donating = true }
                 if ProcessInfo.processInfo.environment["NYUTAG_UI_ABOUT"] != nil { editingProfile = true }
+                if ProcessInfo.processInfo.environment["NYUTAG_UI_AVATAR"] != nil { editingProfile = true }
             }
             #endif
             .confirmationDialog(words(.signOutAsk), isPresented: $askSignOut, titleVisibility: .visible) {

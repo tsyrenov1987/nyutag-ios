@@ -67,9 +67,11 @@ public actor MediaCache {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     }
 
-    /// Файл целиком или миниатюра (`size` = ширина и высота). Повторные запросы того же ключа ждут первый.
-    public func data(_ mxc: MXC, size: (width: Int, height: Int)? = nil) async throws -> Data {
-        let key = Self.key(mxc, size: size)
+    /// Файл целиком или миниатюра (`size` = ширина и высота; `crop` — вырезать квадрат, как для аватара).
+    /// Повторные запросы того же ключа ждут первый.
+    public func data(_ mxc: MXC, size: (width: Int, height: Int)? = nil,
+                     method: ThumbnailMethod = .scale) async throws -> Data {
+        let key = Self.key(mxc, size: size, method: method)
         let url = directory.appending(path: key)
         if let cached = try? Data(contentsOf: url) {
             try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: url.path)
@@ -79,7 +81,7 @@ public actor MediaCache {
         let client = client
         let task = Task<Data, any Error> {
             if let size {
-                return try await client.thumbnail(mxc, width: size.width, height: size.height)
+                return try await client.thumbnail(mxc, width: size.width, height: size.height, method: method)
             }
             return try await client.downloadMedia(mxc)
         }
@@ -105,9 +107,10 @@ public actor MediaCache {
         for file in try files() { try FileManager.default.removeItem(at: file.url) }
     }
 
-    static func key(_ mxc: MXC, size: (width: Int, height: Int)?) -> String {
+    static func key(_ mxc: MXC, size: (width: Int, height: Int)?, method: ThumbnailMethod = .scale) -> String {
         var source = mxc.description
         if let size { source += "#\(size.width)x\(size.height)" }
+        if size != nil, method == .crop { source += "/crop" }
         return SHA256.hash(data: Data(source.utf8)).map { String(format: "%02x", $0) }.joined()
     }
 

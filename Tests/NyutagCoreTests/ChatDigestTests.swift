@@ -46,6 +46,30 @@ struct ChatDigestTests {
         #expect(line.unread == 2)
     }
 
+    @Test("картинка строки: у комнаты своя, у личного чата без своей — аватар собеседника, в группе — ничья")
+    func avatarFromPartner() async throws {
+        let store = try Store.inMemory()
+        var dm = RoomRecord(id: "!dm", membership: .join)
+        dm.isDirect = true
+        try await store.upsert(dm)
+        var named = RoomRecord(id: "!named", membership: .join)
+        named.avatarURL = "mxc://nyutag.chat/room"
+        try await store.upsert(named)
+        try await store.upsert(RoomRecord(id: "!group", membership: .join))
+        let withPhoto = Event(eventID: "$m-photo", type: EventType.member, sender: arjuna, stateKey: arjuna,
+                              content: ["membership": "join", "displayname": "Арюна", "avatar_url": "mxc://nyutag.chat/arjuna"],
+                              roomID: "!dm")
+        for event in [member(me, "!dm"), withPhoto, member(me, "!named"), member(arjuna, "!named"),
+                      member(me, "!group"), member(arjuna, "!group"), member("@third:nyutag.chat", "!group")] {
+            try await store.setState(event)
+        }
+        let lines = try await ChatDigest.lines(store: store, me: me)
+        let byID = Dictionary(uniqueKeysWithValues: lines.map { ($0.id, $0.avatarURL) })
+        #expect(byID["!dm"] == "mxc://nyutag.chat/arjuna")
+        #expect(byID["!named"] == "mxc://nyutag.chat/room")
+        #expect(byID["!group"] == .some(nil))
+    }
+
     @Test("превью: правка подставляется, удалённая реплика уступает предыдущей")
     func previewEditsAndDeletions() async throws {
         let store = try Store.inMemory()

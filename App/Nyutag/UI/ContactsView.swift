@@ -234,7 +234,7 @@ struct PersonRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Pillow(seed: person.userID, title: person.name, size: 44)
+            Pillow(seed: person.userID, title: person.name, size: 44, avatar: person.avatarURL)
             VStack(alignment: .leading, spacing: 2) {
                 Text(person.name).font(.body.weight(.medium)).foregroundStyle(Theme.ink).lineLimit(1)
                 Text("@" + ChatDigest.localpart(person.userID)).font(.footnote).foregroundStyle(Theme.quiet).lineLimit(1)

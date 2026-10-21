@@ -66,6 +66,23 @@ enum ImageMemory {
         return UIImage(cgImage: image)
     }
 
+    /// Аватар: квадрат по центру снимка, сторона `side`, JPEG. EXIF с геометкой не переносится.
+    nonisolated static func squareJPEG(_ data: Data, side: CGFloat) -> Data? {
+        guard let image = downsample(data, maxPixels: Int(side * 2)) else { return nil }
+        let short = min(image.size.width, image.size.height)
+        guard short > 0 else { return nil }
+        let scale = side / short
+        let drawn = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = true
+        let square = UIGraphicsImageRenderer(size: CGSize(width: side, height: side), format: format).image { _ in
+            image.draw(in: CGRect(x: (side - drawn.width) / 2, y: (side - drawn.height) / 2,
+                                  width: drawn.width, height: drawn.height))
+        }
+        return square.jpegData(compressionQuality: 0.85)
+    }
+
     nonisolated static func pixelSize(_ data: Data) -> (width: Int, height: Int)? {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil),
               let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
