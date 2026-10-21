@@ -20,7 +20,7 @@ public struct SessionVault: Sendable {
     }
 
     /// Связка, общая у приложения и расширения уведомлений (команда 643UT34CF8, см. *.entitlements).
-    public static let shared = SessionVault(accessGroup: "643UT34CF8." + SharedShelf.appGroup)
+    public static let shared = SessionVault(accessGroup: SharedShelf.appGroup.isEmpty ? nil : "643UT34CF8." + SharedShelf.appGroup)
 
     public enum Failure: Error, Equatable {
         case keychain(OSStatus)
@@ -78,7 +78,17 @@ public struct SessionVault: Sendable {
 
 /// Раскладка файлов в общем контейнере: приложение и расширение открывают одну и ту же базу.
 public struct SharedShelf: Sendable {
-    public static let appGroup = "group.chat.nyutag.messenger"
+    /// Группа из Info.plist: у отладочной сборки «Нютаг β» своя, чтобы не делить базу с магазинным Нютагом.
+    /// Пустая строка — сборка без группы (ручная подпись на iPhone): база и связка только у самого приложения.
+    public static let appGroup = Bundle.main.object(forInfoDictionaryKey: "NyutagAppGroup") as? String
+        ?? "group.chat.nyutag.messenger"
+
+    /// Без группы: папка Application Support самого приложения, расширение уведомлений её не видит.
+    public static func own() -> SharedShelf? {
+        guard let url = try? FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask,
+                                                     appropriateFor: nil, create: true) else { return nil }
+        return SharedShelf(root: url)
+    }
 
     public let root: URL
 

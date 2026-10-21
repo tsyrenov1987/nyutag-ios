@@ -4,11 +4,11 @@
 <dict>
 	<key>com.apple.security.application-groups</key>
 	<array>
-		<string>group.chat.nyutag.messenger</string>
+		<string>$(NYUTAG_APP_GROUP)</string>
 	</array>
 	<key>keychain-access-groups</key>
 	<array>
-		<string>$(AppIdentifierPrefix)group.chat.nyutag.messenger</string>
+		<string>$(AppIdentifierPrefix)$(NYUTAG_APP_GROUP)</string>
 	</array>
 </dict>
 </plist>

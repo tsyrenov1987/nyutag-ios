@@ -7,7 +7,8 @@ import NyutagCore
 extension AccountKeeper {
     /// `nil`, если у сборки нет права на группу приложений (ошибка подписи, а не состояние пользователя).
     static func app(tunnel: TunnelHub = .shared) -> AccountKeeper? {
-        guard let shelf = SharedShelf(appGroup: SharedShelf.appGroup) else { return nil }
+        let group = SharedShelf.appGroup
+        guard let shelf = group.isEmpty ? SharedShelf.own() : SharedShelf(appGroup: group) else { return nil }
         return AccountKeeper(vault: .shared, shelf: shelf) { homeserver, accessToken in
             tunnel.makeClient(homeserver: homeserver, accessToken: accessToken)
         }

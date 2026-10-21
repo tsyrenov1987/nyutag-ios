@@ -114,13 +114,14 @@
 				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = App/Nyutag/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = "Нютаг";
+				INFOPLIST_KEY_CFBundleDisplayName = "Нютаг β";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				PRODUCT_BUNDLE_IDENTIFIER = chat.nyutag.messenger;
+				NYUTAG_APP_GROUP = group.chat.nyutag.messenger.dev;
+				PRODUCT_BUNDLE_IDENTIFIER = chat.nyutag.messenger.dev;
 				PRODUCT_NAME = Nyutag;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 			};
@@ -167,6 +168,7 @@
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				NYUTAG_APP_GROUP = group.chat.nyutag.messenger;
 				PRODUCT_BUNDLE_IDENTIFIER = chat.nyutag.messenger;
 				PRODUCT_NAME = Nyutag;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -182,6 +184,7 @@
 				INFOPLIST_FILE = App/NyutagNSE/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Нютаг";
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
+				NYUTAG_APP_GROUP = group.chat.nyutag.messenger;
 				PRODUCT_BUNDLE_IDENTIFIER = chat.nyutag.messenger.nse;
 				PRODUCT_NAME = NyutagNSE;
 				SKIP_INSTALL = YES;
@@ -197,7 +200,8 @@
 				INFOPLIST_FILE = App/NyutagNSE/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Нютаг";
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
-				PRODUCT_BUNDLE_IDENTIFIER = chat.nyutag.messenger.nse;
+				NYUTAG_APP_GROUP = group.chat.nyutag.messenger.dev;
+				PRODUCT_BUNDLE_IDENTIFIER = chat.nyutag.messenger.dev.nse;
 				PRODUCT_NAME = NyutagNSE;
 				SKIP_INSTALL = YES;
 			};

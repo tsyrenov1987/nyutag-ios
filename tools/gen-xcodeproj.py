@@ -60,6 +60,7 @@ APP_INFO = plist(
     + arr("BGTaskSchedulerPermittedIdentifiers", [BGTASK])
     + arr("UIBackgroundModes", ["remote-notification", "fetch", "voip", "audio"])
     + "\t<key>ITSAppUsesNonExemptEncryption</key>\n\t<false/>\n"
+    + "\t<key>NyutagAppGroup</key>\n\t<string>$(NYUTAG_APP_GROUP)</string>\n"
     # Ядро подписано нашим CA, которого нет в системных корнях. Без исключения ATS после делегата
     # повторно проверяет цепочку по системе и рвёт TLS (-9802, MissingIntermediate). Исключение снимает
     # только эту системную проверку для одного имени; доверие решает CertificateTrust (только наш якорь).
@@ -72,6 +73,7 @@ APP_INFO = plist(
 )
 
 NSE_INFO = plist(
+    "\t<key>NyutagAppGroup</key>\n\t<string>$(NYUTAG_APP_GROUP)</string>\n"
     "\t<key>NSExtension</key>\n\t<dict>\n"
     "\t\t<key>NSExtensionPointIdentifier</key>\n\t\t<string>com.apple.usernotifications.service</string>\n"
     "\t\t<key>NSExtensionPrincipalClass</key>\n\t\t<string>$(PRODUCT_MODULE_NAME).NotificationService</string>\n"
@@ -80,8 +82,8 @@ NSE_INFO = plist(
 
 
 def entitlements(extra):
-    return plist(arr("com.apple.security.application-groups", [GROUP]) + extra
-                 + arr("keychain-access-groups", ["$(AppIdentifierPrefix)" + GROUP]))
+    return plist(arr("com.apple.security.application-groups", ["$(NYUTAG_APP_GROUP)"]) + extra
+                 + arr("keychain-access-groups", ["$(AppIdentifierPrefix)$(NYUTAG_APP_GROUP)"]))
 
 
 APP_ENT = entitlements("\t<key>aps-environment</key>\n\t<string>development</string>\n")
@@ -250,8 +252,15 @@ def cfglist(key, kind, name, ids):
 
 
 cl_proj = cfglist("proj", "PBXProject", "Nyutag", [cfg("proj", "Debug", PROJ_DEBUG), cfg("proj", "Release", PROJ_RELEASE)])
-cl_app = cfglist("app", "PBXNativeTarget", "Nyutag", [cfg("app", "Debug", APP_S), cfg("app", "Release", APP_S)])
-cl_nse = cfglist("nse", "PBXNativeTarget", "NyutagNSE", [cfg("nse", "Debug", NSE_S), cfg("nse", "Release", NSE_S)])
+# Отладочная сборка — отдельное приложение «Нютаг β» со своей группой: на iPhone она живёт рядом
+# с магазинным Нютагом и не трогает его базу и связку ключей.
+APP_DEBUG = dict(APP_S, PRODUCT_BUNDLE_IDENTIFIER=APP_ID + ".dev", NYUTAG_APP_GROUP=GROUP + ".dev",
+                 INFOPLIST_KEY_CFBundleDisplayName="Нютаг β")
+NSE_DEBUG = dict(NSE_S, PRODUCT_BUNDLE_IDENTIFIER=APP_ID + ".dev.nse", NYUTAG_APP_GROUP=GROUP + ".dev")
+APP_RELEASE = dict(APP_S, NYUTAG_APP_GROUP=GROUP)
+NSE_RELEASE = dict(NSE_S, NYUTAG_APP_GROUP=GROUP)
+cl_app = cfglist("app", "PBXNativeTarget", "Nyutag", [cfg("app", "Debug", APP_DEBUG), cfg("app", "Release", APP_RELEASE)])
+cl_nse = cfglist("nse", "PBXNativeTarget", "NyutagNSE", [cfg("nse", "Debug", NSE_DEBUG), cfg("nse", "Release", NSE_RELEASE)])
 
 T_APP, T_NSE, PROJECT = uid("target:app"), uid("target:nse"), uid("project")
 proxy = add("proxy:nse", "PBXContainerItemProxy", "PBXContainerItemProxy",
