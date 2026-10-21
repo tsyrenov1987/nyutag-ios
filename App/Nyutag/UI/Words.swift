@@ -306,4 +306,15 @@ extension Phrase {
                                     en: "No chats in this folder yet. Long-press a chat and choose “Add to folder”.")
     static let save = Phrase(bxr: "Хадагалха", ru: "Сохранить", en: "Save")
     static let close = Phrase(bxr: "Хааха", ru: "Закрыть", en: "Close")
+    static let autoDelete = Phrase(bxr: "Бэшэгүүдые автоматаар усадхаха", ru: "Автоудаление сообщений",
+                                   en: "Auto-delete messages")
+    static let autoDeleteHint = Phrase(bxr: "Энэ чат соохи шэнэ бэшэгүүд шэлэгдэһэн сагай һүүлээр бүгэдэдэ усадхагдаха.",
+                                       ru: "Новые сообщения в этом чате удалятся у всех через выбранное время.",
+                                       en: "New messages in this chat will be deleted for everyone after the chosen time.")
+    static let autoDeleteOff = Phrase(bxr: "Үгы", ru: "Выкл.", en: "Off")
+    static let autoDeleteDay = Phrase(bxr: "1 үдэр", ru: "1 день", en: "1 day")
+    static let autoDeleteWeek = Phrase(bxr: "7 хоног", ru: "1 неделя", en: "1 week")
+    static let autoDeleteMonth = Phrase(bxr: "1 һара", ru: "1 месяц", en: "1 month")
+    static let autoDeleteError = Phrase(bxr: "Таймер хубилгажа шадабагүй. Дахин оролдогты.",
+                                        ru: "Не удалось изменить таймер. Попробуйте ещё раз.", en: "Couldn’t change the timer. Try again.")
 }

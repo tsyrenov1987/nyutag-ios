@@ -337,6 +337,27 @@ final class AppSession {
         (try? await account?.client.redact(roomID: roomID, eventID: eventID)) != nil
     }
 
+    /// Таймер автоудаления чата, как его видит база после последнего /sync.
+    func autoDelete(_ roomID: String) async -> AutoDelete {
+        guard let account else { return AutoDelete() }
+        return (try? await AutoDelete.load(roomID: roomID, store: account.store)) ?? AutoDelete()
+    }
+
+    /// Новый таймер с этого момента; `nil` — сервер не принял (например, не хватает прав в группе).
+    func setAutoDelete(_ ttl: Int, in roomID: String) async -> AutoDelete? {
+        guard let account else { return nil }
+        let rule = AutoDelete.starting(ttl)
+        do {
+            _ = try await account.client.setState(roomID: roomID, type: EventType.autodelete, content: rule.json)
+            return rule
+        } catch {
+            #if DEBUG
+            print("ui-check: таймер не записан: \(error)")
+            #endif
+            return nil
+        }
+    }
+
     /// Реакция: нашей с таким ключом ещё нет — ставим, есть — снимаем.
     func toggleReaction(_ key: String, on item: FeedItem, in roomID: String) async -> Bool {
         if let mine = item.reactions.first(where: { $0.key == key })?.myEventID { return await delete(mine, in: roomID) }

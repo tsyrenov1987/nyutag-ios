@@ -32,6 +32,12 @@ struct ChatView: View {
     @State private var photoItem: PhotosPickerItem?
     @State private var previewURL: URL?
     @State private var openingID: String?
+    /// Автоудаление: правило из базы, а пока сервер не прислал наше новое — то, что мы поставили.
+    @State private var rule = AutoDelete()
+    @State private var settingRule: AutoDelete?
+    @State private var ruleFailed = false
+    /// Свои истёкшие, которые уже попросили сервер удалить.
+    @State private var tidied: Set<String> = []
     @FocusState private var typing: Bool
 
     struct Outgoing: Identifiable, Equatable {
@@ -91,6 +97,7 @@ struct ChatView: View {
             Button(words(.cancel), role: .cancel) {}
         }
         .alert(words(.cantDo), isPresented: $failed) { Button(words(.done)) {} }
+        .alert(words(.autoDeleteError), isPresented: $ruleFailed) { Button(words(.done)) {} }
         .photosPicker(isPresented: $pickingPhoto, selection: $photoItem, matching: .images)
         .fileImporter(isPresented: $pickingFile, allowedContentTypes: [.item]) { result in
             if case .success(let url) = result { Task { await attachFile(url) } }
@@ -125,10 +132,34 @@ struct ChatView: View {
                 }
             }
             ToolbarItem(placement: .topBarTrailing) {
-                Pillow(seed: roomID, title: line?.title ?? "·", size: 32)
+                Menu {
+                    Picker(selection: Binding { rule.choice } set: { setRule($0) }) {
+                        ForEach(AutoDelete.choices, id: \.self) { Text(ruleName($0)).tag($0) }
+                    } label: {
+                        Label(words(.autoDelete), systemImage: "timer")
+                        Text(rule.isOn ? ruleName(rule.choice) : words(.autoDeleteHint))
+                    }
+                    .pickerStyle(.menu)
+                } label: {
+                    Pillow(seed: roomID, title: line?.title ?? "·", size: 32)
+                        .overlay(alignment: .bottomTrailing) {
+                            if rule.isOn {
+                                Image(systemName: "timer").font(.system(size: 10, weight: .bold))
+                                    .foregroundStyle(Theme.onGold)
+                                    .padding(2).background(Theme.gold, in: Circle())
+                            }
+                        }
+                }
+                .accessibilityIdentifier("chat-menu")
             }
         }
         .task(id: roomID) { callKind = await session.callKind(roomID) }
+        .task(id: rule.nextExpiry(items)) {
+            // Ближайшая реплика истекает — пересобрать ленту в этот момент.
+            guard let at = rule.nextExpiry(items) else { return }
+            try? await Task.sleep(for: .seconds(max(1, at.timeIntervalSinceNow + 0.5)))
+            if !Task.isCancelled { await reload() }
+        }
         .task(id: session.revision) {
             await reload()
             #if DEBUG
@@ -219,14 +250,49 @@ struct ChatView: View {
     // MARK: Действия
 
     private func reload() async {
-        let fresh = await session.feed(roomID, limit: limit)
+        let stored = await session.autoDelete(roomID)
+        if stored == settingRule { settingRule = nil }
+        let current = settingRule ?? stored
+        if current != rule { rule = current }
+        let all = await session.feed(roomID, limit: limit)
+        let fresh = current.visible(all)
         if fresh != items { items = fresh }
+        let expired = current.ownToDelete(all).filter { !tidied.contains($0) }
+        if !expired.isEmpty {
+            tidied.formUnion(expired)
+            for id in expired { _ = await session.delete(id, in: roomID) }
+            #if DEBUG
+            print("ui-check: автоудаление убрало свои \(expired.count)")
+            #endif
+        }
         // Создание чата видно — раньше ничего нет.
         if case .notice(.created) = items.first?.body { hasOlder = false }
         outbox.removeAll { pending in pending.eventID.map { id in items.contains { $0.id == id } } ?? false }
         if let last = items.last(where: { !$0.isMine && !$0.isNotice }), last.id != lastMarked {
             lastMarked = last.id
             await session.markRead(roomID, upTo: last.id)
+        }
+    }
+
+    private func setRule(_ ttl: Int) {
+        guard ttl != rule.choice else { return }
+        Task {
+            guard let fresh = await session.setAutoDelete(ttl, in: roomID) else { ruleFailed = true; return }
+            settingRule = fresh
+            rule = fresh
+            #if DEBUG
+            print("ui-check: автоудаление \(fresh.ttl) с")
+            #endif
+        }
+    }
+
+    private func ruleName(_ ttl: Int) -> String {
+        switch ttl {
+        case 0: words(.autoDeleteOff)
+        case AutoDelete.day: words(.autoDeleteDay)
+        case AutoDelete.week: words(.autoDeleteWeek)
+        case AutoDelete.month: words(.autoDeleteMonth)
+        default: "\(ttl) с"
         }
     }
 
@@ -388,6 +454,14 @@ struct ChatView: View {
     private func sendForScreenshots() {
         let env = ProcessInfo.processInfo.environment
         if let step = env["NYUTAG_UI_ACT"] { actForScreenshots(step) }
+        // NYUTAG_UI_AUTODELETE=секунды (0 — выключить): таймер ставится один раз за запуск.
+        if !Self.ruledForScreenshots, let ttl = env["NYUTAG_UI_AUTODELETE"].flatMap(Int.init) {
+            Self.ruledForScreenshots = true
+            Task {
+                if let fresh = await session.setAutoDelete(ttl, in: roomID) { settingRule = fresh; rule = fresh }
+                print("ui-check: автоудаление \(rule.ttl) с, в ленте \(items.count)")
+            }
+        }
         if let kind = env["NYUTAG_UI_ATTACH"] { attachForScreenshots(kind) }
         if env["NYUTAG_UI_OPEN"] != nil, !Self.openedForScreenshots, let last = items.last(where: { $0.attachment != nil }) {
             Self.openedForScreenshots = true
@@ -401,6 +475,7 @@ struct ChatView: View {
     }
 
     private static var attachedForScreenshots = false
+    private static var ruledForScreenshots = false
     private static var openedForScreenshots = false
 
     /// NYUTAG_UI_ATTACH: `photo` — нарисованный снимок 1600×1200, `file` — небольшой текстовый файл.
