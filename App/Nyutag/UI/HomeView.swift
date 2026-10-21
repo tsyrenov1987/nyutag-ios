@@ -135,6 +135,11 @@ struct ChatListView: View {
             .onChange(of: session.lines.count, initial: true) { openForScreenshots() }
             .task { await tryLayout() }
             .task {
+                guard ProcessInfo.processInfo.environment["NYUTAG_UI_INVITE"] != nil else { return }
+                while session.lines.isEmpty { try? await Task.sleep(for: .milliseconds(300)) }
+                menu = true
+            }
+            .task {
                 guard ProcessInfo.processInfo.environment["NYUTAG_UI_SAVED"] != nil else { return }
                 while session.lines.isEmpty { try? await Task.sleep(for: .milliseconds(300)) }
                 openSaved()
@@ -427,6 +432,7 @@ struct MeMenu: View {
     @Environment(AppSession.self) private var session
     @Environment(\.dismiss) private var dismiss
     @State private var askSignOut = false
+    @State private var inviting = false
     let onSaved: () -> Void
 
     var body: some View {
@@ -452,6 +458,12 @@ struct MeMenu: View {
                         }
                     }
                     .accessibilityIdentifier("menu-saved")
+                    Button { inviting = true } label: {
+                        Label { Text(words(.inviteFriend)).foregroundStyle(Theme.ink) } icon: {
+                            Image(systemName: "person.badge.plus").foregroundStyle(Theme.sky)
+                        }
+                    }
+                    .accessibilityIdentifier("menu-invite")
                 }
                 Section(words(.language)) {
                     ForEach(Lang.allCases) { lang in
@@ -475,6 +487,10 @@ struct MeMenu: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button(words(.done)) { dismiss() } }
             }
+            .sheet(isPresented: $inviting) { InviteView() }
+            #if DEBUG
+            .onAppear { if ProcessInfo.processInfo.environment["NYUTAG_UI_INVITE"] != nil { inviting = true } }
+            #endif
             .confirmationDialog(words(.signOutAsk), isPresented: $askSignOut, titleVisibility: .visible) {
                 Button(words(.signOut)) {
                     dismiss()

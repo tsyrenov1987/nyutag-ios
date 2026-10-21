@@ -105,7 +105,12 @@ struct SignInView: View {
             if ProcessInfo.processInfo.environment["NYUTAG_UI_SIGNUP"] != nil { signingUp = true }
             #endif
         }
-        .sheet(isPresented: $signingUp) { SignUpView() }
+        .onChange(of: session.pendingInvite, initial: true) {
+            if session.pendingInvite != nil { signingUp = true }
+        }
+        .sheet(isPresented: $signingUp, onDismiss: { session.pendingInvite = nil }) {
+            SignUpView(invite: session.pendingInvite ?? "")
+        }
     }
 
     private var canSubmit: Bool {

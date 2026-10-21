@@ -23,6 +23,8 @@ final class AppSession {
     private(set) var lines: [ChatLine] = []
     /// Закреплённые чаты и папки.
     private(set) var layout = ChatLayout()
+    /// Код из открытой ссылки-приглашения: экран входа откроет с ним регистрацию.
+    var pendingInvite: String?
     /// Комната «Избранного», если уже заведена.
     private(set) var savedRoom: String?
     private(set) var me: String?
@@ -556,6 +558,38 @@ final class AppSession {
         #endif
         if let roomID { savedRoom = roomID }
         return roomID
+    }
+
+    // MARK: Приглашения
+
+    enum InviteFailure: Error { case limit, noNetwork, broken }
+
+    func createInvite() async throws(InviteFailure) -> InviteCode {
+        guard let account else { throw .broken }
+        do {
+            return try await NyutagService(client: account.client).createInvite()
+        } catch {
+            throw Self.inviteFailure(error)
+        }
+    }
+
+    func myInvites() async -> [(invite: InviteCode, usedBy: String?)]? {
+        guard let account else { return nil }
+        return try? await NyutagService(client: account.client).invites()
+    }
+
+    func revokeInvite(_ code: String) async -> Bool {
+        guard let account else { return false }
+        return (try? await NyutagService(client: account.client).revokeInvite(code)) != nil
+    }
+
+    private static func inviteFailure(_ error: MatrixError) -> InviteFailure {
+        switch error.errcode {
+        case "NYUTAG_INVITE_LIMIT", "M_LIMIT_EXCEEDED": return .limit
+        default:
+            if case .network = error.kind { return .noNetwork }
+            return .broken
+        }
     }
 
     // MARK: Контакты

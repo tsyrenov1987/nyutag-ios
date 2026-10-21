@@ -22,6 +22,28 @@ public struct Verification: Sendable, Equatable {
 public struct InviteCode: Sendable, Equatable {
     public let code: String
     public let expiresAt: Date?
+
+    public init(code: String, expiresAt: Date?) {
+        self.code = code
+        self.expiresAt = expiresAt
+    }
+
+    /// Страница приглашения на сайте; код после `#` браузер на сервер сайта не отправляет.
+    public var link: String { "https://nyutag.chat/i/#\(code)" }
+
+    /// Код из ссылки `https://nyutag.chat/i/#КОД` или `nyutag://invite/КОД`; чужая ссылка — nil.
+    public static func code(fromLink url: URL) -> String? {
+        let raw: String?
+        switch (url.scheme?.lowercased(), url.host?.lowercased()) {
+        case ("nyutag", "invite"): raw = url.path.split(separator: "/").first.map(String.init)
+        case ("https", "nyutag.chat") where url.path.hasPrefix("/i"): raw = url.fragment
+        default: raw = nil
+        }
+        guard let raw else { return nil }
+        let clean = raw.uppercased()
+        guard clean.wholeMatch(of: /[0-9A-Z]{4}-?[0-9A-Z]{4}/) != nil else { return nil }
+        return clean
+    }
 }
 
 public enum ContactMedium: String, Sendable {

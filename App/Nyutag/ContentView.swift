@@ -1,3 +1,4 @@
+import NyutagCore
 import SwiftUI
 
 /// Корень: сначала язык (один раз), дальше вход или главный экран.
@@ -24,6 +25,10 @@ struct ContentView: View {
         .tint(Theme.sky)
         .animation(.smooth, value: session.phase)
         .animation(.smooth, value: words.lang)
+        .onOpenURL { url in
+            // Ссылка-приглашение: без входа — сразу в регистрацию с кодом; вошедшему она не нужна.
+            if let code = InviteCode.code(fromLink: url), session.phase != .signedIn { session.pendingInvite = code }
+        }
         .task {
             await session.launch()
             #if DEBUG

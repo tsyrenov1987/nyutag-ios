@@ -324,6 +324,29 @@ extension Phrase {
     static let savedMessages = Phrase(bxr: "Хадагалһан", ru: "Избранное", en: "Saved messages")
     static let savedMessagesTopic = Phrase(bxr: "Өөртөө тэмдэглэл, холбоос, файлнууд", ru: "Заметки, ссылки и файлы для себя",
                                            en: "Notes, links and files for yourself")
+    static let inviteFriend = Phrase(bxr: "Нүхэрөө уриха", ru: "Пригласить друга", en: "Invite a friend")
+    static let inviteCreating = Phrase(bxr: "Урилга бэлдэжэ байна…", ru: "Создаю приглашение…", en: "Creating an invitation…")
+    static let inviteFailed = Phrase(bxr: "Урилга бүтээжэ шадабагүйбди. Һүүлдэ оролдогты.",
+                                     ru: "Не удалось создать приглашение. Попробуйте позже.",
+                                     en: "Could not create an invitation. Try again later.")
+    static let inviteLimit = Phrase(bxr: "Урилгын хизаар: 10 хэрэглэгдээгүй код, хоногто 20 хүрэтэр.",
+                                    ru: "Лимит приглашений: не больше 10 неиспользованных кодов и 20 в сутки.",
+                                    en: "Invitation limit reached: at most 10 unused codes and 20 a day.")
+    /// {1} — код, {2} — ссылка.
+    static let inviteShareText = Phrase(
+        bxr: "Нютаг — манай мессенджер руу урижа байнаб: {2}\nУрилгын код: {1} (нэгэ удаа, 7 хоног хүсэнтэй). Нютаг табяад, «Бүртхүүлхэ» гэжэ дарагты.",
+        ru: "Приглашаю тебя в Нютаг, наш мессенджер: {2}\nКод приглашения: {1} (сработает один раз, действует 7 дней). Установи Нютаг и нажми «Зарегистрироваться».",
+        en: "Join me on Nyutag, our messenger: {2}\nInvitation code: {1} (works once, for 7 days). Install Nyutag and tap “Sign up”.")
+    static let inviteHint = Phrase(bxr: "Код нэгэ удаа хүсэнтэй, 7 хоног хүсэнтэй. QR харуулагты али холбоос эльгээгты.",
+                                   ru: "Код сработает один раз и действует 7 дней. Покажите QR или отправьте ссылку.",
+                                   en: "The code works once and lasts 7 days. Show the QR or send the link.")
+    static let inviteShare = Phrase(bxr: "Хубаалдаха", ru: "Поделиться", en: "Share")
+    static let inviteNew = Phrase(bxr: "Шэнэ код", ru: "Новый код", en: "New code")
+    static let inviteMine = Phrase(bxr: "Минии урилганууд", ru: "Мои приглашения", en: "My invitations")
+    static let inviteUsedBy = Phrase(bxr: "{1} хэрэглэбэ", ru: "Использовал {1}", en: "Used by {1}")
+    static let inviteValidTill = Phrase(bxr: "{1} хүрэтэр хүсэнтэй", ru: "Действует до {1}", en: "Valid until {1}")
+    static let inviteExpired = Phrase(bxr: "Хугацаань дууһаа", ru: "Срок истёк", en: "Expired")
+    static let inviteRevoke = Phrase(bxr: "Болюулха", ru: "Отозвать", en: "Revoke")
     static let scheduledReminder = Phrase(bxr: "Һүүлдэ эльгээхэ бэшэг эльгээгдээгүй", ru: "Отложенное сообщение ещё не ушло",
                                           en: "A scheduled message hasn't been sent yet")
     static let autoDelete = Phrase(bxr: "Бэшэгүүдые автоматаар усадхаха", ru: "Автоудаление сообщений",
