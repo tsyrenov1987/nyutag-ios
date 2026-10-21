@@ -24,6 +24,8 @@ final class AppSession {
     private(set) var lines: [ChatLine] = []
     /// Блокированные (`m.ignored_user_list`): их реплики не показываем, сервер их события не присылает.
     private(set) var ignored: Set<String> = []
+    /// Чаты без звука: правила уведомлений комнат из `m.push_rules`.
+    private(set) var muted: Set<String> = []
     /// Сообщества (`m.space`), где мы участники: в список чатов не попадают, живут на своей вкладке.
     private(set) var communities: [ChatLine] = []
     /// Закреплённые чаты и папки.
@@ -161,6 +163,7 @@ final class AppSession {
         myAvatarURL = nil
         lines = []
         ignored = []
+        muted = []
         layout = ChatLayout()
         savedRoom = nil
         autoJoined = []
@@ -846,6 +849,68 @@ final class AppSession {
         }
     }
 
+    // MARK: Группы и чаты
+
+    /// Новая группа из списка чатов: закрытая шифрованная комната, участники получают приглашение
+    /// (на нашем сервере оно принимается само). Возвращает id комнаты.
+    func createGroup(name: String, members: [String]) async -> String? {
+        guard let account else { return nil }
+        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return nil }
+        guard let roomID = try? await account.client.createRoom(.init(name: name, invite: members)) else { return nil }
+        #if DEBUG
+        print("ui-check: группа «\(name)» создана, приглашено \(members.count)")
+        #endif
+        await refresh()
+        return roomID
+    }
+
+    /// Кого можно позвать в группу: все, с кем есть общие чаты.
+    func acquaintances() async -> [Person] {
+        guard let account, let me else { return [] }
+        return (try? await People.acquaintances(store: account.store, me: me)) ?? []
+    }
+
+    /// Участники чата, кроме себя.
+    func members(of roomID: String) async -> [Person] {
+        guard let account, let me else { return [] }
+        return (try? await People.members(roomID: roomID, store: account.store, me: me)) ?? []
+    }
+
+    /// Позвать людей в группу. Удачно, если позвали всех.
+    func invite(_ users: [String], to roomID: String) async -> Bool {
+        guard let account else { return false }
+        var ok = true
+        for user in users where (try? await account.client.invite(roomID: roomID, userID: user)) == nil { ok = false }
+        #if DEBUG
+        print("ui-check: в группу позвано \(users.count), \(ok ? "все дошли" : "не все дошли")")
+        #endif
+        return ok
+    }
+
+    /// Выйти из чата и забыть его: пропадает из списка и из базы.
+    func leaveChat(_ roomID: String) async -> Bool {
+        guard let engine, (try? await engine.leave(roomID: roomID, forget: true)) != nil else { return false }
+        #if DEBUG
+        print("ui-check: чат покинут")
+        #endif
+        await refresh()
+        return true
+    }
+
+    func isMuted(_ roomID: String) -> Bool { muted.contains(roomID) }
+
+    /// Чат без звука (или снова со звуком); правило уходит на сервер и ко всем устройствам.
+    func setMuted(_ roomID: String, _ quiet: Bool) async -> Bool {
+        guard let account else { return false }
+        guard (try? await account.client.setRoomMuted(roomID: roomID, quiet, store: account.store)) != nil else { return false }
+        if quiet { muted.insert(roomID) } else { muted.remove(roomID) }
+        #if DEBUG
+        print("ui-check: чат \(quiet ? "без звука" : "со звуком")")
+        #endif
+        return true
+    }
+
     func leaveCommunity(_ spaceID: String) async -> Bool {
         guard let engine, (try? await engine.leave(roomID: spaceID, forget: true)) != nil else { return false }
         await refresh()
@@ -1181,6 +1246,7 @@ final class AppSession {
     private func refresh() async {
         guard let account, let me else { return }
         if let list = try? await IgnoredUsers.load(store: account.store), list != ignored { ignored = list }
+        if let quiet = try? await MutedRooms.load(store: account.store), quiet != muted { muted = quiet }
         if let fresh = try? await ChatDigest.lines(store: account.store, me: me, ignored: ignored, decrypt: opener()) {
             let chats = fresh.filter { !$0.isSpace }
             let spaces = fresh.filter { $0.isSpace && $0.membership == .join }

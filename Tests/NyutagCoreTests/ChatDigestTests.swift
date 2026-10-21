@@ -56,11 +56,18 @@ struct ChatDigestTests {
         named.avatarURL = "mxc://nyutag.chat/room"
         try await store.upsert(named)
         try await store.upsert(RoomRecord(id: "!group", membership: .join))
+        var pair = RoomRecord(id: "!pair", membership: .join)
+        pair.name = "Группа на двоих"
+        try await store.upsert(pair)
         let withPhoto = Event(eventID: "$m-photo", type: EventType.member, sender: arjuna, stateKey: arjuna,
                               content: ["membership": "join", "displayname": "Арюна", "avatar_url": "mxc://nyutag.chat/arjuna"],
                               roomID: "!dm")
         for event in [member(me, "!dm"), withPhoto, member(me, "!named"), member(arjuna, "!named"),
-                      member(me, "!group"), member(arjuna, "!group"), member("@third:nyutag.chat", "!group")] {
+                      member(me, "!group"), member(arjuna, "!group"), member("@third:nyutag.chat", "!group"),
+                      member(me, "!pair"),
+                      Event(eventID: "$m-photo2", type: EventType.member, sender: arjuna, stateKey: arjuna,
+                            content: ["membership": "join", "displayname": "Арюна", "avatar_url": "mxc://nyutag.chat/arjuna"],
+                            roomID: "!pair")] {
             try await store.setState(event)
         }
         let lines = try await ChatDigest.lines(store: store, me: me)
@@ -68,6 +75,7 @@ struct ChatDigestTests {
         #expect(byID["!dm"] == "mxc://nyutag.chat/arjuna")
         #expect(byID["!named"] == "mxc://nyutag.chat/room")
         #expect(byID["!group"] == .some(nil))
+        #expect(byID["!pair"] == .some(nil))
     }
 
     @Test("превью: правка подставляется, удалённая реплика уступает предыдущей")

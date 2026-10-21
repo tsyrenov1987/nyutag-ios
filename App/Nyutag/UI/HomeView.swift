@@ -54,6 +54,8 @@ struct ChatListView: View {
     @State private var naming: FolderNaming?
     @State private var folderName = ""
     @State private var deleting: ChatFolder?
+    @State private var creatingGroup = false
+    @State private var leaving: String?
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -109,12 +111,22 @@ struct ChatListView: View {
                     .accessibilityIdentifier("me-menu")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
+                    Button(words(.groupNew), systemImage: "square.and.pencil") { creatingGroup = true }
+                        .accessibilityIdentifier("new-group")
+                }
+                ToolbarItem(placement: .topBarTrailing) {
                     Button(words(.savedMessages), systemImage: "bookmark") { openSaved() }
                         .accessibilityIdentifier("saved-messages")
                 }
             }
             .navigationDestination(for: String.self) { roomID in ChatView(roomID: roomID) }
             .sheet(isPresented: $menu) { MeMenu(onSaved: openSaved) }
+            .sheet(isPresented: $creatingGroup) { GroupCreateView { path = [$0] } }
+            .confirmationDialog(words(.chatLeave), isPresented: Binding { leaving != nil } set: { if !$0 { leaving = nil } },
+                                titleVisibility: .visible, presenting: leaving) { roomID in
+                Button(words(.chatLeave), role: .destructive) { Task { await session.leaveChat(roomID) } }
+                Button(words(.cancel), role: .cancel) {}
+            } message: { _ in Text(words(.chatLeaveHint)) }
             .sheet(isPresented: $keySheet) { HistoryKeyView(canRelock: session.canRelockHistory) }
             .alert(words(naming?.isNew == false ? .folderRename : .folderNew), isPresented: $naming.present()) {
                 TextField(words(.folderName), text: $folderName)
@@ -157,6 +169,11 @@ struct ChatListView: View {
                 menu = true
             }
             .task {
+                guard ProcessInfo.processInfo.environment["NYUTAG_UI_GROUP"] != nil else { return }
+                while session.lines.isEmpty { try? await Task.sleep(for: .milliseconds(300)) }
+                creatingGroup = true
+            }
+            .task {
                 guard ProcessInfo.processInfo.environment["NYUTAG_UI_SAVED"] != nil else { return }
                 while session.lines.isEmpty { try? await Task.sleep(for: .milliseconds(300)) }
                 openSaved()
@@ -185,6 +202,15 @@ struct ChatListView: View {
                 }
             }
             Button(words(.folderNew), systemImage: "folder.badge.plus") { naming = FolderNaming(roomID: roomID) }
+        }
+        if roomID != session.savedRoom {
+            if session.isMuted(roomID) {
+                Button(words(.unmute), systemImage: "bell") { Task { await session.setMuted(roomID, false) } }
+            } else {
+                Button(words(.mute), systemImage: "bell.slash") { Task { await session.setMuted(roomID, true) } }
+            }
+            Divider()
+            Button(words(.chatLeave), systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) { leaving = roomID }
         }
     }
 
@@ -263,6 +289,10 @@ struct ChatRow: View {
                         Image(systemName: "pin.fill").font(.caption2).foregroundStyle(Theme.quiet)
                             .rotationEffect(.degrees(45))
                             .accessibilityLabel(words(.pinned))
+                    }
+                    if session.isMuted(line.id) {
+                        Image(systemName: "bell.slash.fill").font(.caption2).foregroundStyle(Theme.quiet)
+                            .accessibilityLabel(words(.muted))
                     }
                     Spacer(minLength: 4)
                     if line.lastIsMine { Ticks(delivery: line.delivery) }

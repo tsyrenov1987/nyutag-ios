@@ -115,8 +115,9 @@ public enum ChatDigest {
         }
 
         // Картинка: у комнаты своя, иначе у личного чата — аватар собеседника из его записи участника.
+        // Комната с именем — группа, даже если в ней пока двое: ей чужое фото не даём.
         var avatarURL = record.avatarURL
-        if avatarURL == nil {
+        if avatarURL == nil, record.isDirect || record.name == nil {
             let others = members.filter { member in
                 member.stateKey != me && ["join", "invite"].contains(member.content["membership"]?.string ?? "")
             }

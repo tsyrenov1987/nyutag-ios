@@ -19,6 +19,9 @@ struct ChatView: View {
     /// Карточка собеседника личного чата.
     @State private var partner: String?
     @State private var showingPartner = false
+    @State private var showingInfo = false
+    @State private var askLeave = false
+    @Environment(\.dismiss) private var dismiss
     @State private var choosingWallpaper = false
     @State private var limit = 80
     @State private var hasOlder = true
@@ -120,6 +123,11 @@ struct ChatView: View {
         .sheet(isPresented: Binding { scheduling != nil } set: { if !$0 { scheduling = nil } }) { schedulePicker }
         .sheet(isPresented: $showingScheduled) { scheduledList }
         .sheet(isPresented: $showingPartner) { if let partner { PersonCard(userID: partner) } }
+        .sheet(isPresented: $showingInfo) { GroupInfoView(roomID: roomID) { dismiss() } }
+        .confirmationDialog(words(.chatLeave), isPresented: $askLeave, titleVisibility: .visible) {
+            Button(words(.chatLeave), role: .destructive) { leave() }
+            Button(words(.cancel), role: .cancel) {}
+        } message: { Text(words(.chatLeaveHint)) }
         .sheet(item: $reporting) { item in ReportSheet(item: item, roomID: roomID) { reportSent = true } }
         .alert(words(.reportSent), isPresented: $reportSent) { Button(words(.done)) {} }
         .sheet(isPresented: $choosingWallpaper) { WallpaperPicker(roomID: roomID) }
@@ -129,6 +137,17 @@ struct ChatView: View {
             if ProcessInfo.processInfo.environment["NYUTAG_UI_SHEET"] == "partner" {
                 print("ui-check: собеседник \(partner.map(ChatDigest.localpart) ?? "не найден")")
                 showingPartner = partner != nil
+            }
+            if ProcessInfo.processInfo.environment["NYUTAG_UI_GROUP_INFO"] != nil { showingInfo = true }
+            if let quiet = ProcessInfo.processInfo.environment["NYUTAG_UI_MUTE"] {
+                _ = await session.setMuted(roomID, quiet == "on")
+                print("ui-check: в списке без звука \(session.isMuted(roomID))")
+            }
+            // Один раз за запуск: после выхода хук OPEN_CHAT может открыть другой чат с похожим названием.
+            if ProcessInfo.processInfo.environment["NYUTAG_UI_LEAVE"] != nil, !Self.leftOnce {
+                Self.leftOnce = true
+                try? await Task.sleep(for: .seconds(2))
+                leave()
             }
             #endif
         }
@@ -173,6 +192,9 @@ struct ChatView: View {
                     if partner != nil {
                         Button(words(.profile), systemImage: "person.crop.circle") { showingPartner = true }
                     }
+                    if line?.isDirect == false, roomID != session.savedRoom {
+                        Button(words(.groupInfo), systemImage: "person.2") { showingInfo = true }
+                    }
                     Button(words(.wallpaperForChat), systemImage: "paintpalette") { choosingWallpaper = true }
                     Picker(selection: Binding { rule.choice } set: { setRule($0) }) {
                         ForEach(AutoDelete.choices, id: \.self) { Text(ruleName($0)).tag($0) }
@@ -181,6 +203,17 @@ struct ChatView: View {
                         Text(rule.isOn ? ruleName(rule.choice) : words(.autoDeleteHint))
                     }
                     .pickerStyle(.menu)
+                    if roomID != session.savedRoom {
+                        if session.isMuted(roomID) {
+                            Button(words(.unmute), systemImage: "bell") { Task { await session.setMuted(roomID, false) } }
+                        } else {
+                            Button(words(.mute), systemImage: "bell.slash") { Task { await session.setMuted(roomID, true) } }
+                        }
+                        Divider()
+                        Button(words(.chatLeave), systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) {
+                            askLeave = true
+                        }
+                    }
                 } label: {
                     Group {
                         if roomID == session.savedRoom {
@@ -743,6 +776,16 @@ struct ChatView: View {
     #endif
 
     // MARK: Помощники
+
+    private func leave() {
+        Task {
+            if await session.leaveChat(roomID) { dismiss() } else { failed = true }
+        }
+    }
+
+    #if DEBUG
+    nonisolated(unsafe) static var leftOnce = false
+    #endif
 
     private func day(_ ms: Int) -> Date { Date(timeIntervalSince1970: TimeInterval(ms) / 1000) }
 

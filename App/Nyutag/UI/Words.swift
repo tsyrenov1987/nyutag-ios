@@ -530,4 +530,30 @@ extension Phrase {
     static let communityGroupNew = Phrase(bxr: "Шэнэ бүлэг", ru: "Новая группа", en: "New group")
     static let communityFailed = Phrase(bxr: "Бүтэбэгүй. Дахин оролдогты.", ru: "Не получилось. Попробуйте ещё раз.",
                                         en: "That didn't work. Try again.")
+
+    // Группы из списка чатов
+    static let groupNew = Phrase(bxr: "Шэнэ бүлэг", ru: "Новая группа", en: "New group")
+    static let groupName = Phrase(bxr: "Бүлэгэй нэрэ", ru: "Название группы", en: "Group name")
+    static let groupWho = Phrase(bxr: "Хэниие уриха", ru: "Кого позвать", en: "Who to invite")
+    static let groupWhoHint = Phrase(bxr: "Эндэ танай хөөрэлдэдэг хүнүүд. Бусадые «Контактнууд» соо олоорой.",
+                                     ru: "Здесь те, с кем у вас уже есть переписка. Остальных найдите в «Контактах».",
+                                     en: "People you already chat with. Find others in Contacts.")
+    static let groupNobody = Phrase(bxr: "Уриха хүн үшөө үгы", ru: "Пока некого позвать", en: "No one to invite yet")
+    static let groupCreate = Phrase(bxr: "Байгуулха", ru: "Создать", en: "Create")
+    static let groupFailed = Phrase(bxr: "Бүлэг байгуулагдабагүй. Дахин оролдогты.", ru: "Группа не создалась. Попробуйте ещё раз.",
+                                    en: "The group wasn't created. Try again.")
+    static let groupInfo = Phrase(bxr: "Бүлэг тухай", ru: "О группе", en: "About group")
+    static let groupMembers = Phrase(bxr: "Гэшүүд", ru: "Участники", en: "Members")
+    static let groupAdd = Phrase(bxr: "Гэшүүдые нэмэхэ", ru: "Добавить участников", en: "Add members")
+    static let groupAddFailed = Phrase(bxr: "Хүн бүхэн уригдабагүй. Дахин оролдогты.", ru: "Позвать удалось не всех. Попробуйте ещё раз.",
+                                       en: "Some people couldn't be invited. Try again.")
+    static let chatLeave = Phrase(bxr: "Чатһаа гараха", ru: "Покинуть чат", en: "Leave chat")
+    static let chatLeaveHint = Phrase(bxr: "Чат хэрэглэдэг жагсаалтһаа үгы болохо. Һөөргөө орохын тула шэнэ урилга хэрэгтэй.",
+                                      ru: "Чат исчезнет из списка. Вернуться можно по новому приглашению.",
+                                      en: "The chat will disappear from the list. You can return with a new invitation.")
+    static let chatLeaveFailed = Phrase(bxr: "Гарагдабагүй. Дахин оролдогты.", ru: "Выйти не удалось. Попробуйте ещё раз.",
+                                        en: "Couldn't leave. Try again.")
+    static let mute = Phrase(bxr: "Абяагүй", ru: "Без звука", en: "Mute")
+    static let unmute = Phrase(bxr: "Абяатай", ru: "Со звуком", en: "Unmute")
+    static let muted = Phrase(bxr: "Абяагүй чат", ru: "Чат без звука", en: "Muted")
 }

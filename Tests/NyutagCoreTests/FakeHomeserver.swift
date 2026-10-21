@@ -154,6 +154,11 @@ final class FakeHomeserver: @unchecked Sendable {
             case ("PUT", let p) where p.count == 4 && p[0] == "pushrules" && p[1] == "global":
                 pushRules["\(who.user)|\(p[2])|\(p[3])"] = body
                 return (200, [:])
+            case ("DELETE", let p) where p.count == 4 && p[0] == "pushrules" && p[1] == "global":
+                guard pushRules.removeValue(forKey: "\(who.user)|\(p[2])|\(p[3])") != nil else {
+                    return (404, ["errcode": "M_NOT_FOUND", "error": "нет правила"])
+                }
+                return (200, [:])
             case ("POST", ["keys", "upload"]):
                 if let keys = body?["device_keys"] { deviceKeys[who.user, default: [:]][who.device] = keys }
                 for (id, key) in body?["one_time_keys"]?.object ?? [:] {
