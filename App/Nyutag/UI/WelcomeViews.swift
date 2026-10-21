@@ -46,6 +46,7 @@ struct SignInView: View {
     @State private var busy = false
     @State private var failure: AppSession.SignInFailure?
     @State private var signingUp = false
+    @State private var resetting = false
     @FocusState private var field: Field?
 
     enum Field { case identifier, password }
@@ -83,6 +84,11 @@ struct SignInView: View {
 
                 if let failure { FailureNote(text: message(failure)) }
 
+                Button(words(.forgotPassword)) { resetting = true }
+                    .font(.callout)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .accessibilityIdentifier("signin-forgot")
+
                 BigButton(title: busy ? words(.signingIn) : words(.signIn), busy: busy, enabled: canSubmit,
                           id: "signin-submit", action: submit)
 
@@ -103,6 +109,7 @@ struct SignInView: View {
             field = .identifier
             #if DEBUG
             if ProcessInfo.processInfo.environment["NYUTAG_UI_SIGNUP"] != nil { signingUp = true }
+            if ProcessInfo.processInfo.environment["NYUTAG_UI_RESET"] != nil { resetting = true }
             #endif
         }
         .onChange(of: session.pendingInvite, initial: true) {
@@ -111,6 +118,7 @@ struct SignInView: View {
         .sheet(isPresented: $signingUp, onDismiss: { session.pendingInvite = nil }) {
             SignUpView(invite: session.pendingInvite ?? "")
         }
+        .sheet(isPresented: $resetting) { PasswordResetView() }
     }
 
     private var canSubmit: Bool {

@@ -391,6 +391,19 @@ extension Phrase {
     static let profileEastYearNone = Phrase(bxr: "Заагдаагүй", ru: "Не указан", en: "Not set")
     static let profileSaveFailed = Phrase(bxr: "Хадагалжа шадабагүйбди. Дахин оролдогты.",
                                           ru: "Не удалось сохранить. Попробуйте ещё раз.", en: "Could not save. Try again.")
+    static let forgotPassword = Phrase(bxr: "Нюуса үгэеэ мартаа гүт?", ru: "Забыли пароль?", en: "Forgot password?")
+    static let resetTitle = Phrase(bxr: "Нюуса үгэ шэнэлхэ", ru: "Сброс пароля", en: "Reset password")
+    static let resetLead = Phrase(bxr: "Нютагай аккаунтдаа холбоотой e-mail хаягаа оруулагты. Тэндэ код эльгээхэбди.",
+                                  ru: "Введите почту, к которой привязан аккаунт Нютага. Пришлём на неё код.",
+                                  en: "Enter the email linked to your Nyutag account. We'll send a code there.")
+    static let resetSend = Phrase(bxr: "Код эльгээхэ", ru: "Прислать код", en: "Send code")
+    static let resetNewPassword = Phrase(bxr: "Шэнэ нюуса үгэ, 8 тэмдэгһээ доошо бэшэ", ru: "Новый пароль, не короче 8 символов",
+                                         en: "New password, at least 8 characters")
+    static let resetSubmit = Phrase(bxr: "Хадагалаад орохо", ru: "Сохранить и войти", en: "Save and sign in")
+    static let resetUnknown = Phrase(
+        bxr: "Энэ хаягта Нютагай аккаунт холбоотой бэшэ. Хаягаа шалгагты: ондоо почтоор бүртхүүлһэн байжа магад.",
+        ru: "К этой почте не привязан ни один аккаунт Нютага. Проверьте адрес: возможно, вы регистрировались с другой почтой.",
+        en: "No Nyutag account is linked to this email. Check the address: you may have signed up with a different one.")
     static let donate = Phrase(bxr: "Нютагта туһалха", ru: "Поддержать Нютаг", en: "Support Nyutag")
     static let donateBody = Phrase(
         bxr: "Нютагые бага студи хэнэ. Бэшэлгэ, дуудалга, мэдүүлгэ ябуулдаг серверүүдэй түлөө бидэ өөһэдөө түлэнэбди, мүнөө алдагдалтайгаар хүдэлнэбди. Нютагта реклама үгы, байхашьегүй. Хэрэгтэй гэжэ һанабал, туһалыт: ямаршье мүнгэн серверүүдтэ ошохо.",

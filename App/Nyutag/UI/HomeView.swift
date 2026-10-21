@@ -28,6 +28,8 @@ struct HomeView: View {
         }
         #if DEBUG
         .onAppear { if ProcessInfo.processInfo.environment["NYUTAG_UI_CONTACTS"] != nil { tab = 1 } }
+        // Сброс пароля живёт на экране входа; NYUTAG_UI_RESET показывает его и без выхода из аккаунта.
+        .sheet(isPresented: .constant(ProcessInfo.processInfo.environment["NYUTAG_UI_RESET"] != nil)) { PasswordResetView() }
         .task {
             // Самопроверка: NYUTAG_UI_DEVICE=ask — попросить подтверждение у своих устройств, когда машина поднимется.
             guard ProcessInfo.processInfo.environment["NYUTAG_UI_DEVICE"] == "ask" else { return }
