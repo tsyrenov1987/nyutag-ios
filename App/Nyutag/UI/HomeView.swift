@@ -135,7 +135,8 @@ struct ChatListView: View {
             .onChange(of: session.lines.count, initial: true) { openForScreenshots() }
             .task { await tryLayout() }
             .task {
-                guard ProcessInfo.processInfo.environment["NYUTAG_UI_INVITE"] != nil else { return }
+                let env = ProcessInfo.processInfo.environment
+                guard env["NYUTAG_UI_INVITE"] != nil || env["NYUTAG_UI_ABOUT"] != nil else { return }
                 while session.lines.isEmpty { try? await Task.sleep(for: .milliseconds(300)) }
                 menu = true
             }
@@ -433,20 +434,26 @@ struct MeMenu: View {
     @Environment(\.dismiss) private var dismiss
     @State private var askSignOut = false
     @State private var inviting = false
+    @State private var editingProfile = false
     let onSaved: () -> Void
 
     var body: some View {
         NavigationStack {
             List {
                 Section {
-                    HStack(spacing: 14) {
-                        Pillow(seed: session.me ?? "", title: ChatDigest.localpart(session.me ?? ""), size: 64)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(ChatDigest.localpart(session.me ?? "")).font(.title3.bold())
-                            Text(session.me ?? "").font(.footnote).foregroundStyle(Theme.quiet)
+                    NavigationLink {
+                        ProfileEditView()
+                    } label: {
+                        HStack(spacing: 14) {
+                            Pillow(seed: session.me ?? "", title: ChatDigest.localpart(session.me ?? ""), size: 64)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(ChatDigest.localpart(session.me ?? "")).font(.title3.bold())
+                                Text(session.me ?? "").font(.footnote).foregroundStyle(Theme.quiet)
+                            }
                         }
+                        .padding(.vertical, 6)
                     }
-                    .padding(.vertical, 6)
+                    .accessibilityIdentifier("menu-profile")
                 }
                 Section {
                     Button {
@@ -487,9 +494,13 @@ struct MeMenu: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button(words(.done)) { dismiss() } }
             }
+            .navigationDestination(isPresented: $editingProfile) { ProfileEditView() }
             .sheet(isPresented: $inviting) { InviteView() }
             #if DEBUG
-            .onAppear { if ProcessInfo.processInfo.environment["NYUTAG_UI_INVITE"] != nil { inviting = true } }
+            .onAppear {
+                if ProcessInfo.processInfo.environment["NYUTAG_UI_INVITE"] != nil { inviting = true }
+                if ProcessInfo.processInfo.environment["NYUTAG_UI_ABOUT"] != nil { editingProfile = true }
+            }
             #endif
             .confirmationDialog(words(.signOutAsk), isPresented: $askSignOut, titleVisibility: .visible) {
                 Button(words(.signOut)) {

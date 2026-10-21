@@ -84,6 +84,24 @@ public enum People {
         return people
     }
 
+    /// Собеседник чата один на один: по `m.direct`, а если чат там не отмечен — единственный другой
+    /// участник комнаты на двоих (участников сервер шлёт лениво, поэтому сначала смотрим сводку комнаты).
+    public static func partner(roomID: String, store: Store, me: String) async throws -> String? {
+        let direct = try await store.accountData(EventType.direct)?.object ?? [:]
+        if let marked = direct.first(where: { $0.key != me && ($0.value.array ?? []).contains(.string(roomID)) }) {
+            return marked.key
+        }
+        if let room = try await store.room(roomID), room.joinedCount + room.invitedCount == 2,
+           let hero = room.heroes.first(where: { $0 != me }), room.heroes.count == 1 {
+            return hero
+        }
+        let members = try await store.state(roomID, type: EventType.member)
+            .filter { ["join", "invite"].contains($0.content["membership"]?.string) }
+            .map(\.stateKey)
+        guard members.count == 2, members.contains(me) else { return nil }
+        return members.first { $0 != me }
+    }
+
     /// Кто в Нютаге: собеседники плюс найденные по номерам. Имя из книжки главнее имени из профиля.
     /// Остальные записи книжки — те, кого можно позвать.
     public static func merge(book: [BookEntry], matches: [String: String],

@@ -560,6 +560,39 @@ final class AppSession {
         return roomID
     }
 
+    // MARK: Профиль
+
+    func profile(of userID: String) async -> Profile? {
+        guard let account else { return nil }
+        return try? await account.client.profile(userID: userID)
+    }
+
+    /// Имя и «о себе»: отправляем только то, что изменилось.
+    func saveProfile(name: String, about: ProfileAbout, was old: Profile) async -> Bool {
+        guard let account, let me else { return false }
+        do {
+            let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !clean.isEmpty, clean != old.displayName { try await account.client.setDisplayName(userID: me, clean) }
+            let edits = about.edits(from: ProfileAbout(profile: old))
+            if !edits.isEmpty {
+                let api = try await account.client.profileFieldsAPI()
+                try await account.client.applyProfileEdits(userID: me, edits, api: api)
+            }
+            return true
+        } catch {
+            #if DEBUG
+            print("ui-check: профиль не сохранён: \(error)")
+            #endif
+            return false
+        }
+    }
+
+    /// Собеседник личного чата.
+    func partner(in roomID: String) async -> String? {
+        guard let account, let me else { return nil }
+        return try? await People.partner(roomID: roomID, store: account.store, me: me)
+    }
+
     // MARK: Приглашения
 
     enum InviteFailure: Error { case limit, noNetwork, broken }

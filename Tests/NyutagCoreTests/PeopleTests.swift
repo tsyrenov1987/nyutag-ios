@@ -61,4 +61,25 @@ struct PeopleTests {
         let people = try await People.known(store: store, me: "@me:nyutag.chat")
         #expect(people == [Person(userID: "@sesegma:nyutag.chat", name: "Сэсэгма", directRoom: "!a")])
     }
+
+    @Test("собеседник: из m.direct, иначе второй участник комнаты на двоих")
+    func partner() async throws {
+        let store = try Store.inMemory()
+        try await store.setAccountData(EventType.direct, content: ["@sesegma:nyutag.chat": ["!a"]])
+        func member(_ room: String, _ user: String, _ membership: String = "join") throws -> Event {
+            try #require(Event(json: ["type": "m.room.member", "state_key": .string(user), "room_id": .string(room),
+                                      "sender": .string(user), "content": ["membership": .string(membership)]]))
+        }
+        for event in [try member("!b", "@me:nyutag.chat"), try member("!b", "@bair:nyutag.chat"),
+                      try member("!c", "@me:nyutag.chat"), try member("!c", "@bair:nyutag.chat"),
+                      try member("!c", "@dulma:nyutag.chat"), try member("!d", "@me:nyutag.chat"),
+                      try member("!d", "@dulma:nyutag.chat"), try member("!d", "@bair:nyutag.chat", "leave")] {
+            try await store.setState(event)
+        }
+        let me = "@me:nyutag.chat"
+        #expect(try await People.partner(roomID: "!a", store: store, me: me) == "@sesegma:nyutag.chat")
+        #expect(try await People.partner(roomID: "!b", store: store, me: me) == "@bair:nyutag.chat")
+        #expect(try await People.partner(roomID: "!c", store: store, me: me) == nil)
+        #expect(try await People.partner(roomID: "!d", store: store, me: me) == "@dulma:nyutag.chat")
+    }
 }

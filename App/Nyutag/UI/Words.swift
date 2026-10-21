@@ -2,6 +2,7 @@
 // системный язык не подходит: бурятского в iOS нет. Строки держим в коде одной таблицей, чтобы три перевода
 // каждой фразы стояли рядом и не расходились.
 
+import NyutagCore
 import SwiftUI
 
 enum Lang: String, CaseIterable, Identifiable {
@@ -50,6 +51,33 @@ final class Words {
         for (index, value) in values.enumerated() { text = text.replacingOccurrences(of: "{\(index + 1)}", with: value) }
         return text
     }
+
+    /// «Огненная Лошадь» / «Улаан морин» / «Fire Horse»: по-русски стихия согласуется с родом животного.
+    func eastYear(_ year: EastYear) -> String {
+        let animal = Self.animals[year.animal]
+        let feminine = [0, 5, 6, 7, 8, 10, 11].contains(year.animal)
+        let element = feminine ? Self.elementsFeminine[year.element] : Self.elements[year.element]
+        return "\(self(element)) \(self(animal))"
+    }
+
+    private static let elements = [
+        Phrase(bxr: "Хүхэ", ru: "Деревянный", en: "Wood"), Phrase(bxr: "Улаан", ru: "Огненный", en: "Fire"),
+        Phrase(bxr: "Шара", ru: "Земляной", en: "Earth"), Phrase(bxr: "Сагаан", ru: "Металлический", en: "Metal"),
+        Phrase(bxr: "Хара", ru: "Водяной", en: "Water"),
+    ]
+    private static let elementsFeminine = [
+        Phrase(bxr: "Хүхэ", ru: "Деревянная", en: "Wood"), Phrase(bxr: "Улаан", ru: "Огненная", en: "Fire"),
+        Phrase(bxr: "Шара", ru: "Земляная", en: "Earth"), Phrase(bxr: "Сагаан", ru: "Металлическая", en: "Metal"),
+        Phrase(bxr: "Хара", ru: "Водяная", en: "Water"),
+    ]
+    private static let animals = [
+        Phrase(bxr: "хулгана", ru: "Крыса", en: "Rat"), Phrase(bxr: "үхэр", ru: "Бык", en: "Ox"),
+        Phrase(bxr: "бар", ru: "Тигр", en: "Tiger"), Phrase(bxr: "туулай", ru: "Кролик", en: "Rabbit"),
+        Phrase(bxr: "луу", ru: "Дракон", en: "Dragon"), Phrase(bxr: "могой", ru: "Змея", en: "Snake"),
+        Phrase(bxr: "морин", ru: "Лошадь", en: "Horse"), Phrase(bxr: "хонин", ru: "Овца", en: "Sheep"),
+        Phrase(bxr: "бишэн", ru: "Обезьяна", en: "Monkey"), Phrase(bxr: "тахяа", ru: "Петух", en: "Rooster"),
+        Phrase(bxr: "нохой", ru: "Собака", en: "Dog"), Phrase(bxr: "гахай", ru: "Свинья", en: "Pig"),
+    ]
 }
 
 struct Phrase {
@@ -347,6 +375,22 @@ extension Phrase {
     static let inviteValidTill = Phrase(bxr: "{1} хүрэтэр хүсэнтэй", ru: "Действует до {1}", en: "Valid until {1}")
     static let inviteExpired = Phrase(bxr: "Хугацаань дууһаа", ru: "Срок истёк", en: "Expired")
     static let inviteRevoke = Phrase(bxr: "Болюулха", ru: "Отозвать", en: "Revoke")
+    static let profile = Phrase(bxr: "Профиль", ru: "Профиль", en: "Profile")
+    static let profileAbout = Phrase(bxr: "Өөрын тухай", ru: "О себе", en: "About")
+    static let profileAboutPlaceholder = Phrase(bxr: "Өөрынгөө тухай хэдэн үгэ", ru: "Пару слов о себе",
+                                                en: "A few words about yourself")
+    static let profileToonto = Phrase(bxr: "Тоонто нютаг", ru: "Тоонто нютаг", en: "Toonto nyutag (homeland)")
+    static let profileToontoPlaceholder = Phrase(bxr: "Таанай уг хаанахиб", ru: "Откуда ваш род", en: "Where your family is from")
+    static let profileUg = Phrase(bxr: "Уг гарбал", ru: "Род (уг гарбал)", en: "Clan (ug garbal)")
+    static let profileUgPlaceholder = Phrase(bxr: "Жэшээнь, Хуасай", ru: "Например, Хуасай", en: "For example, Khuasai")
+    static let profileEastYear = Phrase(bxr: "Түрэһэн жэл", ru: "Год по восточному календарю", en: "Year by the Eastern calendar")
+    static let profileEastYearHint = Phrase(
+        bxr: "Зүүн зүгэй жэл Сагаалганһаа эхилдэг (январь–февраль). Сагаалганай урда түрэһэн хүн урдахи жэлээ шэлэгты.",
+        ru: "Восточный год начинается с Сагаалгана (январь–февраль). Если вы родились до Сагаалгана, выберите предыдущий год.",
+        en: "The Eastern year starts at Sagaalgan (January–February). If you were born before Sagaalgan, pick the previous year.")
+    static let profileEastYearNone = Phrase(bxr: "Заагдаагүй", ru: "Не указан", en: "Not set")
+    static let profileSaveFailed = Phrase(bxr: "Хадагалжа шадабагүйбди. Дахин оролдогты.",
+                                          ru: "Не удалось сохранить. Попробуйте ещё раз.", en: "Could not save. Try again.")
     static let scheduledReminder = Phrase(bxr: "Һүүлдэ эльгээхэ бэшэг эльгээгдээгүй", ru: "Отложенное сообщение ещё не ушло",
                                           en: "A scheduled message hasn't been sent yet")
     static let autoDelete = Phrase(bxr: "Бэшэгүүдые автоматаар усадхаха", ru: "Автоудаление сообщений",

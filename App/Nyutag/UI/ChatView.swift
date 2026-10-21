@@ -16,6 +16,9 @@ struct ChatView: View {
     let roomID: String
 
     @State private var items: [FeedItem] = []
+    /// Карточка собеседника личного чата.
+    @State private var partner: String?
+    @State private var showingPartner = false
     @State private var limit = 80
     @State private var hasOlder = true
     @State private var loadingOlder = false
@@ -113,6 +116,16 @@ struct ChatView: View {
         .alert(words(.schedulePast), isPresented: $schedulePast) { Button(words(.done)) {} }
         .sheet(isPresented: Binding { scheduling != nil } set: { if !$0 { scheduling = nil } }) { schedulePicker }
         .sheet(isPresented: $showingScheduled) { scheduledList }
+        .sheet(isPresented: $showingPartner) { if let partner { PersonCard(userID: partner) } }
+        .task {
+            partner = await session.partner(in: roomID)
+            #if DEBUG
+            if ProcessInfo.processInfo.environment["NYUTAG_UI_SHEET"] == "partner" {
+                print("ui-check: собеседник \(partner.map(ChatDigest.localpart) ?? "не найден")")
+                showingPartner = partner != nil
+            }
+            #endif
+        }
         .photosPicker(isPresented: $pickingPhoto, selection: $photoItem, matching: .images)
         .fileImporter(isPresented: $pickingFile, allowedContentTypes: [.item]) { result in
             if case .success(let url) = result { Task { await attachFile(url) } }
@@ -151,6 +164,9 @@ struct ChatView: View {
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
+                    if partner != nil {
+                        Button(words(.profile), systemImage: "person.crop.circle") { showingPartner = true }
+                    }
                     Picker(selection: Binding { rule.choice } set: { setRule($0) }) {
                         ForEach(AutoDelete.choices, id: \.self) { Text(ruleName($0)).tag($0) }
                     } label: {
@@ -623,7 +639,7 @@ struct ChatView: View {
         }
         if let kind = env["NYUTAG_UI_ATTACH"] { attachForScreenshots(kind) }
         // NYUTAG_UI_SHEET=schedule — окно выбора времени для текста NYUTAG_UI_SEND, scheduled — очередь чата.
-        if !Self.sheetForScreenshots, let sheet = env["NYUTAG_UI_SHEET"] {
+        if !Self.sheetForScreenshots, let sheet = env["NYUTAG_UI_SHEET"], sheet != "partner" {
             Self.sheetForScreenshots = true
             if sheet == "schedule" { draft = env["NYUTAG_UI_SEND"] ?? "Проверка"; askSchedule() } else { showingScheduled = true }
             print("ui-check: открыто окно \(sheet)")
