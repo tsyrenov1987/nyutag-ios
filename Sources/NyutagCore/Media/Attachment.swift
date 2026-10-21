@@ -20,9 +20,13 @@ public struct Attachment: Sendable, Equatable {
     public let size: Int?
     public let width: Int?
     public let height: Int?
+    /// Исчезающее фото: метка `chat.nyutag.view_once` в содержимом, формат общий с Android.
+    public let viewOnce: Bool
+
+    public static let viewOnceKey = "chat.nyutag.view_once"
 
     public init(msgtype: String = "m.file", source: Source, thumbnail: Source? = nil, name: String, mimetype: String? = nil,
-                size: Int? = nil, width: Int? = nil, height: Int? = nil) {
+                size: Int? = nil, width: Int? = nil, height: Int? = nil, viewOnce: Bool = false) {
         self.msgtype = msgtype
         self.source = source
         self.thumbnail = thumbnail
@@ -31,6 +35,7 @@ public struct Attachment: Sendable, Equatable {
         self.size = size
         self.width = width
         self.height = height
+        self.viewOnce = viewOnce
     }
 
     /// Вложение из содержимого реплики; у текста и у битого содержимого — `nil`.
@@ -41,12 +46,13 @@ public struct Attachment: Sendable, Equatable {
         let name = content["filename"]?.string ?? content["body"]?.string ?? ""
         return Attachment(msgtype: msgtype, source: source, thumbnail: locate(file: info?["thumbnail_file"], url: info?["thumbnail_url"]),
                           name: name, mimetype: info?["mimetype"]?.string, size: info?["size"]?.int,
-                          width: info?["w"]?.int, height: info?["h"]?.int)
+                          width: info?["w"]?.int, height: info?["h"]?.int,
+                          viewOnce: content[viewOnceKey]?.bool == true)
     }
 
     /// Содержимое реплики с вложением. `body` — имя файла: старые клиенты покажут хотя бы его.
     public static func content(_ source: Source, name: String, mimetype: String, size: Int,
-                               width: Int? = nil, height: Int? = nil) -> JSONValue {
+                               width: Int? = nil, height: Int? = nil, viewOnce: Bool = false) -> JSONValue {
         var info: [String: JSONValue] = ["mimetype": .string(mimetype), "size": .int(size)]
         if let width, let height {
             info["w"] = .int(width)
@@ -54,6 +60,7 @@ public struct Attachment: Sendable, Equatable {
         }
         var content: [String: JSONValue] = ["msgtype": .string(msgtype(for: mimetype)), "body": .string(name),
                                             "filename": .string(name), "info": .object(info)]
+        if viewOnce { content[viewOnceKey] = true }
         switch source {
         case .plain(let mxc): content["url"] = .string(mxc.description)
         case .sealed(let file): content["file"] = try? JSONValue(data: JSONEncoder().encode(file))

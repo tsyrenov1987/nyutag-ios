@@ -55,6 +55,19 @@ struct MediaTests {
         #expect(Attachment.read(plain)?.isImage == false)
     }
 
+    @Test func viewOnceMark() throws {
+        let mxc = MXC("mxc://nyutag.chat/V1")!
+        let once = Attachment.content(.plain(mxc), name: "photo.jpg", mimetype: "image/jpeg", size: 5, viewOnce: true)
+        #expect(once["chat.nyutag.view_once"] == true)
+        #expect(Attachment.read(once)?.viewOnce == true)
+        // Как пишет Android: метка рядом с обычными полями.
+        let android = try JSONValue(parsing: #"{"msgtype":"m.image","body":"a.jpg","url":"mxc://nyutag.chat/V1","chat.nyutag.view_once":true}"#)
+        #expect(Attachment.read(android)?.viewOnce == true)
+        let plain = Attachment.content(.plain(mxc), name: "photo.jpg", mimetype: "image/jpeg", size: 5)
+        #expect(plain["chat.nyutag.view_once"] == nil)
+        #expect(Attachment.read(plain)?.viewOnce == false)
+    }
+
     @Test func attachmentFromForeignClient() throws {
         // Чужой клиент: без filename, с миниатюрой по открытому адресу; GIF показываем файлом.
         let content = try JSONValue(parsing: """

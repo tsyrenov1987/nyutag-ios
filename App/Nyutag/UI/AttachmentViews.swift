@@ -172,3 +172,78 @@ enum OpenedFiles {
 
     static func clear() { try? FileManager.default.removeItem(at: folder) }
 }
+
+/// Исчезающие фото, которые мы уже открыли: второй раз не откроются, даже если удаление не дошло до сервера.
+/// Запоминаем в момент открытия — переживает закрытие приложения во время просмотра.
+@MainActor @Observable
+final class ViewOnceSeen {
+    static let shared = ViewOnceSeen()
+    private static let key = "nyutag.viewOnce.opened"
+    private(set) var ids: Set<String>
+
+    private init() { ids = Set(UserDefaults.standard.stringArray(forKey: Self.key) ?? []) }
+
+    func contains(_ eventID: String) -> Bool { ids.contains(eventID) }
+
+    func mark(_ eventID: String) {
+        guard ids.insert(eventID).inserted else { return }
+        UserDefaults.standard.set(Array(ids.suffix(500)), forKey: Self.key)
+    }
+}
+
+/// Заглушка исчезающего фото в пузыре: миниатюры нет, открыть можно один раз.
+struct ViewOnceChip: View {
+    @Environment(Words.self) private var words
+    let mine: Bool
+    let seen: Bool
+    let ink: Color
+    let soft: Color
+    var busy = false
+
+    var body: some View {
+        HStack(spacing: 10) {
+            ZStack {
+                Circle().fill(ink.opacity(0.14))
+                if busy {
+                    ProgressView().tint(ink)
+                } else {
+                    Image(systemName: seen ? "flame" : "flame.fill").foregroundStyle(seen ? soft : ink)
+                }
+            }
+            .frame(width: 40, height: 40)
+            Text(words(mine ? .viewOnceSent : seen ? .viewOnceOpened : .viewOnceReceived))
+                .font(.callout.weight(.medium)).foregroundStyle(seen ? soft : ink)
+        }
+        .frame(maxWidth: 240, alignment: .leading)
+    }
+}
+
+/// Одноразовый просмотр во весь экран. Пока экран записывается или транслируется, фото скрыто.
+struct ViewOnceViewer: View {
+    let image: UIImage
+    let close: () -> Void
+    @State private var captured = UIScreen.main.isCaptured
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            if captured {
+                Image(systemName: "eye.slash").font(.largeTitle).foregroundStyle(.white.opacity(0.6))
+            } else {
+                Image(uiImage: image).resizable().scaledToFit().ignoresSafeArea()
+            }
+        }
+        .overlay(alignment: .topTrailing) {
+            Button(action: close) {
+                Image(systemName: "xmark").font(.title3.bold()).foregroundStyle(.white)
+                    .frame(width: 44, height: 44).background(.white.opacity(0.15), in: Circle())
+            }
+            .padding()
+            .accessibilityIdentifier("view-once-close")
+        }
+        .onTapGesture(perform: close)
+        .onReceive(NotificationCenter.default.publisher(for: UIScreen.capturedDidChangeNotification)) { _ in
+            captured = UIScreen.main.isCaptured
+        }
+    }
+}

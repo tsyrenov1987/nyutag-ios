@@ -4,6 +4,7 @@
 import Foundation
 import NyutagCore
 import Observation
+import UserNotifications
 
 @MainActor @Observable
 final class AppSession {
@@ -37,6 +38,8 @@ final class AppSession {
     private(set) var awaitingKeys = false
     /// Окно проверки открыто: его поднимает пришедший запрос или карточка «подтвердите вход».
     var showDeviceCheck = false
+    /// Отложенные сообщения всех учёток телефона; отправляем только свои.
+    private(set) var scheduled = ScheduledQueue(data: UserDefaults.standard.data(forKey: AppSession.scheduledKey))
     /// Звонки: экран звонка смотрит сюда.
     @ObservationIgnored let calls = CallDesk()
 
@@ -58,6 +61,8 @@ final class AppSession {
     @ObservationIgnored private var adoptedChecks: Set<String> = []
     /// Сколько записей раскладки ещё в пути: пока они идут, в базе старая версия, её не подхватываем.
     @ObservationIgnored private var layoutWrites = 0
+    @ObservationIgnored private var scheduler: Task<Void, Never>?
+    @ObservationIgnored private var sendingScheduled: Set<String> = []
 
     init(keeper: AccountKeeper? = .app()) {
         self.keeper = keeper
@@ -120,6 +125,7 @@ final class AppSession {
         self.account = nil
         lines = []
         layout = ChatLayout()
+        setScheduled(scheduled.removingAccount(account.session.userID))
         typing = [:]
         me = nil
         history = nil
@@ -401,7 +407,7 @@ final class AppSession {
             return nil
         }
         let content = Attachment.content(source, name: file.name, mimetype: file.mimetype, size: file.data.count,
-                                         width: file.width, height: file.height)
+                                         width: file.width, height: file.height, viewOnce: file.viewOnce)
         return await post(EventType.message, content, to: roomID, transactionID: transactionID)
     }
 
@@ -427,6 +433,79 @@ final class AppSession {
     /// Отметка прочтения: публичная, чтобы у собеседника загорелись две галочки.
     func markRead(_ roomID: String, upTo eventID: String) async {
         try? await account?.client.setReadMarkers(roomID: roomID, fullyRead: eventID, read: eventID)
+    }
+
+    // MARK: Отложенные
+
+    static let scheduledKey = "nyutag.scheduled"
+
+    func schedule(_ text: String, in roomID: String, at date: Date) {
+        guard let me else { return }
+        setScheduled(scheduled.adding(ScheduledMessage(account: me, roomID: roomID, body: text, sendAt: date)))
+    }
+
+    func sendScheduledNow(_ id: String) { setScheduled(scheduled.sendingNow(id)) }
+    func dropScheduled(_ id: String) { setScheduled(scheduled.removing(id)) }
+
+    private func setScheduled(_ fresh: ScheduledQueue) {
+        guard fresh != scheduled else { return }
+        scheduled = fresh
+        UserDefaults.standard.set(fresh.data, forKey: Self.scheduledKey)
+        Task { await Self.syncReminders(fresh) }
+        Task { await sendDueScheduled() }
+    }
+
+    /// Обход раз в 5 секунд, пока приложение открыто: в фоне задача спит вместе с ним и догоняет при возврате.
+    private func startScheduler() {
+        scheduler?.cancel()
+        scheduler = Task { [weak self] in
+            while !Task.isCancelled {
+                await self?.sendDueScheduled()
+                try? await Task.sleep(for: .seconds(5))
+            }
+        }
+    }
+
+    private func sendDueScheduled() async {
+        guard let account, let me else { return }
+        for message in scheduled.due(account: me) where !sendingScheduled.contains(message.id) {
+            guard let room = try? await account.store.room(message.roomID) else { continue }
+            if room.membership != .join {
+                // Из чата вышли — отправлять некуда.
+                setScheduled(scheduled.removing(message.id))
+                continue
+            }
+            sendingScheduled.insert(message.id)
+            let eventID = await send(message.body, to: message.roomID, replyTo: nil, transactionID: message.transactionID)
+            sendingScheduled.remove(message.id)
+            #if DEBUG
+            print("ui-check: отложенное \(eventID == nil ? "не ушло, повторю" : "ушло")")
+            #endif
+            if eventID != nil { setScheduled(scheduled.removing(message.id)) }
+        }
+    }
+
+    /// Напоминание через 2 минуты после срока: если приложение было закрыто и сообщение не ушло,
+    /// человек откроет Нютаг и обход его отправит. Ушло или удалено — напоминание снимаем.
+    private static func syncReminders(_ queue: ScheduledQueue) async {
+        let center = UNUserNotificationCenter.current()
+        let prefix = "nyutag.scheduled."
+        let wanted = Set(queue.messages.map { prefix + $0.id })
+        let pending = await center.pendingNotificationRequests().map(\.identifier).filter { $0.hasPrefix(prefix) }
+        center.removePendingNotificationRequests(withIdentifiers: pending.filter { !wanted.contains($0) })
+        let delivered = await center.deliveredNotifications().map(\.request.identifier).filter { $0.hasPrefix(prefix) }
+        center.removeDeliveredNotifications(withIdentifiers: delivered.filter { !wanted.contains($0) })
+        let words = Words()
+        for message in queue.messages where !pending.contains(prefix + message.id) {
+            let content = UNMutableNotificationContent()
+            content.title = words(.scheduledReminder)
+            content.body = String(message.body.prefix(80))
+            content.userInfo = ["room_id": message.roomID]
+            let wait = max(1, message.date.timeIntervalSinceNow + 120)
+            let request = UNNotificationRequest(identifier: prefix + message.id, content: content,
+                                                trigger: UNTimeIntervalNotificationTrigger(timeInterval: wait, repeats: false))
+            try? await center.add(request)
+        }
     }
 
     // MARK: Закреп и папки
@@ -560,6 +639,7 @@ final class AppSession {
         print("ui-check: это устройство \(account.session.deviceID)")
         #endif
         startCalls(account)
+        startScheduler()
         let updates = await engine.updates()
         pump = Task { [weak self] in
             for await update in updates {
@@ -769,6 +849,8 @@ final class AppSession {
 
     private func stop() async {
         await calls.detach()
+        scheduler?.cancel()
+        scheduler = nil
         pump?.cancel()
         pump = nil
         await engine?.stop()
@@ -809,6 +891,8 @@ struct OutgoingFile: Sendable {
     let mimetype: String
     var width: Int?
     var height: Int?
+    /// Исчезающее фото: один просмотр у получателя.
+    var viewOnce = false
 }
 
 /// Расшифрованные последние реплики: список перестраивается на каждый /sync, расшифровывать заново незачем.

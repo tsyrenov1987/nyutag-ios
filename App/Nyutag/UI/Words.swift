@@ -306,6 +306,23 @@ extension Phrase {
                                     en: "No chats in this folder yet. Long-press a chat and choose “Add to folder”.")
     static let save = Phrase(bxr: "Хадагалха", ru: "Сохранить", en: "Save")
     static let close = Phrase(bxr: "Хааха", ru: "Закрыть", en: "Close")
+    static let viewOnceAction = Phrase(bxr: "Нэгэ удаа харах", ru: "Исчезающее: один просмотр", en: "View once")
+    static let viewOnceSent = Phrase(bxr: "Нэгэ удаа харах зураг", ru: "Исчезающее фото", en: "View-once photo")
+    static let viewOnceReceived = Phrase(bxr: "Нэгэ удаа харах зураг. Нээхын тула дарагты",
+                                         ru: "Исчезающее фото. Нажмите, чтобы открыть", en: "View-once photo. Tap to open")
+    static let viewOnceOpened = Phrase(bxr: "Хараһан", ru: "Просмотрено", en: "Opened")
+    static let scheduleAction = Phrase(bxr: "Һүүлдэ эльгээхэ", ru: "Отправить позже", en: "Send later")
+    static let scheduleTitle = Phrase(bxr: "Һүүлдэ эльгээхэ бэшэгүүд", ru: "Отложенные сообщения", en: "Scheduled messages")
+    static let scheduleHint = Phrase(
+        bxr: "Бэшэг шэлэгдэһэн сагта эльгээгдэхэ. Нютаг хаагдаһан байгаад, iOS һэргээгээгүй һаань, Нютаг нээхые һануулга ерэхэ.",
+        ru: "Сообщение уйдёт в выбранное время. Если Нютаг закрыт и iOS его не разбудит, придёт напоминание открыть приложение.",
+        en: "The message will be sent at the chosen time. If Nyutag is closed and iOS doesn't wake it, you'll get a reminder to open the app.")
+    static let scheduleAt = Phrase(bxr: "{1} эльгээгдэхэ", ru: "Отправится {1}", en: "Sends {1}")
+    static let scheduleBanner = Phrase(bxr: "Һүүлдэ эльгээхэ бэшэг: {1}", ru: "Отложенных сообщений: {1}", en: "Scheduled messages: {1}")
+    static let scheduleSendNow = Phrase(bxr: "Мүнөө эльгээхэ", ru: "Отправить сейчас", en: "Send now")
+    static let schedulePast = Phrase(bxr: "Ерээдүйн саг шэлэгты.", ru: "Выберите время в будущем.", en: "Pick a time in the future.")
+    static let scheduledReminder = Phrase(bxr: "Һүүлдэ эльгээхэ бэшэг эльгээгдээгүй", ru: "Отложенное сообщение ещё не ушло",
+                                          en: "A scheduled message hasn't been sent yet")
     static let autoDelete = Phrase(bxr: "Бэшэгүүдые автоматаар усадхаха", ru: "Автоудаление сообщений",
                                    en: "Auto-delete messages")
     static let autoDeleteHint = Phrase(bxr: "Энэ чат соохи шэнэ бэшэгүүд шэлэгдэһэн сагай һүүлээр бүгэдэдэ усадхагдаха.",

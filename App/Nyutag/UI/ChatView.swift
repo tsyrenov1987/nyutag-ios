@@ -32,6 +32,18 @@ struct ChatView: View {
     @State private var photoItem: PhotosPickerItem?
     @State private var previewURL: URL?
     @State private var openingID: String?
+    /// Исчезающее фото: следующий снимок из галереи уйдёт с меткой; открытое сейчас — во весь экран.
+    @State private var pickingOnce = false
+    /// Текст, который откладываем: открыто окно выбора времени.
+    @State private var scheduling: String?
+    @State private var scheduleDate = Date.now.addingTimeInterval(3600)
+    @State private var schedulePast = false
+    @State private var showingScheduled = false
+    @State private var viewingOnce: OnceShot?
+    struct OnceShot: Identifiable {
+        let id: String
+        let image: UIImage
+    }
     /// Автоудаление: правило из базы, а пока сервер не прислал наше новое — то, что мы поставили.
     @State private var rule = AutoDelete()
     @State private var settingRule: AutoDelete?
@@ -98,6 +110,9 @@ struct ChatView: View {
         }
         .alert(words(.cantDo), isPresented: $failed) { Button(words(.done)) {} }
         .alert(words(.autoDeleteError), isPresented: $ruleFailed) { Button(words(.done)) {} }
+        .alert(words(.schedulePast), isPresented: $schedulePast) { Button(words(.done)) {} }
+        .sheet(isPresented: Binding { scheduling != nil } set: { if !$0 { scheduling = nil } }) { schedulePicker }
+        .sheet(isPresented: $showingScheduled) { scheduledList }
         .photosPicker(isPresented: $pickingPhoto, selection: $photoItem, matching: .images)
         .fileImporter(isPresented: $pickingFile, allowedContentTypes: [.item]) { result in
             if case .success(let url) = result { Task { await attachFile(url) } }
@@ -108,6 +123,9 @@ struct ChatView: View {
             Task { await attachPhoto(picked) }
         }
         .quickLookPreview($previewURL)
+        .fullScreenCover(item: $viewingOnce, onDismiss: {}) { shot in
+            ViewOnceViewer(image: shot.image) { closeOnce(shot) }
+        }
         .onChange(of: previewURL) { if previewURL == nil { OpenedFiles.clear() } }
         .onChange(of: draft) { noteTyping() }
         .onAppear { PushDoor.shared.openRoom = roomID }
@@ -172,6 +190,14 @@ struct ChatView: View {
 
     private var composer: some View {
         VStack(spacing: 0) {
+            if !queued.isEmpty {
+                Button { showingScheduled = true } label: {
+                    Label(words(.scheduleBanner, "\(queued.count)"), systemImage: "clock")
+                        .font(.footnote.weight(.semibold)).foregroundStyle(Theme.sky)
+                        .frame(maxWidth: .infinity).padding(.top, 8)
+                }
+                .accessibilityIdentifier("chat-scheduled")
+            }
             if let editing {
                 banner(title: words(.editing), text: summary(editing.body), symbol: "pencil") {
                     self.editing = nil
@@ -183,7 +209,8 @@ struct ChatView: View {
             HStack(alignment: .bottom, spacing: 8) {
                 if editing == nil {
                     Menu {
-                        Button(words(.photoAction), systemImage: "photo.on.rectangle") { pickingPhoto = true }
+                        Button(words(.photoAction), systemImage: "photo.on.rectangle") { pickingOnce = false; pickingPhoto = true }
+                        Button(words(.viewOnceAction), systemImage: "flame") { pickingOnce = true; pickingPhoto = true }
                         Button(words(.fileAction), systemImage: "doc") { pickingFile = true }
                     } label: {
                         Image(systemName: "paperclip")
@@ -207,12 +234,79 @@ struct ChatView: View {
                         .background(Theme.gold.opacity(canSend ? 1 : 0.4), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
                 .disabled(!canSend)
+                .contextMenu {
+                    if editing == nil, canSend {
+                        Button(words(.scheduleAction), systemImage: "clock") { askSchedule() }
+                    }
+                }
                 .accessibilityLabel(words(.send))
                 .accessibilityIdentifier("chat-send")
             }
             .padding(.horizontal, 10).padding(.vertical, 8)
         }
         .background(Theme.card)
+    }
+
+    /// Отложенные этого чата, ближайшие первыми.
+    private var queued: [ScheduledMessage] {
+        guard let me = session.me else { return [] }
+        return session.scheduled.inRoom(roomID, account: me)
+    }
+
+    private var schedulePicker: some View {
+        NavigationStack {
+            Form {
+                DatePicker(words(.scheduleAction), selection: $scheduleDate, in: Date.now..., displayedComponents: [.date, .hourAndMinute])
+                    .datePickerStyle(.graphical)
+                    .environment(\.locale, (words.lang ?? .ru).locale)
+                    .environment(\.calendar, pickerCalendar)
+                Section { Text(scheduling ?? "").lineLimit(4) } footer: { Text(words(.scheduleHint)) }
+            }
+            .navigationTitle(words(.scheduleAction))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button(words(.cancel)) { scheduling = nil } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(words(.done), action: confirmSchedule).accessibilityIdentifier("schedule-confirm")
+                }
+            }
+        }
+        .presentationDetents([.large])
+    }
+
+    /// По-русски и по-бурятски неделя с понедельника, по-английски — как в настройках телефона.
+    private var pickerCalendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.locale = (words.lang ?? .ru).locale
+        calendar.firstWeekday = words.lang == .en ? Calendar.current.firstWeekday : 2
+        return calendar
+    }
+
+    private var scheduledList: some View {
+        NavigationStack {
+            List {
+                ForEach(queued) { message in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(message.body).lineLimit(4)
+                        Text(words(.scheduleAt, message.date.formatted(.dateTime.locale((words.lang ?? .ru).locale)
+                            .day().month().hour().minute())))
+                            .font(.caption).foregroundStyle(Theme.quiet)
+                    }
+                    .swipeActions {
+                        Button(words(.deleteAction), role: .destructive) { session.dropScheduled(message.id) }
+                        Button(words(.scheduleSendNow)) { session.sendScheduledNow(message.id) }.tint(Theme.sky)
+                    }
+                    .contextMenu {
+                        Button(words(.scheduleSendNow), systemImage: "paperplane") { session.sendScheduledNow(message.id) }
+                        Button(words(.deleteAction), systemImage: "trash", role: .destructive) { session.dropScheduled(message.id) }
+                    }
+                }
+            }
+            .navigationTitle(words(.scheduleTitle))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button(words(.done)) { showingScheduled = false } } }
+            .onChange(of: queued.isEmpty) { if queued.isEmpty { showingScheduled = false } }
+        }
     }
 
     private func banner(title: String, text: String, symbol: String?, close: @escaping () -> Void) -> some View {
@@ -336,6 +430,10 @@ struct ChatView: View {
     /// Вложение на весь экран: расшифрованная копия во временной папке, пока открыт просмотр.
     private func open(_ item: FeedItem) {
         guard let attachment = item.attachment, openingID == nil else { return }
+        if attachment.viewOnce {
+            openOnce(item, attachment)
+            return
+        }
         openingID = item.id
         Task {
             defer { openingID = nil }
@@ -355,12 +453,50 @@ struct ChatView: View {
         }
     }
 
+    /// Исчезающее фото открывается один раз и только у получателя; после просмотра реплику удаляем.
+    private func openOnce(_ item: FeedItem, _ attachment: Attachment) {
+        guard !item.isMine, !ViewOnceSeen.shared.contains(item.id) else { return }
+        openingID = item.id
+        Task {
+            defer { openingID = nil }
+            guard let data = await session.attachmentData(attachment, preview: false), let image = UIImage(data: data) else {
+                #if DEBUG
+                print("ui-check: исчезающее фото не скачалось")
+                #endif
+                failed = true
+                return
+            }
+            ViewOnceSeen.shared.mark(item.id)
+            let shot = OnceShot(id: item.id, image: image)
+            viewingOnce = shot
+            #if DEBUG
+            print("ui-check: исчезающее фото открыто, \(Int(image.size.width))×\(Int(image.size.height))")
+            if ProcessInfo.processInfo.environment["NYUTAG_UI_OPEN"] != nil {
+                try? await Task.sleep(for: .seconds(4))
+                closeOnce(shot)
+            }
+            #endif
+        }
+    }
+
+    private func closeOnce(_ shot: OnceShot) {
+        viewingOnce = nil
+        Task {
+            let removed = await session.delete(shot.id, in: roomID)
+            #if DEBUG
+            print("ui-check: исчезающее фото \(removed ? "удалено" : "осталось на сервере (нет прав), но больше не откроется")")
+            #endif
+        }
+    }
+
     private func attachPhoto(_ picked: PhotosPickerItem) async {
         let name = "photo-" + Date.now.formatted(.iso8601.year().month().day().time(includingFractionalSeconds: false))
             .filter { $0.isNumber || $0 == "T" }
         guard let data = try? await picked.loadTransferable(type: Data.self),
-              let file = await Task.detached(priority: .userInitiated, operation: { OutgoingFile.photo(data, name: name) }).value
+              var file = await Task.detached(priority: .userInitiated, operation: { OutgoingFile.photo(data, name: name) }).value
         else { failed = true; return }
+        file.viewOnce = pickingOnce
+        pickingOnce = false
         queue(file)
     }
 
@@ -423,6 +559,23 @@ struct ChatView: View {
         deliver(pending)
     }
 
+    private func askSchedule() {
+        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        scheduleDate = Date.now.addingTimeInterval(3600)
+        scheduling = text
+    }
+
+    private func confirmSchedule() {
+        guard let text = scheduling else { return }
+        guard scheduleDate > .now else { schedulePast = true; return }
+        session.schedule(text, in: roomID, at: scheduleDate)
+        scheduling = nil
+        draft = ""
+        replyTo = nil
+        stopTyping()
+    }
+
     private func retry(_ pending: Outgoing) {
         guard pending.failed, let index = outbox.firstIndex(of: pending) else { return }
         outbox[index].failed = false
@@ -463,12 +616,27 @@ struct ChatView: View {
             }
         }
         if let kind = env["NYUTAG_UI_ATTACH"] { attachForScreenshots(kind) }
-        if env["NYUTAG_UI_OPEN"] != nil, !Self.openedForScreenshots, let last = items.last(where: { $0.attachment != nil }) {
+        // NYUTAG_UI_SHEET=schedule — окно выбора времени для текста NYUTAG_UI_SEND, scheduled — очередь чата.
+        if !Self.sheetForScreenshots, let sheet = env["NYUTAG_UI_SHEET"] {
+            Self.sheetForScreenshots = true
+            if sheet == "schedule" { draft = env["NYUTAG_UI_SEND"] ?? "Проверка"; askSchedule() } else { showingScheduled = true }
+            print("ui-check: открыто окно \(sheet)")
+        }
+        // NYUTAG_UI_OPEN=once — ждать чужое исчезающее фото и открыть его.
+        let once = env["NYUTAG_UI_OPEN"] == "once"
+        if env["NYUTAG_UI_OPEN"] != nil, !Self.openedForScreenshots,
+           let last = items.last(where: { $0.attachment != nil && (!once || ($0.attachment?.viewOnce == true && !$0.isMine)) }) {
             Self.openedForScreenshots = true
             open(last)
         }
         guard !Self.sentForScreenshots, let text = env["NYUTAG_UI_SEND"] else { return }
         Self.sentForScreenshots = true
+        // NYUTAG_UI_SCHEDULE=секунды — не сразу, а отложенным.
+        if let delay = env["NYUTAG_UI_SCHEDULE"].flatMap(Double.init) {
+            session.schedule(text, in: roomID, at: .now.addingTimeInterval(delay))
+            print("ui-check: отложено на \(Int(delay)) с, в очереди чата \(queued.count)")
+            return
+        }
         draft = text
         sendDraft()
         print("ui-check: отправка ушла в очередь")
@@ -477,8 +645,9 @@ struct ChatView: View {
     private static var attachedForScreenshots = false
     private static var ruledForScreenshots = false
     private static var openedForScreenshots = false
+    private static var sheetForScreenshots = false
 
-    /// NYUTAG_UI_ATTACH: `photo` — нарисованный снимок 1600×1200, `file` — небольшой текстовый файл.
+    /// NYUTAG_UI_ATTACH: `photo` — нарисованный снимок 1600×1200 (`once` — он же исчезающим), `file` — небольшой текстовый файл.
     private func attachForScreenshots(_ kind: String) {
         guard !Self.attachedForScreenshots else { return }
         Self.attachedForScreenshots = true
@@ -497,7 +666,8 @@ struct ChatView: View {
             ("Нютаг β" as NSString).draw(at: CGPoint(x: 120, y: 480),
                                           withAttributes: [.font: UIFont.boldSystemFont(ofSize: 180), .foregroundColor: UIColor.white])
         }
-        guard let jpeg = drawn.jpegData(compressionQuality: 0.9), let file = OutgoingFile.photo(jpeg, name: "proverka") else { return }
+        guard let jpeg = drawn.jpegData(compressionQuality: 0.9), var file = OutgoingFile.photo(jpeg, name: "proverka") else { return }
+        file.viewOnce = kind == "once"
         queue(file)
     }
 
@@ -645,7 +815,13 @@ struct Bubble: View {
             Text(text).foregroundStyle(ink).textSelection(.disabled)
         case .attachment(let kind, let caption):
             VStack(alignment: .leading, spacing: 6) {
-                if let attachment = item.attachment, attachment.isImage {
+                if let attachment = item.attachment, attachment.viewOnce {
+                    Button(action: open) {
+                        ViewOnceChip(mine: item.isMine, seen: ViewOnceSeen.shared.contains(item.id), ink: ink, soft: soft, busy: opening)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("attachment-\(item.id)")
+                } else if let attachment = item.attachment, attachment.isImage {
                     AttachmentImage(key: item.id, attachment: attachment)
                         .overlay { if opening { ProgressView().tint(.white) } }
                         .onTapGesture(perform: open)
