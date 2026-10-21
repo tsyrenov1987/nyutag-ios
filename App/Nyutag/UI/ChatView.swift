@@ -47,6 +47,9 @@ struct ChatView: View {
         static func == (a: Outgoing, b: Outgoing) -> Bool { a.id == b.id && a.eventID == b.eventID && a.failed == b.failed }
     }
 
+    /// Звонить можно, когда в чате ровно один собеседник.
+    @State private var canCall = false
+
     private var line: ChatLine? { session.lines.first { $0.id == roomID } }
     private var isGroup: Bool { !(line?.isDirect ?? false) }
 
@@ -107,10 +110,16 @@ struct ChatView: View {
         }
         .toolbar(.hidden, for: .tabBar)
         .toolbar {
+            if canCall {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(words(.callAction), systemImage: "phone") { Task { await session.startCall(in: roomID) } }
+                }
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Pillow(seed: roomID, title: line?.title ?? "·", size: 32)
             }
         }
+        .task(id: roomID) { canCall = await session.callPeer(roomID) != nil }
         .task(id: session.revision) {
             await reload()
             #if DEBUG

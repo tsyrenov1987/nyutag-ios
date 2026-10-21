@@ -16,6 +16,7 @@ struct HomeView: View {
             Tab(words(.communities), systemImage: "circle.hexagongrid", value: 2) { SoonView(title: words(.communities)) }
         }
         .onChange(of: PushDoor.shared.tappedRoom) { if PushDoor.shared.tappedRoom != nil { tab = 0 } }
+        .fullScreenCover(isPresented: .constant(session.calls.current != nil)) { CallView() }
         .sheet(isPresented: Bindable(session).showDeviceCheck, onDismiss: { Task { await session.closeDeviceCheck() } }) {
             DeviceCheckView()
         }

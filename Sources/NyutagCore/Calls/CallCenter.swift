@@ -1,0 +1,61 @@
+// Нютаг. Диспетчер звонков аккаунта: сигналы из ленты → нужный звонок, входящий будильник → экран, второй
+// звонок во время разговора → «занято».
+
+import Foundation
+
+public actor CallCenter {
+    private let env: CallEnvironment
+    private var sessions: [String: CallSession] = [:]
+    /// offer, пришедший раньше будильника (шифрованный расшифровался позже открытого или наоборот).
+    private var earlyOffers: [String: CallMessage] = [:]
+    public nonisolated let incoming: AsyncStream<CallSession>
+    private let incomingSink: AsyncStream<CallSession>.Continuation
+
+    public init(_ env: CallEnvironment) {
+        self.env = env
+        (incoming, incomingSink) = AsyncStream.makeStream(of: CallSession.self, bufferingPolicy: .bufferingNewest(4))
+    }
+
+    /// Позвонить. `nil` — уже идёт другой звонок.
+    public func dial(roomID: String, peer: String, video: Bool = false) async -> CallSession? {
+        guard await active() == nil else { return nil }
+        let session = CallSession(callID: CallID.make(), roomID: roomID, peer: peer, isCaller: true, video: video, env: env)
+        sessions[session.callID] = session
+        await session.dial()
+        return session
+    }
+
+    /// Текущий незаконченный звонок.
+    public func active() async -> CallSession? {
+        for (id, session) in sessions {
+            if await session.phase.isEnded { sessions[id] = nil } else { return session }
+        }
+        return nil
+    }
+
+    public func absorb(_ message: CallMessage, now: Date = Date()) async {
+        let id = message.signal.callID
+        if let session = sessions[id] { return await session.handle(message) }
+        switch message.signal {
+        case .ring(_, let video, let lifetime):
+            guard message.sender != env.me, message.isRinging(now: now) else { return }
+            if await active() != nil {
+                try? await env.post(.end(callID: id, reason: .busy), message.roomID)
+                return
+            }
+            let session = CallSession(callID: id, roomID: message.roomID, peer: message.sender, isCaller: false,
+                                      video: video, env: env)
+            sessions[id] = session
+            let started = Date(timeIntervalSince1970: Double(message.timestamp ?? 0) / 1000)
+            await session.ring(until: started.addingTimeInterval(Double(lifetime.components.seconds)))
+            if let offer = earlyOffers.removeValue(forKey: id) { await session.handle(offer) }
+            incomingSink.yield(session)
+        case .offer:
+            guard message.sender != env.me else { return }
+            if earlyOffers.count >= 16, let oldest = earlyOffers.keys.first { earlyOffers[oldest] = nil }
+            earlyOffers[id] = message
+        case .answer, .end:
+            break
+        }
+    }
+}

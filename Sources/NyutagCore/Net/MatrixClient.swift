@@ -177,6 +177,21 @@ public actor MatrixClient {
         return try await perform(request)
     }
 
+    /// WebSocket по тому же пути и с тем же доверием, что и запросы (туннель, свой CA), с токеном доступа.
+    /// Нужен релею звонков: nginx ядра пускает к нему только с действующим токеном.
+    public func webSocket(_ absolutePath: String, query: [String: String] = [:]) throws(MatrixError) -> URLSessionWebSocketTask {
+        var request = try makeRequest(.get, absolutePath, query: query, authenticated: true, timeout: nil)
+        request.timeoutInterval = 15
+        request.url = request.url.flatMap { Self.socketURL($0) }
+        return session.webSocketTask(with: request)
+    }
+
+    static func socketURL(_ url: URL) -> URL? {
+        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return nil }
+        components.scheme = components.scheme == "https" ? "wss" : "ws"
+        return components.url
+    }
+
     // MARK: Внутреннее
 
     /// `repeatedQuery`: ключ, повторённый для каждого значения (`?via=a&via=b`), идёт после обычных параметров.

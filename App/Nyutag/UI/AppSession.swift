@@ -32,6 +32,8 @@ final class AppSession {
     private(set) var awaitingKeys = false
     /// Окно проверки открыто: его поднимает пришедший запрос или карточка «подтвердите вход».
     var showDeviceCheck = false
+    /// Звонки: экран звонка смотрит сюда.
+    @ObservationIgnored let calls = CallDesk()
 
     @ObservationIgnored private let keeper: AccountKeeper?
     @ObservationIgnored private var account: SignedInAccount?
@@ -487,10 +489,12 @@ final class AppSession {
             // Без машины переписка в шифрованных чатах остаётся под замком, остальное работает.
         }
         Task { [weak self] in await self?.enablePush() }
+        startCalls(account)
         let updates = await engine.updates()
         pump = Task { [weak self] in
             for await update in updates {
                 self?.noteTyping(update.response)
+                await self?.absorbCalls(update.response)
                 await self?.followDeviceCheck()
                 await self?.refresh()
                 self?.revision += 1
@@ -517,6 +521,77 @@ final class AppSession {
         }
     }
 
+    // MARK: Звонки
+
+    /// Позвонить собеседнику комнаты. В комнате должен быть ровно один кроме нас.
+    func startCall(in roomID: String) async {
+        guard let peer = await callPeer(roomID) else { return }
+        await calls.dial(roomID: roomID, peer: peer)
+    }
+
+    func callPeer(_ roomID: String) async -> String? {
+        guard let account, let me else { return nil }
+        let members = (try? await account.store.state(roomID, type: EventType.member)) ?? []
+        let others = members.filter {
+            $0.stateKey != me && ["join", "invite"].contains($0.content["membership"]?.string ?? "")
+        }
+        return others.count == 1 ? others[0].stateKey : nil
+    }
+
+    private struct CallPostFailure: Error {}
+
+    private func startCalls(_ account: SignedInAccount) {
+        let client = account.client
+        let env = CallEnvironment(
+            me: account.session.userID, deviceID: account.session.deviceID,
+            post: { [weak self] signal, roomID in
+                guard let self, await self.postSignal(signal, to: roomID) else { throw CallPostFailure() }
+            },
+            openTransport: { slot in await RelayLink.open(client: client, slot: slot) },
+            makeVoice: { DeviceVoice() })
+        calls.name = { [weak self] roomID, peer in
+            let title = self?.lines.first { $0.id == roomID }?.title ?? ""
+            return title.isEmpty ? peer : title
+        }
+        calls.attach(CallCenter(env))
+        #if DEBUG
+        if let room = ProcessInfo.processInfo.environment["NYUTAG_UI_CALL_ROOM"] {
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(10))
+                await self?.startCall(in: room)
+            }
+        }
+        #endif
+    }
+
+    /// Будильник идёт открытым всегда (по нему шлюз шлёт VoIP-пуш), остальное — как обычные события комнаты.
+    private func postSignal(_ signal: CallSignal, to roomID: String) async -> Bool {
+        guard let account else { return false }
+        if !signal.wantsRoomEncryption {
+            return (try? await account.client.send(roomID: roomID, type: signal.eventType, content: signal.content,
+                                                    transactionID: TransactionID.make())) != nil
+        }
+        return await post(signal.eventType, signal.content, to: roomID) != nil
+    }
+
+    /// Сигналы звонков из свежей синхронизации. Старше двух минут не смотрим: звонок уже кончился, а расшифровка
+    /// всей истории первой синхронизации стоила бы дорого.
+    private func absorbCalls(_ response: SyncResponse) async {
+        let open = opener()
+        let fresh = Int(Date().timeIntervalSince1970 * 1000) - 120_000
+        for (roomID, room) in response.joined {
+            for event in room.timeline.events where (event.originServerTS ?? 0) > fresh {
+                var clear = event
+                if event.type == EventType.encrypted {
+                    guard let opened = await open(event, roomID) else { continue }
+                    clear = opened
+                }
+                guard let message = CallMessage(clear, roomID: roomID) else { continue }
+                await calls.absorb(message)
+            }
+        }
+    }
+
     private func noteTyping(_ response: SyncResponse) {
         guard let me else { return }
         for (roomID, room) in response.joined {
@@ -526,6 +601,7 @@ final class AppSession {
     }
 
     private func stop() async {
+        await calls.detach()
         pump?.cancel()
         pump = nil
         await engine?.stop()

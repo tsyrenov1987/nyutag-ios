@@ -19,6 +19,7 @@ struct ContentView: View {
         }
         .environment(words)
         .environment(session)
+        .environment(session.calls)
         .environment(\.locale, (words.lang ?? .ru).locale)
         .tint(Theme.sky)
         .animation(.smooth, value: session.phase)
