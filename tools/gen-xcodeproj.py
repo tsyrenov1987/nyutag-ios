@@ -133,6 +133,8 @@ for name in UI_FILES:
 # архив, поэтому только линковка: встраивать (Embed & Sign) статический фреймворк в бандл нельзя.
 fileref("farvater", "Frameworks/FarvaterCore.xcframework", "wrapper.xcframework")
 fileref("assets", "Assets.xcassets", "folder.assetcatalog")
+# Иконка в формате Icon Composer (слои юрты и соёмбо на синем); каталог ассетов иконки не держит.
+fileref("appicon", "AppIcon.icon", "folder.iconcomposer.icon")
 fileref("app_plist", "Info.plist", "text.plist.xml")
 fileref("app_ent", "Nyutag.entitlements", "text.plist.entitlements")
 # папка-ссылка: если nyutag-catalogue.txt (в gitignore) нет, в бандл попадает только .example.
@@ -169,6 +171,7 @@ b_tunnel = [bf("tunnel_bridge", F["tunnel_bridge"], "CoreBridge.swift", "Sources
 b_ui = [bf("ui:" + n, F["ui:" + n], n, "Sources") for n in UI_FILES]
 b_farvater = bf("farvater", F["farvater"], "FarvaterCore.xcframework", "Frameworks")
 b_assets = bf("assets", F["assets"], "Assets.xcassets", "Resources")
+b_appicon = bf("appicon", F["appicon"], "AppIcon.icon", "Resources")
 b_res = bf("resources", F["resources"], "Catalogue", "Resources")
 b_swift_nse = bf("nse_swift", F["nse_swift"], "NotificationService.swift", "Sources")
 b_pkg_app = add("bf:pkg_app", "NyutagCore in Frameworks", "PBXBuildFile", [("productRef", PROD_APP)])
@@ -185,7 +188,7 @@ def phase(name, isa, files, extra=()):
 
 ph_app_src = phase("Sources:app", "PBXSourcesBuildPhase", [b_swift_app, b_swift_content, b_swift_accounts, b_swift_selfcheck, b_swift_pushdoor, b_swift_ringer] + b_tunnel + b_ui)
 ph_app_fw = phase("Frameworks:app", "PBXFrameworksBuildPhase", [b_pkg_app, b_farvater])
-ph_app_res = phase("Resources:app", "PBXResourcesBuildPhase", [b_assets, b_res])
+ph_app_res = phase("Resources:app", "PBXResourcesBuildPhase", [b_assets, b_appicon, b_res])
 ph_embed = phase("Embed Foundation Extensions", "PBXCopyFilesBuildPhase", [b_embed],
                  [("dstPath", '""'), ("dstSubfolderSpec", "13")])
 ph_nse_src = phase("Sources:nse", "PBXSourcesBuildPhase", [b_swift_nse])
@@ -205,7 +208,7 @@ def group(key, comment, children, path=None, name=None):
 
 g_tunnel = group("tunnel", "Tunnel", [F["tunnel_bridge"], F["tunnel_net"], F["tunnel_hub"]], "Tunnel")
 g_ui = group("ui", "UI", [F["ui:" + n] for n in UI_FILES], "UI")
-g_nyutag = group("nyutag", "Nyutag", [F["app_swift"], F["content_swift"], F["accounts_swift"], F["selfcheck_swift"], F["pushdoor_swift"], F["ringer_swift"], g_tunnel, g_ui, F["assets"], F["app_plist"], F["app_ent"]], "Nyutag")
+g_nyutag = group("nyutag", "Nyutag", [F["app_swift"], F["content_swift"], F["accounts_swift"], F["selfcheck_swift"], F["pushdoor_swift"], F["ringer_swift"], g_tunnel, g_ui, F["assets"], F["appicon"], F["app_plist"], F["app_ent"]], "Nyutag")
 g_nse = group("nse", "NyutagNSE", [F["nse_swift"], F["nse_plist"], F["nse_ent"]], "NyutagNSE")
 g_apps = group("apps", "App", [g_nyutag, g_nse, F["resources"]], "App")
 g_products = group("products", "Products", [APP_PROD, NSE_PROD], None, "Products")
@@ -213,9 +216,9 @@ g_main = group("main", "Main", [g_apps, F["farvater"], g_products])
 
 PROJ_COMMON = {
     "ALWAYS_SEARCH_USER_PATHS": "NO", "CLANG_ENABLE_MODULES": "YES", "CLANG_ENABLE_OBJC_ARC": "YES",
-    "CODE_SIGN_STYLE": "Automatic", "CURRENT_PROJECT_VERSION": "1", "DEVELOPMENT_TEAM": TEAM,
+    "CODE_SIGN_STYLE": "Automatic", "CURRENT_PROJECT_VERSION": "15", "DEVELOPMENT_TEAM": TEAM,
     "ENABLE_STRICT_OBJC_MSGSEND": "YES", "ENABLE_USER_SCRIPT_SANDBOXING": "YES",
-    "IPHONEOS_DEPLOYMENT_TARGET": IOS, "MARKETING_VERSION": "0.1.0", "SDKROOT": "iphoneos",
+    "IPHONEOS_DEPLOYMENT_TARGET": IOS, "MARKETING_VERSION": "26.10.1", "SDKROOT": "iphoneos",
     "SUPPORTED_PLATFORMS": "iphoneos iphonesimulator", "SWIFT_STRICT_CONCURRENCY": "complete",
     "SWIFT_VERSION": "6.0", "TARGETED_DEVICE_FAMILY": "1",
 }
@@ -352,8 +355,6 @@ SCHEME = """<?xml version="1.0" encoding="UTF-8"?>
 
 INFO = '  "info" : {\n    "author" : "xcode",\n    "version" : 1\n  }\n'
 ASSET_CONTENTS = "{\n" + INFO + "}\n"
-APPICON = ('{\n  "images" : [\n    {\n      "idiom" : "universal",\n      "platform" : "ios",\n'
-           '      "size" : "1024x1024"\n    }\n  ],\n' + INFO + "}\n")
 ACCENT = '{\n  "colors" : [\n    {\n      "idiom" : "universal"\n    }\n  ],\n' + INFO + "}\n"
 
 if __name__ == "__main__":
@@ -364,6 +365,5 @@ if __name__ == "__main__":
     write("App/NyutagNSE/Info.plist", NSE_INFO)
     write("App/NyutagNSE/NyutagNSE.entitlements", NSE_ENT)
     write("App/Nyutag/Assets.xcassets/Contents.json", ASSET_CONTENTS)
-    write("App/Nyutag/Assets.xcassets/AppIcon.appiconset/Contents.json", APPICON)
     write("App/Nyutag/Assets.xcassets/AccentColor.colorset/Contents.json", ACCENT)
     print("Готово: Nyutag.xcodeproj")
