@@ -77,7 +77,7 @@ public actor PushReader {
         switch event.type {
         case EventType.member:
             return event.stateKey == me && event.content["membership"]?.string == "invite" ? .invite : .other
-        case "m.sticker":
+        case EventType.sticker:
             return .sticker
         case "m.poll.start", "org.matrix.msc3381.poll.start":
             return .poll

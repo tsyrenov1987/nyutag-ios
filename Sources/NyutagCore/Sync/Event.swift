@@ -69,6 +69,7 @@ public enum EventType {
     public static let encryption = "m.room.encryption"
     public static let redaction = "m.room.redaction"
     public static let reaction = "m.reaction"
+    public static let sticker = "m.sticker"
     public static let powerLevels = "m.room.power_levels"
     public static let joinRules = "m.room.join_rules"
     public static let tombstone = "m.room.tombstone"

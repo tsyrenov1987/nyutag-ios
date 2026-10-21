@@ -56,10 +56,16 @@ struct ChatListView: View {
     @State private var deleting: ChatFolder?
     @State private var creatingGroup = false
     @State private var leaving: String?
+    @State private var showingNews = false
+    @State private var query = ""
+    @State private var hits: [SearchHit] = []
 
     var body: some View {
         NavigationStack(path: $path) {
             ScrollView {
+                if !query.trimmingCharacters(in: .whitespaces).isEmpty {
+                    searchResults
+                } else {
                 if !session.layout.folders.isEmpty {
                     FolderBar(selected: $folder, naming: $naming, deleting: $deleting)
                         .padding(.top, 2)
@@ -71,6 +77,12 @@ struct ChatListView: View {
                 }
                 if session.needsOtherDevice {
                     UnconfirmedSignInCard { session.showDeviceCheck = true }
+                        .padding(.horizontal, 12)
+                        .padding(.top, 4)
+                }
+                if folder == nil, !session.news.isEmpty {
+                    Button { showingNews = true } label: { NewsRow() }
+                        .buttonStyle(.plain)
                         .padding(.horizontal, 12)
                         .padding(.top, 4)
                 }
@@ -97,9 +109,25 @@ struct ChatListView: View {
                     .padding(.horizontal, 12)
                     .padding(.top, 4)
                 }
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Theme.milk.ignoresSafeArea())
+            .searchable(text: $query, prompt: words(.searchChats))
+            .task(id: query) {
+                let wanted = query.trimmingCharacters(in: .whitespaces)
+                guard wanted.count >= 2 else { hits = []; return }
+                try? await Task.sleep(for: .milliseconds(250))
+                guard !Task.isCancelled else { return }
+                let found = await session.search(wanted)
+                if !Task.isCancelled { hits = found }
+                #if DEBUG
+                print("ui-check: поиск «\(wanted)»: чатов \(matchingChats.count), сообщений \(found.count)")
+                if ProcessInfo.processInfo.environment["NYUTAG_UI_SEARCH_OPEN"] != nil, let first = found.first {
+                    open(first)
+                }
+                #endif
+            }
             .navigationTitle(words(.chats))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -122,6 +150,7 @@ struct ChatListView: View {
             .navigationDestination(for: String.self) { roomID in ChatView(roomID: roomID) }
             .sheet(isPresented: $menu) { MeMenu(onSaved: openSaved) }
             .sheet(isPresented: $creatingGroup) { GroupCreateView { path = [$0] } }
+            .sheet(isPresented: $showingNews) { NewsView() }
             .confirmationDialog(words(.chatLeave), isPresented: Binding { leaving != nil } set: { if !$0 { leaving = nil } },
                                 titleVisibility: .visible, presenting: leaving) { roomID in
                 Button(words(.chatLeave), role: .destructive) { Task { await session.leaveChat(roomID) } }
@@ -167,6 +196,19 @@ struct ChatListView: View {
                         || env["NYUTAG_UI_AVATAR"] != nil else { return }
                 while session.lines.isEmpty { try? await Task.sleep(for: .milliseconds(300)) }
                 menu = true
+            }
+            .task {
+                guard let wanted = ProcessInfo.processInfo.environment["NYUTAG_UI_SEARCH"] else { return }
+                while session.lines.isEmpty { try? await Task.sleep(for: .milliseconds(300)) }
+                // Индекс поиска собирается в фоне после первого списка: даём ему время.
+                try? await Task.sleep(for: .seconds(5))
+                query = wanted
+            }
+            .task {
+                guard ProcessInfo.processInfo.environment["NYUTAG_UI_NEWS"] != nil else { return }
+                while session.news.isEmpty { try? await Task.sleep(for: .milliseconds(300)) }
+                try? await Task.sleep(for: .seconds(1))
+                showingNews = true
             }
             .task {
                 guard ProcessInfo.processInfo.environment["NYUTAG_UI_GROUP"] != nil else { return }
@@ -264,6 +306,96 @@ struct ChatListView: View {
         print("ui-check: открыт чат, событий в списке \(session.lines.count)")
     }
     #endif
+}
+
+extension ChatListView {
+    /// Чаты, у которых совпало название.
+    private var matchingChats: [ChatLine] {
+        let wanted = Search.fold(query.trimmingCharacters(in: .whitespaces))
+        guard !wanted.isEmpty else { return [] }
+        return session.lines.filter { $0.membership == .join && Search.fold($0.title).contains(wanted) }
+    }
+
+    @ViewBuilder private var searchResults: some View {
+        let chats = matchingChats
+        LazyVStack(alignment: .leading, spacing: 8) {
+            if chats.isEmpty, hits.isEmpty {
+                Text(words(.searchNothing))
+                    .foregroundStyle(Theme.quiet)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 80)
+            }
+            if !chats.isEmpty {
+                Text(words(.chats)).font(.footnote.bold()).foregroundStyle(Theme.quiet).padding(.leading, 6)
+                ForEach(chats) { line in
+                    NavigationLink(value: line.id) { ChatRow(line: line) }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("found-chat-\(line.id)")
+                }
+            }
+            if !hits.isEmpty {
+                Text(words(.searchMessages)).font(.footnote.bold()).foregroundStyle(Theme.quiet)
+                    .padding(.leading, 6).padding(.top, chats.isEmpty ? 0 : 8)
+                ForEach(hits) { hit in
+                    Button { open(hit) } label: { SearchHitRow(hit: hit, query: query) }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("found-\(hit.eventID)")
+                }
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.top, 4)
+    }
+
+    private func open(_ hit: SearchHit) {
+        session.jump = (hit.roomID, hit.eventID)
+        path = [hit.roomID]
+    }
+}
+
+/// Найденная реплика: чат, автор (в группе), текст и время.
+struct SearchHitRow: View {
+    @Environment(Words.self) private var words
+    @Environment(AppSession.self) private var session
+    let hit: SearchHit
+    let query: String
+
+    var body: some View {
+        let line = session.lines.first { $0.id == hit.roomID }
+        HStack(alignment: .top, spacing: 12) {
+            if hit.roomID == session.savedRoom {
+                SavedPillow(size: 44)
+            } else {
+                Pillow(seed: hit.roomID, title: line?.title ?? "·", size: 44, avatar: line?.avatarURL)
+            }
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(line?.title.isEmpty == false ? line!.title : words(.emptyChat))
+                        .font(.subheadline.bold()).foregroundStyle(Theme.ink).lineLimit(1)
+                    Spacer(minLength: 4)
+                    Text(ChatRow.time(hit.ts, words: words)).font(.caption).monospacedDigit().foregroundStyle(Theme.quiet)
+                }
+                if line?.isDirect == false, hit.sender != session.me {
+                    Text(ChatDigest.localpart(hit.sender)).font(.caption).foregroundStyle(Theme.sky)
+                }
+                Text(highlighted).font(.subheadline).foregroundStyle(Theme.quiet).lineLimit(2)
+            }
+        }
+        .padding(12)
+        .background(Theme.card, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .accessibilityElement(children: .combine)
+    }
+
+    /// Текст реплики с выделенным совпадением.
+    private var highlighted: AttributedString {
+        var text = AttributedString(hit.text)
+        let wanted = query.trimmingCharacters(in: .whitespaces)
+        if let range = text.range(of: wanted, options: [.caseInsensitive, .diacriticInsensitive]) {
+            text[range].foregroundColor = Theme.ink
+            text[range].font = .subheadline.bold()
+        }
+        return text
+    }
 }
 
 struct ChatRow: View {

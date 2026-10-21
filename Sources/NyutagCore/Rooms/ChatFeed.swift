@@ -145,7 +145,7 @@ public enum ChatFeed {
             if ChatDigest.isEdit(event) { continue }
             let body: FeedItem.Body
             if event.isRedacted || removed.contains(id) {
-                guard event.type == EventType.message || event.type == EventType.encrypted || event.type == "m.sticker"
+                guard event.type == EventType.message || event.type == EventType.encrypted || event.type == EventType.sticker
                 else { continue }
                 body = .deleted
             } else if event.type == EventType.encrypted {
@@ -176,7 +176,8 @@ public enum ChatFeed {
                 reactions[id]?[key].map { FeedItem.Reaction(key: key, count: $0.count, mine: $0.mine != nil, myEventID: $0.mine) }
             }
             let ts = event.originServerTS ?? 0
-            let attachment: Attachment? = if case .attachment = body { Attachment.read(shownContent) } else { nil }
+            let attachment: Attachment? = if case .attachment(.sticker, _) = body { Attachment.sticker(shownContent) }
+                else if case .attachment = body { Attachment.read(shownContent) } else { nil }
             items.append(FeedItem(id: id, sender: sender, senderName: name(of: sender), isMine: sender == me, ts: ts,
                                   body: body, edited: edits[id] != nil && body != .deleted, reply: reply,
                                   reactions: body == .deleted ? [] : counted,

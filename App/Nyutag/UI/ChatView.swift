@@ -38,9 +38,14 @@ struct ChatView: View {
     @State private var lastMarked: String?
     @State private var pickingPhoto = false
     @State private var pickingFile = false
+    @State private var pickingSticker = false
     @State private var photoItem: PhotosPickerItem?
     @State private var previewURL: URL?
     @State private var openingID: String?
+    /// Переход из поиска: куда прокрутить и что подсветить; сколько раз уже докачали историю ради этого.
+    @State private var scrollTarget: String?
+    @State private var highlighted: String?
+    @State private var jumpTries = 0
     /// Исчезающее фото: следующий снимок из галереи уйдёт с меткой; открытое сейчас — во весь экран.
     @State private var pickingOnce = false
     /// Ролик пережимается перед отправкой: вместо скрепки крутилка.
@@ -71,6 +76,8 @@ struct ChatView: View {
         /// Вложение вместо текста; `text` тогда — имя файла.
         var file: OutgoingFile?
         var preview: UIImage?
+        /// Стикер вместо текста; `text` тогда — подпись.
+        var sticker: Sticker?
         var eventID: String?
         var failed = false
 
@@ -84,6 +91,7 @@ struct ChatView: View {
     private var isGroup: Bool { !(line?.isDirect ?? false) }
 
     var body: some View {
+        ScrollViewReader { proxy in
         ScrollView {
             LazyVStack(spacing: 4) {
                 if hasOlder {
@@ -100,6 +108,10 @@ struct ChatView: View {
                             opening: openingID == item.id) { action in
                         act(action, on: item)
                     }
+                    .background(highlighted == item.id ? Theme.gold.opacity(0.28) : .clear,
+                                in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .animation(.easeInOut(duration: 0.4), value: highlighted)
+                    .id(item.id)
                 }
                 ForEach(outbox.filter { pending in !items.contains { $0.id == pending.eventID } }) { pending in
                     PendingBubble(pending: pending) { retry(pending) }
@@ -135,6 +147,7 @@ struct ChatView: View {
         .sheet(item: $reporting) { item in ReportSheet(item: item, roomID: roomID) { reportSent = true } }
         .alert(words(.reportSent), isPresented: $reportSent) { Button(words(.done)) {} }
         .sheet(isPresented: $choosingWallpaper) { WallpaperPicker(roomID: roomID) }
+        .sheet(isPresented: $pickingSticker) { StickerPicker(roomID: roomID) { sendSticker($0) } }
         .task {
             partner = await session.partner(in: roomID)
             #if DEBUG
@@ -256,6 +269,39 @@ struct ChatView: View {
             sendForScreenshots()
             #endif
         }
+        .onChange(of: scrollTarget) {
+            guard let scrollTarget else { return }
+            withAnimation { proxy.scrollTo(scrollTarget, anchor: .center) }
+        }
+        }
+    }
+
+    /// Открыли чат из поиска: найти реплику в ленте (докачивая историю, если надо), прокрутить и подсветить.
+    private func followJump() {
+        guard let jump = session.jump, jump.roomID == roomID else { return }
+        if items.contains(where: { $0.id == jump.eventID }) {
+            session.jump = nil
+            jumpTries = 0
+            scrollTarget = jump.eventID
+            highlighted = jump.eventID
+            #if DEBUG
+            print("ui-check: поиск: реплика найдена в ленте, прокрутка")
+            #endif
+            Task {
+                try? await Task.sleep(for: .seconds(2))
+                if highlighted == jump.eventID { highlighted = nil }
+                scrollTarget = nil
+            }
+        } else if hasOlder, jumpTries < 8, !loadingOlder {
+            jumpTries += 1
+            loadOlder()
+        } else {
+            session.jump = nil
+            jumpTries = 0
+            #if DEBUG
+            print("ui-check: поиск: реплика не найдена в ленте")
+            #endif
+        }
     }
 
     // MARK: Поле ввода
@@ -300,6 +346,12 @@ struct ChatView: View {
                     .disabled(preparingVideo)
                     .accessibilityLabel(words(.attach))
                     .accessibilityIdentifier("chat-attach")
+                    Button { pickingSticker = true } label: {
+                        Image(systemName: "face.smiling").font(.title3).foregroundStyle(Theme.quiet)
+                            .frame(width: 32, height: 40)
+                    }
+                    .accessibilityLabel(words(.stickers))
+                    .accessibilityIdentifier("chat-stickers")
                 }
                 TextField(words(.messageField), text: $draft, axis: .vertical)
                     .lineLimit(1...6)
@@ -432,6 +484,7 @@ struct ChatView: View {
         let all = await session.feed(roomID, limit: limit)
         let fresh = current.visible(all)
         if fresh != items { items = fresh }
+        followJump()
         let expired = current.ownToDelete(all).filter { !tidied.contains($0) }
         if !expired.isEmpty {
             tidied.formUnion(expired)
@@ -484,6 +537,7 @@ struct ChatView: View {
                 await reload()
             }
             loadingOlder = false
+            followJump()
         }
     }
 
@@ -507,7 +561,18 @@ struct ChatView: View {
             open(item)
         case .report:
             reporting = item
+        case .saveSticker:
+            guard let attachment = item.attachment, case .plain(let mxc) = attachment.source else { return }
+            let sticker = Sticker(shortcode: attachment.name.isEmpty ? "sticker" : attachment.name, mxc: mxc, body: attachment.name,
+                                  mimetype: attachment.mimetype, width: attachment.width, height: attachment.height)
+            run { await session.addSticker(sticker) != nil }
         }
+    }
+
+    private func sendSticker(_ sticker: Sticker) {
+        let pending = Outgoing(id: TransactionID.make(), text: sticker.body, replyTo: nil, sticker: sticker)
+        outbox.append(pending)
+        deliver(pending)
     }
 
     /// Вложение на весь экран: расшифрованная копия во временной папке, пока открыт просмотр.
@@ -697,6 +762,8 @@ struct ChatView: View {
         Task {
             let eventID: String? = if let file = pending.file {
                 await session.sendAttachment(file, to: roomID, transactionID: pending.id)
+            } else if let sticker = pending.sticker {
+                await session.sendSticker(sticker, to: roomID, transactionID: pending.id)
             } else {
                 await session.send(pending.text, to: roomID, replyTo: pending.replyTo?.id, transactionID: pending.id)
             }
@@ -714,6 +781,7 @@ struct ChatView: View {
     #if DEBUG
     /// Самопроверка отправки: текст из SIMCTL_CHILD_NYUTAG_UI_SEND уходит один раз за запуск.
     private static var sentForScreenshots = false
+    private static var stickerForScreenshots = false
 
     private func sendForScreenshots() {
         let env = ProcessInfo.processInfo.environment
@@ -727,6 +795,22 @@ struct ChatView: View {
             }
         }
         if let kind = env["NYUTAG_UI_ATTACH"] { attachForScreenshots(kind) }
+        // NYUTAG_UI_STICKER=add — нарисовать стикер, положить в свой набор и отправить; send — отправить первый свой.
+        if let step = env["NYUTAG_UI_STICKER"], !Self.stickerForScreenshots {
+            Self.stickerForScreenshots = true
+            Task {
+                var sticker = await session.myStickers().stickers.first
+                if step == "add", let png = StickerMaker.drawn() {
+                    sticker = await session.addSticker(png: png, name: "proverka")
+                    print("ui-check: стикер \(sticker == nil ? "не добавился" : "добавлен: " + sticker!.shortcode)")
+                }
+                if let sticker { sendSticker(sticker) } else { print("ui-check: своих стикеров нет") }
+            }
+        }
+        if env["NYUTAG_UI_STICKERS"] != nil, !Self.sheetForScreenshots {
+            Self.sheetForScreenshots = true
+            pickingSticker = true
+        }
         // NYUTAG_UI_SHEET=schedule — окно выбора времени для текста NYUTAG_UI_SEND, scheduled — очередь чата.
         if !Self.sheetForScreenshots, let sheet = env["NYUTAG_UI_SHEET"], sheet == "wallpaper" {
             Self.sheetForScreenshots = true
@@ -863,7 +947,7 @@ struct ChatView: View {
 
 /// Одна строка ленты: плашка или пузырь со своей стороны.
 struct FeedRow: View {
-    enum Action { case reply, edit, delete, react(String), open, report }
+    enum Action { case reply, edit, delete, react(String), open, report, saveSticker }
 
     /// Быстрые реакции в меню, по порядку.
     static let quick = ["👍", "❤️", "😂", "😮", "😢", "🙏"]
@@ -881,8 +965,13 @@ struct FeedRow: View {
             HStack(alignment: .bottom, spacing: 0) {
                 if item.isMine { Spacer(minLength: 56) }
                 VStack(alignment: item.isMine ? .trailing : .leading, spacing: 4) {
-                    Bubble(item: item, showsAuthor: showsAuthor, opening: opening) { perform(.open) }
-                        .contextMenu { menu }
+                    if let attachment = item.attachment, attachment.isSticker, case .plain(let mxc) = attachment.source {
+                        StickerCard(item: item, mxc: mxc, showsAuthor: showsAuthor)
+                            .contextMenu { menu }
+                    } else {
+                        Bubble(item: item, showsAuthor: showsAuthor, opening: opening) { perform(.open) }
+                            .contextMenu { menu }
+                    }
                     if !item.reactions.isEmpty {
                         Reactions(reactions: item.reactions) { key in perform(.react(key)) }
                     }
@@ -905,6 +994,9 @@ struct FeedRow: View {
         Button(words(.reply), systemImage: "arrowshape.turn.up.left") { perform(.reply) }
         if case .text(let text) = item.body {
             Button(words(.copy), systemImage: "doc.on.doc") { UIPasteboard.general.string = text }
+        }
+        if !item.isMine, item.attachment?.isSticker == true {
+            Button(words(.stickerSave), systemImage: "plus.square.on.square") { perform(.saveSticker) }
         }
         if item.canEdit {
             Button(words(.editAction), systemImage: "pencil") { perform(.edit) }
@@ -963,6 +1055,7 @@ struct Bubble: View {
         switch item.body {
         case .text(let text):
             Text(text).foregroundStyle(ink).textSelection(.disabled)
+                .font(Emoji.isOnlyEmoji(text) ? .system(size: 44) : nil)
         case .attachment(let kind, let caption):
             VStack(alignment: .leading, spacing: 6) {
                 if let attachment = item.attachment, attachment.viewOnce {
@@ -1080,6 +1173,8 @@ struct PendingBubble: View {
                             .overlay { if file.mimetype.hasPrefix("video/") { VideoBadge(duration: file.duration) } }
                     } else if let file = pending.file {
                         FileChip(name: file.name, size: file.data.count, ink: .white, soft: .white.opacity(0.75))
+                    } else if let sticker = pending.sticker {
+                        StickerImage(mxc: sticker.mxc, size: 120)
                     } else {
                         Text(pending.text).foregroundStyle(.white)
                     }
@@ -1095,6 +1190,42 @@ struct PendingBubble: View {
                 }
             }
             .onTapGesture(perform: onRetry)
+        }
+    }
+}
+
+/// Стикер в ленте: без пузыря, подпись автора над ним в группе, время под ним.
+struct StickerCard: View {
+    let item: FeedItem
+    let mxc: MXC
+    let showsAuthor: Bool
+
+    var body: some View {
+        VStack(alignment: item.isMine ? .trailing : .leading, spacing: 2) {
+            if showsAuthor {
+                Text(item.senderName).font(.caption.bold())
+                    .foregroundStyle(Theme.avatarTints[Int(Pillow.stableHash(item.sender) % UInt32(Theme.avatarTints.count))])
+            }
+            StickerImage(mxc: mxc, size: 160)
+                .accessibilityIdentifier("sticker-\(item.id)")
+            HStack(spacing: 4) {
+                Text(Date(timeIntervalSince1970: TimeInterval(item.ts) / 1000), format: .dateTime.hour().minute())
+                if item.isMine { Ticks(delivery: item.isRead ? .read : .sent, onBlue: false) }
+            }
+            .font(.caption2).monospacedDigit().foregroundStyle(Theme.quiet)
+            .padding(.horizontal, 6).padding(.vertical, 2)
+            .background(Theme.card.opacity(0.85), in: Capsule())
+        }
+    }
+}
+
+enum Emoji {
+    /// Только эмодзи, не больше трёх: такое показываем крупно, как в других мессенджерах.
+    static func isOnlyEmoji(_ text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.count <= 3 else { return false }
+        return trimmed.allSatisfy { cluster in
+            cluster.unicodeScalars.first.map { $0.properties.isEmojiPresentation || ($0.properties.isEmoji && $0.value > 0x238C) } == true
         }
     }
 }

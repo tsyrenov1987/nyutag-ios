@@ -191,6 +191,59 @@ public actor Store {
             PRAGMA user_version = 4;
             """)
         }
+        if version < 5 {
+            // Поиск по сообщениям: открытый (расшифрованный) текст реплик. Пустой текст — событие разобрано,
+            // искать в нём нечего. Правка пишется под событием исходной реплики.
+            try db.exec("""
+            CREATE TABLE IF NOT EXISTS search_text (
+                event_id TEXT PRIMARY KEY,
+                room_id TEXT NOT NULL,
+                sender TEXT NOT NULL,
+                ts INTEGER NOT NULL DEFAULT 0,
+                text TEXT NOT NULL,
+                folded TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS search_text_room_ts ON search_text(room_id, ts);
+            PRAGMA user_version = 5;
+            """)
+        }
+    }
+
+    // MARK: Поиск
+
+    /// Запись индекса; `replace` — заменить текст (правка), иначе первую запись не трогаем.
+    public func indexSearch(eventID: String, roomID: String, sender: String, ts: Int, text: String, folded: String,
+                            replace: Bool = false) throws {
+        try db.run("""
+        INSERT INTO search_text(event_id, room_id, sender, ts, text, folded) VALUES(?, ?, ?, ?, ?, ?)
+        ON CONFLICT(event_id) DO \(replace ? "UPDATE SET text = excluded.text, folded = excluded.folded" : "NOTHING")
+        """, .text(eventID), .text(roomID), .text(sender), .init(ts), .text(text), .text(folded))
+    }
+
+    /// Реплики и шифровки, которых ещё нет в индексе: новые первыми, от отметки `before` (по времени) вниз.
+    public func unindexedEvents(before ts: Int?, limit: Int) throws -> [Event] {
+        try db.query("""
+        SELECT * FROM events WHERE type IN (?, ?) AND ts < ? AND event_id NOT IN (SELECT event_id FROM search_text)
+        ORDER BY ts DESC LIMIT ?
+        """, .text(EventType.message), .text(EventType.encrypted), .init(ts ?? Int.max), .init(limit), row: Self.event)
+    }
+
+    /// Совпадения по свёрнутому тексту, новые первыми; удалённые реплики не показываем.
+    public func searchText(folded: String, roomID: String?, limit: Int) throws -> [SearchHit] {
+        try db.query("""
+        SELECT event_id, room_id, sender, ts, text FROM search_text
+        WHERE instr(folded, ?) > 0 AND (? IS NULL OR room_id = ?)
+          AND event_id NOT IN (SELECT json_extract(content, '$.redacts') FROM events
+                               WHERE type = ? AND json_extract(content, '$.redacts') IS NOT NULL)
+        ORDER BY ts DESC LIMIT ?
+        """, .text(folded), .init(roomID), .init(roomID), .text(EventType.redaction), .init(limit)) { row in
+            SearchHit(eventID: row.string(0) ?? "", roomID: row.string(1) ?? "", sender: row.string(2) ?? "",
+                      ts: row.int(3) ?? 0, text: row.string(4) ?? "")
+        }
+    }
+
+    public func eventCount() throws -> Int {
+        try db.scalar("SELECT COUNT(*) FROM events")?.int ?? 0
     }
 
     // MARK: Meta

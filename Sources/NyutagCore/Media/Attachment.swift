@@ -119,6 +119,17 @@ public struct Attachment: Sendable, Equatable {
     /// Видео в пузыре: миниатюра со значком воспроизведения, по нажатию — проигрыватель.
     public var isVideo: Bool { msgtype == "m.video" }
 
+    /// Стикер (`m.sticker`): картинка без пузыря и без ключа, подпись в `body`.
+    public static func sticker(_ content: JSONValue) -> Attachment? {
+        guard let mxc = content["url"]?.string.flatMap(MXC.init) else { return nil }
+        let info = content["info"]
+        return Attachment(msgtype: EventType.sticker, source: .plain(mxc), thumbnail: locate(file: info?["thumbnail_file"], url: info?["thumbnail_url"]),
+                          name: content["body"]?.string ?? "", mimetype: info?["mimetype"]?.string, size: info?["size"]?.int,
+                          width: info?["w"]?.int, height: info?["h"]?.int)
+    }
+
+    public var isSticker: Bool { msgtype == EventType.sticker }
+
     static let kinds: Set<String> = ["m.image", "m.file", "m.video", "m.audio"]
 
     static func locate(file: JSONValue?, url: JSONValue?) -> Source? {

@@ -511,6 +511,129 @@ final class AppSession {
         }
     }
 
+    // MARK: Поиск по сообщениям
+
+    @ObservationIgnored private var indexing = false
+    @ObservationIgnored private var indexedCount = -1
+    /// Реплика, к которой надо прокрутить чат после открытия из поиска.
+    var jump: (roomID: String, eventID: String)?
+
+    /// Совпадения по тексту во всех чатах (только в тех, что есть в списке), новые первыми.
+    func search(_ query: String, in roomID: String? = nil) async -> [SearchHit] {
+        guard let account else { return [] }
+        let known = Set(lines.map(\.id))
+        let hits = (try? await Search.find(query, in: roomID, store: account.store, limit: 80)) ?? []
+        return hits.filter { known.contains($0.roomID) }
+    }
+
+    /// Фоновый проход индекса: только когда в базе прибавились события и предыдущий проход закончен.
+    private func indexSearch() async {
+        guard let account, !indexing else { return }
+        let count = (try? await account.store.eventCount()) ?? 0
+        guard count != indexedCount else { return }
+        indexing = true
+        defer { indexing = false }
+        let added = (try? await Search.index(store: account.store, decrypt: opener())) ?? 0
+        indexedCount = count
+        #if DEBUG
+        if added > 0 { print("ui-check: поиск: в индекс легло \(added)") }
+        #endif
+    }
+
+    // MARK: Новости Нютага
+
+    /// Обращения разработчика с сервера (`announce.json`), свежие сверху. Показываются каналом «Новости Нютага».
+    private(set) var news: [Announcement] = []
+    static let newsSeenKey = "nyutag.newsSeen"
+
+    /// Сколько объявлений ещё не открывали.
+    var unreadNews: Int {
+        let seen = Set(UserDefaults.standard.stringArray(forKey: Self.newsSeenKey) ?? [])
+        return news.filter { !seen.contains($0.id) }.count
+    }
+
+    func markNewsSeen() {
+        guard unreadNews > 0 else { return }
+        UserDefaults.standard.set(news.map(\.id), forKey: Self.newsSeenKey)
+        revision += 1
+    }
+
+    private func loadNews() async {
+        guard let account else { return }
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["NYUTAG_UI_NEWS_FAKE"] != nil {
+            news = [Announcement(id: "demo-2026-10", from: .now, title: .init(["ru": "Нютаг 2.0 уже в App Store", "bxr": "Нютаг 2.0 App Store-то бии", "en": "Nyutag 2.0 is in the App Store"]),
+                                 body: .init(["ru": "Новое приложение написано с нуля: свой движок, звонки, стикеры, папки и исчезающие сообщения. Спасибо, что остаётесь с нами.", "en": "The new app is written from scratch: own engine, calls, stickers, folders and disappearing messages. Thank you for staying with us."]),
+                                 actions: [.init(kind: .url(URL(string: "https://nyutag.chat/")!), label: .init(["ru": "Подробнее", "bxr": "Дэлгэрэнгы", "en": "Learn more"])),
+                                           .init(kind: .donate, label: .init(["ru": "Поддержать Нютаг", "bxr": "Нютагта туһалха", "en": "Support Nyutag"]))])]
+            print("ui-check: новости: подставлена пробная, непрочитанных \(unreadNews)")
+            return
+        }
+        #endif
+        guard let fresh = try? await NyutagService(client: account.client).currentAnnouncements() else { return }
+        news = fresh
+        #if DEBUG
+        print("ui-check: новости: \(fresh.count), непрочитанных \(unreadNews)")
+        #endif
+    }
+
+    // MARK: Стикеры
+
+    /// Имя своего набора в данных учётки: ставится при первом стикере.
+    static let stickerPackName = "Нютаг"
+
+    func myStickers() async -> StickerPack {
+        guard let account else { return StickerPack(name: Self.stickerPackName, stickers: []) }
+        return (try? await Stickers.mine(store: account.store, packName: Self.stickerPackName))
+            ?? StickerPack(name: Self.stickerPackName, stickers: [])
+    }
+
+    func roomStickers(_ roomID: String) async -> [StickerPack] {
+        guard let account else { return [] }
+        return (try? await Stickers.inRoom(roomID, store: account.store)) ?? []
+    }
+
+    /// Картинка из галереи в свой набор: PNG до 512 точек, загружается открыто (стикер — не секрет).
+    func addSticker(png: Data, name: String) async -> Sticker? {
+        guard let account else { return nil }
+        guard let mxc = try? await account.client.uploadMedia(png, contentType: "image/png", filename: name + ".png") else { return nil }
+        try? await media?.store(png, for: mxc)
+        let pixels = ImageMemory.pixelSize(png)
+        return await addSticker(Sticker(shortcode: name, mxc: mxc, mimetype: "image/png", width: pixels?.width, height: pixels?.height))
+    }
+
+    /// Чужой стикер из ленты в свой набор: тот же адрес, без повторной загрузки.
+    func addSticker(_ sticker: Sticker) async -> Sticker? {
+        guard let account, let me else { return nil }
+        do {
+            let added = try await account.client.addSticker(sticker, userID: me, packName: Self.stickerPackName, store: account.store)
+            revision += 1
+            return added
+        } catch {
+            #if DEBUG
+            print("ui-check: стикер не добавился: \(error)")
+            #endif
+            return nil
+        }
+    }
+
+    func removeSticker(_ shortcode: String) async -> Bool {
+        guard let account, let me else { return false }
+        guard (try? await account.client.removeSticker(shortcode, userID: me, store: account.store)) != nil else { return false }
+        revision += 1
+        return true
+    }
+
+    func sendSticker(_ sticker: Sticker, to roomID: String, transactionID: String) async -> String? {
+        await post(EventType.sticker, sticker.content, to: roomID, transactionID: transactionID)
+    }
+
+    /// Картинка стикера целиком (они маленькие), из кэша.
+    func stickerData(_ mxc: MXC) async -> Data? {
+        guard let media else { return nil }
+        return try? await media.data(mxc)
+    }
+
     /// «Набираю текст»: сервер сам снимет отметку через 20 секунд, если не продлить.
     func setTyping(_ typing: Bool, in roomID: String) async {
         guard let account, let me else { return }
@@ -1033,6 +1156,7 @@ final class AppSession {
             // Без машины переписка в шифрованных чатах остаётся под замком, остальное работает.
         }
         Task { [weak self] in await self?.enablePush() }
+        Task { [weak self] in await self?.loadNews() }
         if let voip = CallRinger.shared.voipToken { Task { [weak self] in await self?.enableVoip(voip) } }
         #if DEBUG
         print("ui-check: это устройство \(account.session.deviceID)")
@@ -1272,6 +1396,7 @@ final class AppSession {
         }
         if let saved = try? await SavedMessages.load(store: account.store), saved != savedRoom { savedRoom = saved }
         await acceptInvites()
+        Task { [weak self] in await self?.indexSearch() }
     }
 
     /// Сервер закрытый, чужих на нём нет: приглашение от участника принимаем сразу, как в Telegram.
