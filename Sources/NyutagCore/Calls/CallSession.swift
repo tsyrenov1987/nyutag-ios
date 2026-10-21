@@ -33,6 +33,9 @@ public struct CallEnvironment: Sendable {
     public var ringTimeout: Duration = .seconds(45)
     public var connectTimeout: Duration = .seconds(20)
     public var lossGrace: Duration = .seconds(20)
+    /// Столько без единого кадра — связь считаем оборванной, даже если релей держит обе стороны (повисший канал
+    /// собеседника): переподключаемся и ждём lossGrace. Собеседник шлёт кадры всегда, и с выключенным микрофоном.
+    public var silenceLimit: Duration = .seconds(5)
     public var retryDelay: Duration = .seconds(1)
 
     public init(me: String, deviceID: String, post: @escaping @Sendable (CallSignal, String) async throws -> Void,
@@ -77,6 +80,8 @@ public actor CallSession {
     private var reader: Task<Void, Never>?
     private var deadline: Task<Void, Never>?
     private var lossTimer: Task<Void, Never>?
+    private var watch: Task<Void, Never>?
+    private var lastHeard = ContinuousClock.now
 
     init(callID: String, roomID: String, peer: String, isCaller: Bool, video: Bool, env: CallEnvironment) {
         self.callID = callID
@@ -215,13 +220,19 @@ public actor CallSession {
         outbox.current = transport
     }
 
-    private func deliver(_ packet: Data) { pipe?.receive(packet) }
+    private func deliver(_ packet: Data) {
+        pipe?.receive(packet)
+        lastHeard = .now
+        // Связь вернулась, когда снова пошёл звук, а не когда релей насчитал двоих.
+        if lossTimer != nil {
+            lossTimer?.cancel()
+            lossTimer = nil
+        }
+    }
 
     private func peers(_ count: Int) async {
         guard !phase.isEnded else { return }
         if count >= 2 {
-            lossTimer?.cancel()
-            lossTimer = nil
             guard case .connecting = phase, let pipe else { return }
             deadline?.cancel()
             let voice = env.makeVoice()
@@ -232,6 +243,8 @@ public actor CallSession {
             }
             self.voice = voice
             set(.live(since: Date()))
+            lastHeard = .now
+            watchSilence()
         } else if case .live = phase {
             startLossTimer()
         }
@@ -241,6 +254,24 @@ public actor CallSession {
         guard !phase.isEnded else { return }
         outbox.current = nil
         if case .live = phase { startLossTimer() }
+        openLink()
+    }
+
+    private func watchSilence() {
+        let limit = env.silenceLimit
+        watch = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: limit / 2)
+                await self?.checkSilence(limit)
+            }
+        }
+    }
+
+    private func checkSilence(_ limit: Duration) {
+        guard case .live = phase, lossTimer == nil, ContinuousClock.now - lastHeard > limit else { return }
+        startLossTimer()
+        outbox.current?.close()
+        outbox.current = nil
         openLink()
     }
 
@@ -282,6 +313,7 @@ public actor CallSession {
         if notify { try? await env.post(.end(callID: callID, reason: reason), roomID) }
         deadline?.cancel()
         lossTimer?.cancel()
+        watch?.cancel()
         reader?.cancel()
     }
 }

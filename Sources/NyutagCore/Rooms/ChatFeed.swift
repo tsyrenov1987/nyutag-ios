@@ -191,7 +191,7 @@ public enum ChatFeed {
         let kind = PushReader.kind(of: shown, me: me)
         switch kind {
         case .text(let text): return .text(text)
-        case .other, .invite, .locked: return nil
+        case .other, .invite, .locked, .signal: return nil
         default:
             let caption = shown.content["body"]?.string
             // Имя файла в body — не подпись; подпись есть, только если рядом лежит отдельное filename.

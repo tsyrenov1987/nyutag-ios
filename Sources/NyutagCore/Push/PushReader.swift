@@ -10,6 +10,8 @@ public struct PushPreview: Sendable, Equatable {
         case text(String)
         case image, video, audio, file, location, sticker, poll
         case call
+        /// Служебный сигнал звонка (ring/offer/answer/end): уведомление не показывать, входящий будит VoIP-пуш.
+        case signal
         /// Нас пригласили в комнату.
         case invite
         /// Зашифровано, а ключа сессии на устройстве ещё нет: показать нейтральное «Новое сообщение».
@@ -81,6 +83,8 @@ public actor PushReader {
             return .poll
         case "m.call.invite", EventType.call:
             return .call
+        case CallEventType.ring, CallEventType.offer, CallEventType.answer, CallEventType.end:
+            return .signal
         case EventType.message:
             break
         default:

@@ -12,6 +12,8 @@ final class CallDesk {
     private(set) var phase: CallPhase?
     private(set) var peerName = ""
     private(set) var micDenied = false
+    /// Звонок свёрнут в полоску над чатами: можно переписываться, не кладя трубку.
+    var folded = false
     var muted = false {
         didSet {
             guard muted != oldValue, let call = current else { return }
@@ -51,6 +53,16 @@ final class CallDesk {
         await current?.hangUp()
         center = nil
     }
+
+    /// Свернуть можно идущий звонок; входящий ещё ждёт ответа на весь экран.
+    var canFold: Bool {
+        switch phase {
+        case .calling, .connecting, .live: true
+        default: false
+        }
+    }
+
+    var showsStrip: Bool { current != nil && folded }
 
     func dial(roomID: String, peer: String) async {
         guard let center, current == nil, await microphone() else { return }
@@ -95,6 +107,7 @@ final class CallDesk {
     private func show(_ session: CallSession) {
         current = session
         peerName = name(session.roomID, session.peer)
+        folded = false
         muted = false
         speaker = false
         #if DEBUG
@@ -120,6 +133,7 @@ final class CallDesk {
             #endif
             self.current = nil
             self.phase = nil
+            self.folded = false
         }
     }
 }
@@ -132,6 +146,19 @@ extension CallDesk {
         let env = ProcessInfo.processInfo.environment
         if !session.isCaller, env["NYUTAG_UI_CALL_ANSWER"] != nil {
             Task { try? await Task.sleep(for: .seconds(2)); await self.accept() }
+        }
+        if env["NYUTAG_UI_CALL_FOLD"] != nil {
+            // Свернуть через 6 с разговора: проверка полоски над чатами.
+            Task {
+                while await !session.phase.isEnded {
+                    if case .live = await session.phase { break }
+                    try? await Task.sleep(for: .seconds(0.5))
+                }
+                try? await Task.sleep(for: .seconds(6))
+                guard self.current === session else { return }
+                self.folded = true
+                print("ui-check: звонок свёрнут в полоску")
+            }
         }
         if let seconds = env["NYUTAG_UI_CALL_SECONDS"].flatMap(Double.init) {
             Task { try? await Task.sleep(for: .seconds(seconds)); await session.hangUp() }
@@ -160,7 +187,23 @@ struct CallView: View {
             LinearGradient(colors: [Theme.sky, Theme.milk.opacity(0.4)], startPoint: .top, endPoint: .bottom)
                 .ignoresSafeArea()
             VStack(spacing: 18) {
-                Spacer().frame(height: 60)
+                HStack {
+                    if desk.canFold {
+                        Button { desk.folded = true } label: {
+                            Image(systemName: "chevron.down")
+                                .font(.title3.weight(.semibold))
+                                .foregroundStyle(.white)
+                                .frame(width: 44, height: 44)
+                        }
+                        .buttonStyle(.plain)
+                        .glassEffect(.regular.interactive(), in: .circle)
+                        .accessibilityLabel(words(.callFold))
+                    }
+                    Spacer()
+                }
+                .frame(height: 44)
+                .padding(.horizontal, 16)
+                Spacer().frame(height: 16)
                 Pillow(seed: session?.roomID ?? "·", title: desk.peerName, size: 128)
                     .shadow(color: .black.opacity(0.2), radius: 18, y: 8)
                 Text(desk.peerName)
@@ -187,17 +230,7 @@ struct CallView: View {
     }
 
     @ViewBuilder private var status: some View {
-        switch desk.phase {
-        case .calling: Text(words(.callCalling))
-        case .ringing: Text(words(.callIncoming))
-        case .connecting: Text(words(.callConnecting))
-        case .live(let since):
-            TimelineView(.periodic(from: since, by: 1)) { context in
-                Text(Self.clock(context.date.timeIntervalSince(since)))
-            }
-        case .ended(let reason): Text(words(Self.ending(reason)))
-        case nil: Text(" ")
-        }
+        CallStatus(phase: desk.phase)
     }
 
     @ViewBuilder private func controls(desk: CallDesk) -> some View {
@@ -244,6 +277,86 @@ struct CallView: View {
     }
 }
 
+/// Строка состояния звонка: фаза словами или часы разговора. Общая у экрана и полоски.
+struct CallStatus: View {
+    @Environment(Words.self) private var words
+    let phase: CallPhase?
+
+    var body: some View {
+        switch phase {
+        case .calling: Text(words(.callCalling))
+        case .ringing: Text(words(.callIncoming))
+        case .connecting: Text(words(.callConnecting))
+        case .live(let since):
+            TimelineView(.periodic(from: since, by: 1)) { context in
+                Text(CallView.clock(context.date.timeIntervalSince(since)))
+            }
+        case .ended(let reason): Text(words(CallView.ending(reason)))
+        case nil: Text(" ")
+        }
+    }
+}
+
+/// Свёрнутый звонок: стеклянная полоска над чатами. Нажатие разворачивает экран, справа — микрофон и отбой.
+struct CallStrip: View {
+    @Environment(Words.self) private var words
+    @Environment(CallDesk.self) private var desk
+
+    var body: some View {
+        @Bindable var desk = desk
+        HStack(spacing: 12) {
+            Button { desk.folded = false } label: {
+                HStack(spacing: 10) {
+                    Pillow(seed: desk.current?.roomID ?? "·", title: desk.peerName, size: 34)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(desk.peerName)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(Theme.ink)
+                            .lineLimit(1)
+                        CallStatus(phase: desk.phase)
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(Theme.read)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(words(.callBack))
+            StripButton(symbol: desk.muted ? "mic.slash.fill" : "mic.fill", tint: desk.muted ? Theme.sky : nil,
+                        caption: words(.callMute)) { desk.muted.toggle() }
+            StripButton(symbol: "phone.down.fill", tint: .red, caption: words(.callHangUp)) {
+                Task { await desk.hangUp() }
+            }
+        }
+        .padding(.leading, 8)
+        .padding(.trailing, 6)
+        .padding(.vertical, 6)
+        .glassEffect(.regular.interactive(), in: .capsule)
+        .padding(.horizontal, 12)
+        .transition(.move(edge: .top).combined(with: .opacity))
+    }
+}
+
+private struct StripButton: View {
+    let symbol: String
+    let tint: Color?
+    let caption: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(tint == nil ? Theme.ink : .white)
+                .frame(width: 40, height: 40)
+                .background(tint.map { Circle().fill($0) })
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(caption)
+    }
+}
+
 /// Круглая кнопка звонка: цветная (принять, отбой, включённый режим) или стеклянная.
 private struct RoundButton: View {
     let symbol: String
@@ -287,6 +400,8 @@ extension Phrase {
     static let callHangUp = Phrase(bxr: "Дуусгаха", ru: "Завершить", en: "End")
     static let callMute = Phrase(bxr: "Микрофон", ru: "Микрофон", en: "Mute")
     static let callSpeaker = Phrase(bxr: "Динамик", ru: "Динамик", en: "Speaker")
+    static let callFold = Phrase(bxr: "Хуряаха", ru: "Свернуть", en: "Minimize")
+    static let callBack = Phrase(bxr: "Хөөрэлдөөндэ бусаха", ru: "Вернуться к звонку", en: "Back to call")
     static let callMicDenied = Phrase(bxr: "Микрофон хаагдаатай. Тохиргоо соо Нютагта зүбшөөрэгты.",
                                       ru: "Нет доступа к микрофону. Разрешите его Нютагу в Настройках.",
                                       en: "No microphone access. Allow it for Nyutag in Settings.")

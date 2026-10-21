@@ -93,9 +93,11 @@ final class AppDoorman: NSObject, UIApplicationDelegate, UNUserNotificationCente
         let open = await MainActor.run { PushDoor.shared.openRoom }
         #if DEBUG
         let content = notification.request.content
-        print("ui-check: пуш при открытом приложении: «\(content.title)» «\(content.body)», чат открыт: \(room != nil && room == open)")
+        let carried = ApplePusher.carriedEvent(in: content.userInfo)
+        print("ui-check: пуш при открытом приложении: «\(content.title)» «\(content.body)», чат открыт: \(room != nil && room == open), событие \(carried?.type ?? "не вложено")")
         #endif
         if room != nil, room == open { return [] }
+        if notification.request.content.title.isEmpty, notification.request.content.body.isEmpty { return [] }
         return [.banner, .list, .sound]
     }
 

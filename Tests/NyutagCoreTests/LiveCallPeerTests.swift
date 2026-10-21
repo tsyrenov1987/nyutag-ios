@@ -4,6 +4,7 @@
 //   NYUTAG_CALL_PEER=answer — ждать звонка с телефона и принять его;
 //   NYUTAG_CALL_PEER=dial   — позвонить на телефон самому.
 //   NYUTAG_CALL_SECONDS     — сколько говорить до отбоя (по умолчанию 20).
+//   NYUTAG_CALL_TEXT        — после звонка послать в чат текст (проверка пушей).
 // В конце выход: устройство Мака удаляется.
 
 import Foundation
@@ -120,6 +121,12 @@ struct LiveCallPeerTests {
             }
             if phase.isEnded {
                 #expect(liveSince != nil, "разговор не начался: \(phase)")
+                if ProcessInfo.processInfo.environment["NYUTAG_CALL_TEXT"] != nil {
+                    // Той же сессией шифра, что и сигналы: сравнить, как расширение уведомлений читает текст и отбой.
+                    _ = try await machine.sendEncrypted(roomID: roomID, type: EventType.message,
+                                                        content: ["msgtype": "m.text", "body": "проверка пуша после звонка"])
+                    print("call peer: текст после звонка отправлен")
+                }
                 return
             }
         }

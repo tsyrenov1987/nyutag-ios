@@ -64,6 +64,8 @@ private final class Delivery: @unchecked Sendable {
         }
         guard let (base, handler) = taken else { return }
         let shown = preview ?? ApplePusher.gatewayPreview(in: base.userInfo)
+        // Сигнал звонка: отдаём уведомление без текста и звука — такое iOS не показывает.
+        if shown?.kind == .signal { return handler(UNNotificationContent()) }
         handler(shown.map { PushWording.content(for: $0, base: base) } ?? PushWording.neutral(base))
     }
 }
@@ -103,7 +105,7 @@ enum PushWording {
         case .poll: "Опрос"
         case .call: "Звонок"
         case .invite: "Приглашает в чат"
-        case .locked, .other: "Новое сообщение"
+        case .locked, .other, .signal: "Новое сообщение"
         }
     }
 

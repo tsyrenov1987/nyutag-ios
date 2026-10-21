@@ -101,6 +101,20 @@ import Testing
         await call.hangUp()
     }
 
+    @Test func silentPeerEndsCallAsLost() async throws {
+        let line = Line()
+        line.silenceLimit = .milliseconds(300)
+        line.lossGrace = .milliseconds(600)
+        let alice = line.center(Self.alice, "A1"), bob = line.center(Self.bob, "B1")
+        let call = try #require(await alice.dial(roomID: Self.room, peer: Self.bob))
+        let incoming = try #require(await first(bob.incoming))
+        await incoming.accept()
+        try await waitLive(call)
+        // Каналы повисли: релей держит обе стороны, но кадры больше не идут.
+        line.relay.stall()
+        try await until { await call.phase == .ended(.lost) }
+    }
+
     // MARK: Помощники
 
     static func first(_ stream: AsyncStream<CallSession>) async -> CallSession? {
@@ -131,6 +145,8 @@ final class Line: @unchecked Sendable {
     private var centers: [(center: CallCenter, rooms: Set<String>)] = []
     private var signals: [CallSignal] = []
     var ringTimeout: Duration = .seconds(45)
+    var silenceLimit: Duration = .seconds(5)
+    var lossGrace: Duration = .seconds(20)
 
     var posted: [CallSignal] { lock.withLock { signals } }
 
@@ -149,6 +165,8 @@ final class Line: @unchecked Sendable {
             makeVoice: { ToneVoice() })
         env.ringTimeout = ringTimeout
         env.retryDelay = .milliseconds(50)
+        env.silenceLimit = silenceLimit
+        env.lossGrace = lossGrace
         let center = CallCenter(env)
         lock.withLock { centers.append((center, rooms)) }
         return center
@@ -170,6 +188,7 @@ final class FakeRelay: @unchecked Sendable {
     private var slots: [String: [FakeLink]] = [:]
     private var seen: Set<String> = []
     private(set) var plaintextLeaked = false
+    private var stalled = false
 
     var slotsSeen: Int { lock.withLock { seen.count } }
     var openLinks: Int { lock.withLock { slots.values.reduce(0) { $0 + $1.count } } }
@@ -188,7 +207,7 @@ final class FakeRelay: @unchecked Sendable {
     func forward(_ packet: Data, from link: FakeLink) {
         // Голосовой кадр Opus без шифра был бы ~80 байт без метки; шифр всегда добавляет 21 байт заголовка и метки.
         if packet.count < 21 { lock.withLock { plaintextLeaked = true } }
-        let others = lock.withLock { slots[link.slot]?.filter { $0 !== link } ?? [] }
+        let others = lock.withLock { stalled ? [] : slots[link.slot]?.filter { $0 !== link } ?? [] }
         for other in others { other.push(.packet(packet)) }
     }
 
@@ -199,6 +218,9 @@ final class FakeRelay: @unchecked Sendable {
         }
         for member in rest { member.push(.peers(rest.count)) }
     }
+
+    /// Связи живы, но кадры не идут: так выглядит повисший канал собеседника.
+    func stall() { lock.withLock { stalled = true } }
 
     /// Релей перезапустился: все связи рвутся.
     func dropAll() {

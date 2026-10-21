@@ -87,7 +87,7 @@ public enum ChatDigest {
                               originServerTS: shown.originServerTS, content: fresh, roomID: shown.roomID)
                 kind = PushReader.kind(of: shown, me: me)
             }
-            if kind == .other { continue }
+            if kind == .other || kind == .signal { continue }
             // Своё старое приглашение в чате, куда уже вошли, — не реплика.
             if kind == .invite, record.membership != .invite { continue }
             last = kind

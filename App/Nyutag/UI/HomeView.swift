@@ -10,13 +10,19 @@ struct HomeView: View {
     @State private var tab = 0
 
     var body: some View {
-        TabView(selection: $tab) {
-            Tab(words(.chats), systemImage: "bubble.left.and.bubble.right", value: 0) { ChatListView() }
-            Tab(words(.contacts), systemImage: "person.2", value: 1) { ContactsView() }
-            Tab(words(.communities), systemImage: "circle.hexagongrid", value: 2) { SoonView(title: words(.communities)) }
+        // Свёрнутый звонок — над вкладками, а не поверх: заголовки и списки уходят под него, не просвечивая.
+        VStack(spacing: 6) {
+            if session.calls.showsStrip { CallStrip() }
+            TabView(selection: $tab) {
+                Tab(words(.chats), systemImage: "bubble.left.and.bubble.right", value: 0) { ChatListView() }
+                Tab(words(.contacts), systemImage: "person.2", value: 1) { ContactsView() }
+                Tab(words(.communities), systemImage: "circle.hexagongrid", value: 2) { SoonView(title: words(.communities)) }
+            }
         }
+        .background(Theme.milk.ignoresSafeArea())
         .onChange(of: PushDoor.shared.tappedRoom) { if PushDoor.shared.tappedRoom != nil { tab = 0 } }
-        .fullScreenCover(isPresented: .constant(session.calls.current != nil)) { CallView() }
+        .animation(.smooth, value: session.calls.showsStrip)
+        .fullScreenCover(isPresented: .constant(session.calls.current != nil && !session.calls.folded)) { CallView() }
         .sheet(isPresented: Bindable(session).showDeviceCheck, onDismiss: { Task { await session.closeDeviceCheck() } }) {
             DeviceCheckView()
         }
@@ -194,7 +200,7 @@ struct ChatRow: View {
         case .poll: words(.poll)
         case .call: words(.call)
         case .invite: words(.invited)
-        case .locked, .other: words(.newMessage)
+        case .locked, .other, .signal: words(.newMessage)
         }
     }
 
