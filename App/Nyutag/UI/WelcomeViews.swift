@@ -1,5 +1,4 @@
-// Нютаг. Первый запуск: язык одним касанием, дальше одна форма входа. Регистрация по приглашению — отдельным
-// экраном следующим шагом; здесь только ссылка на неё.
+// Нютаг. Первый запуск: язык одним касанием, дальше одна форма входа; регистрация открывается отсюда же.
 
 import SwiftUI
 
@@ -46,6 +45,7 @@ struct SignInView: View {
     @State private var password = ""
     @State private var busy = false
     @State private var failure: AppSession.SignInFailure?
+    @State private var signingUp = false
     @FocusState private var field: Field?
 
     enum Field { case identifier, password }
@@ -81,34 +81,31 @@ struct SignInView: View {
                 }
                 .background(Theme.card, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
 
-                if let failure {
-                    Label(message(failure), systemImage: "exclamationmark.bubble")
-                        .font(.callout).foregroundStyle(Theme.ink)
-                        .padding(12)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Theme.gold.opacity(0.18), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                }
+                if let failure { FailureNote(text: message(failure)) }
 
-                Button(action: submit) {
-                    HStack(spacing: 10) {
-                        if busy { ProgressView().tint(.white) }
-                        Text(busy ? words(.signingIn) : words(.signIn)).font(.headline)
-                    }
-                    .frame(maxWidth: .infinity, minHeight: 54)
-                    .foregroundStyle(.white)
-                    .background(Theme.sky.opacity(canSubmit ? 1 : 0.45), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                }
-                .buttonStyle(.plain)
-                .disabled(!canSubmit)
-                .accessibilityIdentifier("signin-submit")
+                BigButton(title: busy ? words(.signingIn) : words(.signIn), busy: busy, enabled: canSubmit,
+                          id: "signin-submit", action: submit)
 
-                Text(words(.noAccount)).font(.footnote).foregroundStyle(Theme.quiet)
+                HStack(spacing: 6) {
+                    Text(words(.noAccount)).foregroundStyle(Theme.quiet)
+                    Button(words(.signUp)) { signingUp = true }
+                        .fontWeight(.semibold)
+                        .accessibilityIdentifier("signin-signup")
+                }
+                .font(.callout)
+                .frame(maxWidth: .infinity)
             }
             .padding(.horizontal, 24)
         }
         .scrollDismissesKeyboard(.interactively)
         .background(Theme.milk.ignoresSafeArea())
-        .onAppear { field = .identifier }
+        .onAppear {
+            field = .identifier
+            #if DEBUG
+            if ProcessInfo.processInfo.environment["NYUTAG_UI_SIGNUP"] != nil { signingUp = true }
+            #endif
+        }
+        .sheet(isPresented: $signingUp) { SignUpView() }
     }
 
     private var canSubmit: Bool {

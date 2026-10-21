@@ -35,6 +35,7 @@ struct ChatListView: View {
                     Text(words(.chatsEmpty))
                         .foregroundStyle(Theme.quiet)
                         .padding(.top, 120)
+                        .frame(maxWidth: .infinity)
                 } else {
                     LazyVStack(spacing: 8) {
                         ForEach(session.lines) { line in
@@ -47,6 +48,7 @@ struct ChatListView: View {
                     .padding(.top, 4)
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Theme.milk.ignoresSafeArea())
             .navigationTitle(words(.chats))
             .navigationBarTitleDisplayMode(.inline)

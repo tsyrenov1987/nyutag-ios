@@ -71,9 +71,7 @@ extension Phrase {
     static let password = Phrase(bxr: "Нюуса үгэ", ru: "Пароль", en: "Password")
     static let signIn = Phrase(bxr: "Орохо", ru: "Войти", en: "Sign in")
     static let signingIn = Phrase(bxr: "Оржо байна…", ru: "Входим…", en: "Signing in…")
-    static let noAccount = Phrase(bxr: "Аккаунт үгы гү? Урилгын код хэрэгтэй.",
-                                  ru: "Нет аккаунта? Нужен код приглашения.",
-                                  en: "No account? You need an invite code.")
+    static let noAccount = Phrase(bxr: "Аккаунт үгы гү?", ru: "Нет аккаунта?", en: "No account yet?")
     static let wrongPassword = Phrase(bxr: "Нэрэ али нюуса үгэ буруу", ru: "Неверное имя или пароль",
                                       en: "Wrong name or password")
     static let tooOften = Phrase(bxr: "Хэтэ олон оролдолго. Нэгэ минута хүлеэгээд, дахин оролдогты.",
@@ -81,6 +79,60 @@ extension Phrase {
                                  en: "Too many attempts. Wait a minute and try again.")
     static let noNetwork = Phrase(bxr: "Сервертэй холбоо үгы. Дахин оролдогты.", ru: "Нет связи с сервером. Попробуйте ещё раз.",
                                   en: "Can't reach the server. Try again.")
+
+    // Регистрация
+    static let signUp = Phrase(bxr: "Бүртхүүлхэ", ru: "Зарегистрироваться", en: "Sign up")
+    static let signUpTitle = Phrase(bxr: "Шэнэ аккаунт", ru: "Новый аккаунт", en: "New account")
+    static let signUpLead = Phrase(bxr: "Нэгэ хуудаһа бүглөөд, e-mail дээрээ ерэһэн кодоо оруулагты",
+                                   ru: "Заполните одну форму, потом введите код из письма",
+                                   en: "Fill in one form, then enter the code from the email")
+    static let name = Phrase(bxr: "Нэрэ", ru: "Имя", en: "Name")
+    static let phone = Phrase(bxr: "Утаһан", ru: "Телефон", en: "Phone")
+    static let email = Phrase(bxr: "E-mail", ru: "Почта", en: "Email")
+    static let newPassword = Phrase(bxr: "Нюуса үгэ, 8 тэмдэгһээ дээшэ", ru: "Пароль, от 8 знаков",
+                                    en: "Password, 8+ characters")
+    static let inviteCode = Phrase(bxr: "Урилгын код", ru: "Код приглашения", en: "Invite code")
+    static let nickLabel = Phrase(bxr: "Нютаг дахи хаяг", ru: "Адрес в Нютаге", en: "Your Nyutag address")
+    static let nickTaken = Phrase(bxr: "Энэ хаяг эзэлэгдэһэн", ru: "Этот адрес занят", en: "This address is taken")
+    static let nickRules = Phrase(bxr: "Латин үсэг, тоо болон . _ -", ru: "Латиница, цифры и . _ -",
+                                  en: "Latin letters, digits and . _ -")
+    static let getCode = Phrase(bxr: "Код абаха", ru: "Получить код", en: "Get the code")
+    static let sendingCode = Phrase(bxr: "Эльгээжэ байна…", ru: "Отправляем…", en: "Sending…")
+    static let codeTitle = Phrase(bxr: "Кодоо оруулагты", ru: "Введите код", en: "Enter the code")
+    static let codeSent = Phrase(bxr: "{1} хаяг руу 6 тоотой код эльгээбэбди",
+                                 ru: "Мы отправили код из 6 цифр на {1}",
+                                 en: "We sent a 6-digit code to {1}")
+    static let codeSpam = Phrase(bxr: "Бэшэг үгы һаа, «Спам» хубааха шалгагты",
+                                 ru: "Если письма нет, загляните в «Спам»",
+                                 en: "No email? Check your spam folder")
+    static let resend = Phrase(bxr: "Дахин эльгээхэ", ru: "Отправить ещё раз", en: "Send again")
+    static let resendIn = Phrase(bxr: "Дахин эльгээхэ: {1} сек", ru: "Отправить ещё раз через {1} с",
+                                 en: "Send again in {1}s")
+    static let changeDetails = Phrase(bxr: "Мэдээсэлээ заһаха", ru: "Изменить данные", en: "Change details")
+    static let creatingAccount = Phrase(bxr: "Аккаунт бии болгожо байна…", ru: "Создаём аккаунт…",
+                                        en: "Creating your account…")
+    static let phoneTaken = Phrase(bxr: "Энэ утаһанай дугаараар аккаунт бии", ru: "На этот номер уже есть аккаунт",
+                                   en: "There's already an account with this number")
+    static let emailTaken = Phrase(bxr: "Энэ e-mail хаягаар аккаунт бии", ru: "На эту почту уже есть аккаунт",
+                                   en: "There's already an account with this email")
+    static let badPhone = Phrase(bxr: "Утаһанай дугаараа шалгагты", ru: "Проверьте номер телефона",
+                                 en: "Check the phone number")
+    static let badEmail = Phrase(bxr: "E-mail хаягаа шалгагты", ru: "Проверьте адрес почты", en: "Check the email address")
+    static let weakPassword = Phrase(bxr: "Нюуса үгэ 8 тэмдэгһээ богони", ru: "Пароль короче 8 знаков",
+                                     en: "The password is shorter than 8 characters")
+    static let badInvite = Phrase(bxr: "Урилгын код олдоогүй", ru: "Код приглашения не найден", en: "Invite code not found")
+    static let inviteUsed = Phrase(bxr: "Урилгын код хэрэглэгдэһэн али хугацаань дууһаһан",
+                                   ru: "Код приглашения уже использован или истёк",
+                                   en: "This invite code is used or expired")
+    static let wrongCode = Phrase(bxr: "Код таарахагүй байна", ru: "Код не подходит", en: "Wrong code")
+    static let codeExpired = Phrase(bxr: "Кодой хугацаа дууһаба. Шэнэ код абагты.", ru: "Код устарел. Запросите новый.",
+                                    en: "The code has expired. Request a new one.")
+    static let tooManyTries = Phrase(bxr: "Хэтэ олон оролдолго. Шэнэ код абагты.",
+                                     ru: "Слишком много попыток. Запросите новый код.",
+                                     en: "Too many attempts. Request a new code.")
+    static let mailFailed = Phrase(bxr: "Бэшэг эльгээгдэбэгүй. Һүүлдэ дахин оролдогты.",
+                                   ru: "Письмо не ушло. Попробуйте чуть позже.",
+                                   en: "The email didn't go out. Try again a bit later.")
 
     static let chats = Phrase(bxr: "Хөөрэлдөөнүүд", ru: "Чаты", en: "Chats")
     static let contacts = Phrase(bxr: "Контактнууд", ru: "Контакты", en: "Contacts")

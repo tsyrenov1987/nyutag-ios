@@ -45,7 +45,8 @@ final class AppSession {
     }
 
     /// Вход по имени, телефону или почте. Телефон и почту сервер Нютага переводит в Matrix ID.
-    func signIn(identifier: String, password: String) async throws(SignInFailure) {
+    /// `displayName` — имя нового участника сразу после регистрации: ставим его в профиль до первого /sync.
+    func signIn(identifier: String, password: String, displayName: String? = nil) async throws(SignInFailure) {
         guard let keeper else { throw .broken }
         let typed = identifier.trimmingCharacters(in: .whitespacesAndNewlines)
         guard await TunnelHub.shared.waitUntilUp() else { throw .noNetwork }
@@ -56,6 +57,9 @@ final class AppSession {
             }
             let account = try await keeper.signIn(homeserver: TunnelHub.coreURL, user: user, password: password,
                                                   deviceName: "Нютаг iPhone")
+            if let displayName {
+                try? await account.client.setDisplayName(userID: account.session.userID, displayName)
+            }
             await start(account, password: password)
         } catch let error as MatrixError {
             #if DEBUG
