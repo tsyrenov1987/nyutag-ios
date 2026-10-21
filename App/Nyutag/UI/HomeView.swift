@@ -89,6 +89,7 @@ struct ChatListView: View {
 
 struct ChatRow: View {
     @Environment(Words.self) private var words
+    @Environment(AppSession.self) private var session
     let line: ChatLine
 
     var body: some View {
@@ -110,8 +111,8 @@ struct ChatRow: View {
                     }
                 }
                 HStack(alignment: .top, spacing: 6) {
-                    Text(preview)
-                        .font(.subheadline).foregroundStyle(Theme.quiet)
+                    Text(typing ?? preview)
+                        .font(.subheadline).foregroundStyle(typing == nil ? Theme.quiet : Theme.sky)
                         .lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
                     if line.mentions > 0 {
                         Text("@").font(.caption.bold()).foregroundStyle(.white)
@@ -129,6 +130,13 @@ struct ChatRow: View {
         .padding(12)
         .background(Theme.card, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         .accessibilityElement(children: .combine)
+    }
+
+    /// Кто-то набирает текст — это важнее последней реплики.
+    private var typing: String? {
+        guard let first = session.typing[line.id]?.first else { return nil }
+        guard !line.isDirect else { return words(.typingNow) }
+        return words(.typingName, ChatDigest.localpart(first))
     }
 
     private var preview: String {

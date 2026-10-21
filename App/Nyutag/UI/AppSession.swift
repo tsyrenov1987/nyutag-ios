@@ -20,6 +20,8 @@ final class AppSession {
     private(set) var history: PasswordUnlockOutcome?
     /// Растёт на каждой синхронизации: открытый чат по нему перечитывает ленту из базы.
     private(set) var revision = 0
+    /// Кто сейчас набирает текст: комната → собеседники, кроме нас.
+    private(set) var typing: [String: [String]] = [:]
 
     @ObservationIgnored private let keeper: AccountKeeper?
     @ObservationIgnored private var account: SignedInAccount?
@@ -82,6 +84,7 @@ final class AppSession {
         heldPassword = nil
         self.account = nil
         lines = []
+        typing = [:]
         me = nil
         history = nil
         phase = .signedOut
@@ -149,17 +152,43 @@ final class AppSession {
 
     /// Отправка текста, в шифрованный чат — через машину. Тот же `transactionID` при повторе сервер не дублирует.
     func send(_ text: String, to roomID: String, replyTo: String?, transactionID: String) async -> String? {
-        guard let account else { return nil }
         var content: [String: JSONValue] = ["msgtype": "m.text", "body": .string(text)]
         if let replyTo { content["m.relates_to"] = ["m.in_reply_to": ["event_id": .string(replyTo)]] }
+        return await post(EventType.message, .object(content), to: roomID, transactionID: transactionID)
+    }
+
+    /// Новый текст своей реплики.
+    func edit(_ eventID: String, text: String, in roomID: String) async -> Bool {
+        await post(EventType.message, Relations.edit(of: eventID, text: text), to: roomID) != nil
+    }
+
+    /// Удалить реплику у всех.
+    func delete(_ eventID: String, in roomID: String) async -> Bool {
+        (try? await account?.client.redact(roomID: roomID, eventID: eventID)) != nil
+    }
+
+    /// Реакция: нашей с таким ключом ещё нет — ставим, есть — снимаем.
+    func toggleReaction(_ key: String, on item: FeedItem, in roomID: String) async -> Bool {
+        if let mine = item.reactions.first(where: { $0.key == key })?.myEventID { return await delete(mine, in: roomID) }
+        return await post(EventType.reaction, Relations.reaction(to: item.id, key: key), to: roomID) != nil
+    }
+
+    /// Событие в комнату; в шифрованную — через машину.
+    private func post(_ type: String, _ content: JSONValue, to roomID: String,
+                      transactionID: String = TransactionID.make()) async -> String? {
+        guard let account else { return nil }
         let encrypted = (try? await account.store.room(roomID))?.isEncrypted ?? false
         if encrypted {
             guard let machine else { return nil }
-            return try? await machine.sendEncrypted(roomID: roomID, type: EventType.message, content: .object(content),
-                                                    transactionID: transactionID)
+            return try? await machine.sendEncrypted(roomID: roomID, type: type, content: content, transactionID: transactionID)
         }
-        return try? await account.client.send(roomID: roomID, type: EventType.message, content: .object(content),
-                                              transactionID: transactionID)
+        return try? await account.client.send(roomID: roomID, type: type, content: content, transactionID: transactionID)
+    }
+
+    /// «Набираю текст»: сервер сам снимет отметку через 20 секунд, если не продлить.
+    func setTyping(_ typing: Bool, in roomID: String) async {
+        guard let account, let me else { return }
+        try? await account.client.setTyping(roomID: roomID, userID: me, typing: typing)
     }
 
     /// Отметка прочтения: публичная, чтобы у собеседника загорелись две галочки.
@@ -267,13 +296,22 @@ final class AppSession {
         }
         let updates = await engine.updates()
         pump = Task { [weak self] in
-            for await _ in updates {
+            for await update in updates {
+                self?.noteTyping(update.response)
                 await self?.refresh()
                 self?.revision += 1
             }
         }
         await engine.start()
         await refresh()
+    }
+
+    private func noteTyping(_ response: SyncResponse) {
+        guard let me else { return }
+        for (roomID, room) in response.joined {
+            guard let who = Relations.typing(room.ephemeral, me: me) else { continue }
+            if who.isEmpty { typing.removeValue(forKey: roomID) } else if typing[roomID] != who { typing[roomID] = who }
+        }
     }
 
     private func stop() async {

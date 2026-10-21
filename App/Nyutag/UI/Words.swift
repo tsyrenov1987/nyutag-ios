@@ -200,6 +200,17 @@ extension Phrase {
     static let notSent = Phrase(bxr: "Ошоогүй. Дахин эльгээхын тула дарагты", ru: "Не отправлено. Нажмите, чтобы повторить",
                                 en: "Not sent. Tap to retry")
     static let today = Phrase(bxr: "Мүнөөдэр", ru: "Сегодня", en: "Today")
+    static let editAction = Phrase(bxr: "Заһаха", ru: "Изменить", en: "Edit")
+    static let deleteAction = Phrase(bxr: "Усадхаха", ru: "Удалить", en: "Delete")
+    static let deleteAsk = Phrase(bxr: "Бэшэгые бүгэдэдэ усадхаха гү?", ru: "Удалить сообщение у всех?",
+                                  en: "Delete this message for everyone?")
+    static let editing = Phrase(bxr: "Заһалга", ru: "Изменение", en: "Editing")
+    static let typingNow = Phrase(bxr: "бэшэжэ байна…", ru: "печатает…", en: "typing…")
+    static let typingName = Phrase(bxr: "{1} бэшэжэ байна…", ru: "{1} печатает…", en: "{1} is typing…")
+    static let typingMany = Phrase(bxr: "{1} болон {2} хүн бэшэжэ байна…", ru: "{1} и ещё {2} печатают…",
+                                   en: "{1} and {2} more are typing…")
+    static let cantDo = Phrase(bxr: "Бүтэбэгүй. Холбоогоо шалгагты.", ru: "Не получилось. Проверьте связь.",
+                               en: "That didn't work. Check your connection.")
 
     // Служебные плашки
     static let noticeCreated = Phrase(bxr: "Хөөрэлдөөн бии болобо", ru: "Чат создан", en: "Chat created")

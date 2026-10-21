@@ -312,9 +312,15 @@ public actor CryptoMachine: SyncObserver {
             throw .badPayload("megolm: открытый текст не JSON")
         }
         guard json["room_id"]?.string == roomID else { throw .badPayload("megolm: другая комната") }
+        var inner = json["content"] ?? .object([:])
+        // Связь с другой репликой многие клиенты кладут только снаружи шифра.
+        if inner["m.relates_to"] == nil, let relation = content["m.relates_to"], case .object(var fields) = inner {
+            fields["m.relates_to"] = relation
+            inner = .object(fields)
+        }
         let decrypted = Event(eventID: event.eventID, type: type, sender: event.sender,
                               originServerTS: event.originServerTS, stateKey: event.stateKey,
-                              content: json["content"] ?? .object([:]), unsigned: event.unsigned, roomID: roomID)
+                              content: inner, unsigned: event.unsigned, roomID: roomID)
         return DecryptedEvent(event: decrypted, senderKey: stored.senderKey, sessionID: sessionID,
                               messageIndex: result.messageIndex, isVerifiedSession: stored.session.isVerified)
     }

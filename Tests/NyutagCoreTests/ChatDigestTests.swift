@@ -46,6 +46,25 @@ struct ChatDigestTests {
         #expect(line.unread == 2)
     }
 
+    @Test("превью: правка подставляется, удалённая реплика уступает предыдущей")
+    func previewEditsAndDeletions() async throws {
+        let store = try Store.inMemory()
+        try await store.upsert(RoomRecord(id: "!dm", membership: .join))
+        for event in [member(me, "!dm"), member(arjuna, "!dm")] { try await store.setState(event) }
+        try await store.append([
+            text("$1", "!dm", from: arjuna, ts: 100, "сайн"),
+            text("$2", "!dm", from: me, ts: 110, "черновик"),
+            Event(eventID: "$3", type: EventType.message, sender: me, originServerTS: 120,
+                  content: Relations.edit(of: "$2", text: "набело"), roomID: "!dm"),
+        ])
+        #expect(try await ChatDigest.lines(store: store, me: me).first?.last == .text("набело"))
+        try await store.append([Event(eventID: "$4", type: EventType.redaction, sender: me, originServerTS: 130,
+                                      content: ["redacts": "$2"], roomID: "!dm")])
+        let line = try #require(try await ChatDigest.lines(store: store, me: me).first)
+        #expect(line.last == .text("сайн"))
+        #expect(!line.lastIsMine)
+    }
+
     @Test("своя реплика: одна галочка, после отметки прочтения собеседником — две")
     func deliveryTicks() async throws {
         let store = try Store.inMemory()

@@ -34,6 +34,15 @@ public struct FeedItem: Sendable, Equatable, Identifiable {
         public let key: String
         public let count: Int
         public let mine: Bool
+        /// Наша реакция с этим ключом: её удаляем, когда человек снимает реакцию.
+        public let myEventID: String?
+
+        public init(key: String, count: Int, mine: Bool, myEventID: String? = nil) {
+            self.key = key
+            self.count = count
+            self.mine = mine
+            self.myEventID = myEventID
+        }
     }
 
     public struct Quote: Sendable, Equatable {
@@ -55,6 +64,12 @@ public struct FeedItem: Sendable, Equatable, Identifiable {
     public let isRead: Bool
 
     public var isNotice: Bool { if case .notice = body { true } else { false } }
+
+    /// Свой текст можно поправить.
+    public var canEdit: Bool { if isMine, case .text = body { true } else { false } }
+
+    /// Своё можно удалить, пока оно не удалено.
+    public var canDelete: Bool { isMine && !isNotice && body != .deleted }
 }
 
 public enum ChatFeed {
@@ -79,23 +94,27 @@ public enum ChatFeed {
 
         // Сначала служебное о других событиях: правки, реакции, удаления.
         var edits: [String: JSONValue] = [:]
-        var reactions: [String: [String: (count: Int, mine: Bool)]] = [:]
+        var reactions: [String: [String: (count: Int, mine: String?)]] = [:]
         var reactionOrder: [String: [String]] = [:]
         var removed: Set<String> = []
         var authors: [String: String] = [:]
         for event in opened { if let id = event.eventID, let sender = event.sender { authors[id] = sender } }
-        for event in opened where !event.isRedacted {
+        // Удаления — первыми: снятая реакция может стоять в ленте раньше своего удаления только по времени.
+        for event in opened where event.type == EventType.redaction && !event.isRedacted {
+            if let target = event.content["redacts"]?.string ?? event.unsigned?["redacts"]?.string { removed.insert(target) }
+        }
+        for event in opened where !event.isRedacted && !(event.eventID.map(removed.contains) ?? false) {
             let relation = event.content["m.relates_to"]
             switch event.type {
             case EventType.redaction:
-                if let target = event.content["redacts"]?.string ?? event.unsigned?["redacts"]?.string { removed.insert(target) }
+                continue
             case EventType.reaction:
                 guard relation?["rel_type"]?.string == "m.annotation", let target = relation?["event_id"]?.string,
                       let key = relation?["key"]?.string else { continue }
                 var byKey = reactions[target, default: [:]]
                 if byKey[key] == nil { reactionOrder[target, default: []].append(key) }
-                let old = byKey[key] ?? (0, false)
-                byKey[key] = (old.count + 1, old.mine || event.sender == me)
+                let old = byKey[key] ?? (0, nil)
+                byKey[key] = (old.count + 1, old.mine ?? (event.sender == me ? event.eventID : nil))
                 reactions[target] = byKey
             default:
                 // Правку принимаем только от автора исходной реплики.
@@ -146,7 +165,7 @@ public enum ChatFeed {
                 }
             }
             let counted = reactionOrder[id, default: []].compactMap { key in
-                reactions[id]?[key].map { FeedItem.Reaction(key: key, count: $0.count, mine: $0.mine) }
+                reactions[id]?[key].map { FeedItem.Reaction(key: key, count: $0.count, mine: $0.mine != nil, myEventID: $0.mine) }
             }
             let ts = event.originServerTS ?? 0
             items.append(FeedItem(id: id, sender: sender, senderName: name(of: sender), isMine: sender == me, ts: ts,

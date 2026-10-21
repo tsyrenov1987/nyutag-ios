@@ -231,10 +231,13 @@ extension CryptoMachine {
         let next = OutboundRecord(session, messageCount: record.messageCount + 1, sharedWith: record.sharedWith,
                                   withheldFrom: record.withheldFrom)
         try await storing { try await store.saveOutbound(next, roomID: roomID) }
-        return [
+        var sealed: [String: JSONValue] = [
             "algorithm": .string(Self.megolmAlgorithm), "sender_key": .string(curve25519Key),
             "ciphertext": .string(ciphertext), "session_id": .string(session.sessionID), "device_id": .string(deviceID),
         ]
+        // Связь с другой репликой (правка, реакция, ответ) остаётся снаружи: по ней сервер группирует события.
+        if let relation = content["m.relates_to"] { sealed["m.relates_to"] = relation }
+        return .object(sealed)
     }
 
     /// Шифрует и отправляет событие в комнату. Возвращает `event_id`.

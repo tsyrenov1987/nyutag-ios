@@ -55,7 +55,15 @@ public enum ChatDigest {
 
         var last: PushPreview.Kind?
         var lastEvent: Event?
+        // Идём от новых к старым: удаления и правки встречаются раньше реплик, к которым относятся.
+        var removed: Set<String> = []
+        var edits: [String: Event] = [:]
         for event in try await store.events(in: record.id, limit: lookback).reversed() {
+            if event.type == EventType.redaction {
+                if let target = event.content["redacts"]?.string ?? event.unsigned?["redacts"]?.string { removed.insert(target) }
+                continue
+            }
+            if event.isRedacted || event.eventID.map(removed.contains) == true { continue }
             var shown = event
             var kind: PushPreview.Kind
             if event.type == EventType.encrypted {
@@ -68,7 +76,18 @@ public enum ChatDigest {
             } else {
                 kind = PushReader.kind(of: event, me: me)
             }
-            if kind == .other || isEdit(shown) { continue }
+            if isEdit(shown) {
+                if let target = shown.content["m.relates_to"]?["event_id"]?.string, edits[target] == nil { edits[target] = shown }
+                continue
+            }
+            // Удалённое не показываем, правку — только от автора реплики.
+            if let id = shown.eventID, let edit = edits[id], edit.sender == shown.sender,
+               let fresh = edit.content["m.new_content"] {
+                shown = Event(eventID: shown.eventID, type: shown.type, sender: shown.sender,
+                              originServerTS: shown.originServerTS, content: fresh, roomID: shown.roomID)
+                kind = PushReader.kind(of: shown, me: me)
+            }
+            if kind == .other { continue }
             // Своё старое приглашение в чате, куда уже вошли, — не реплика.
             if kind == .invite, record.membership != .invite { continue }
             last = kind

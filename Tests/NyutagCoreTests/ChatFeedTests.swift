@@ -79,11 +79,40 @@ struct ChatFeedTests {
         ])
         let items = try await ChatFeed.items(roomID: room, store: store, me: me)
         let first = try #require(items.first { $0.id == "$1" })
-        #expect(first.reactions == [.init(key: "👍", count: 2, mine: true), .init(key: "🔥", count: 1, mine: false)])
+        #expect(first.reactions == [.init(key: "👍", count: 2, mine: true, myEventID: "$r1"),
+                                    .init(key: "🔥", count: 1, mine: false)])
         let gone = try #require(items.first { $0.id == "$2" })
         #expect(gone.body == .deleted)
         #expect(gone.reactions.isEmpty)
         #expect(!items.contains { $0.id == "$x" || $0.id.hasPrefix("$r") })
+    }
+
+    @Test("снятая реакция не считается; своя правка из Relations подставляется; править и удалять можно только своё")
+    func ownActions() async throws {
+        let store = try await prepared()
+        try await store.append([
+            text("$1", from: me, ts: 100, "сайн"),
+            text("$2", from: arjuna, ts: 101, "байна"),
+            Event(eventID: "$r1", type: EventType.reaction, sender: me, originServerTS: 102,
+                  content: Relations.reaction(to: "$2", key: "❤️"), roomID: room),
+            Event(eventID: "$e1", type: EventType.message, sender: me, originServerTS: 103,
+                  content: Relations.edit(of: "$1", text: "сайн байна"), roomID: room),
+            Event(eventID: "$x", type: EventType.redaction, sender: me, originServerTS: 104,
+                  content: ["redacts": "$r1"], roomID: room),
+        ])
+        let items = try await ChatFeed.items(roomID: room, store: store, me: me)
+        #expect(items.map(\.id) == ["$1", "$2"])
+        #expect(items[0].body == .text("сайн байна"))
+        #expect(items[0].edited && items[0].canEdit && items[0].canDelete)
+        #expect(!items[1].canEdit && !items[1].canDelete)
+        #expect(items[1].reactions.isEmpty)
+    }
+
+    @Test("кто набирает: последний m.typing без себя, без него — нет новостей")
+    func typing() {
+        let events = [Event(type: EventType.typing, content: ["user_ids": [.string(me), .string(arjuna)]], roomID: room)]
+        #expect(Relations.typing(events, me: me) == [arjuna])
+        #expect(Relations.typing([], me: me) == nil)
     }
 
     @Test("ответ несёт цитату; без ключа — замок; с расшифровкой — текст")
