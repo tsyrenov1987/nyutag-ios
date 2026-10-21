@@ -21,6 +21,8 @@ final class AppSession {
 
     private(set) var phase: Phase = .launching
     private(set) var lines: [ChatLine] = []
+    /// Сообщества (`m.space`), где мы участники: в список чатов не попадают, живут на своей вкладке.
+    private(set) var communities: [ChatLine] = []
     /// Закреплённые чаты и папки.
     private(set) var layout = ChatLayout()
     /// Код из открытой ссылки-приглашения: экран входа откроет с ним регистрацию.
@@ -695,6 +697,102 @@ final class AppSession {
         return roomID
     }
 
+    // MARK: Сообщества
+
+    enum CommunityJoin: Equatable { case joined, requested, failed }
+
+    /// Каталог сообществ сервера; `nil` — нет связи.
+    func findCommunities(_ term: String) async -> [PublicRoom]? {
+        guard let account else { return nil }
+        let term = term.trimmingCharacters(in: .whitespacesAndNewlines)
+        do {
+            return try await account.client.publicCommunities(search: term.isEmpty ? nil : term, limit: 100).rooms
+        } catch {
+            #if DEBUG
+            print("ui-check: каталог сообществ: \(error)")
+            #endif
+            return nil
+        }
+    }
+
+    /// Группы сообщества (дети первого уровня) и можем ли мы их добавлять.
+    func communityGroups(_ spaceID: String) async -> (groups: [PublicRoom], canAdd: Bool)? {
+        guard let account, let me else { return nil }
+        guard let page = try? await account.client.roomHierarchy(roomID: spaceID, maxDepth: 1) else { return nil }
+        let groups = page.rooms.map(\.room).filter { $0.roomID != spaceID && !$0.isSpace }
+        let power = try? await account.client.state(roomID: spaceID, type: "m.room.power_levels")
+        let mine = power?["users"]?[me]?.int ?? power?["users_default"]?.int ?? 0
+        let needed = power?["events"]?["m.space.child"]?.int ?? power?["state_default"]?.int ?? 50
+        return (groups, power != nil && mine >= needed)
+    }
+
+    /// Открытое — вступаем сразу, закрытое (`knock`) — подаём заявку.
+    func joinCommunity(_ room: PublicRoom) async -> CommunityJoin {
+        guard let account else { return .failed }
+        do {
+            if room.joinRule == "knock" {
+                try await account.client.knock(room.roomID, via: server.map { [$0] } ?? [])
+                return .requested
+            }
+            try await account.client.join(room.roomID, via: server.map { [$0] } ?? [])
+            await refresh()
+            return .joined
+        } catch {
+            return .failed
+        }
+    }
+
+    func leaveCommunity(_ spaceID: String) async -> Bool {
+        guard let engine, (try? await engine.leave(roomID: spaceID, forget: true)) != nil else { return false }
+        await refresh()
+        return true
+    }
+
+    /// Новое сообщество: пространство в каталоге сервера; закрытое пускает по заявке.
+    func createCommunity(name: String, about: String, open: Bool) async -> String? {
+        guard let account else { return nil }
+        let about = about.trimmingCharacters(in: .whitespacesAndNewlines)
+        let options = MatrixClient.CreateRoom(name: name, topic: about.isEmpty ? nil : about, preset: "public_chat",
+                                              encrypted: false, roomType: "m.space")
+        guard let spaceID = try? await account.client.createRoom(options) else { return nil }
+        _ = try? await account.client.setRoomVisibility(roomID: spaceID, public: true)
+        if !open {
+            _ = try? await account.client.setState(roomID: spaceID, type: "m.room.join_rules", content: ["join_rule": "knock"])
+        }
+        #if DEBUG
+        print("ui-check: сообщество создано, \(open ? "открытое" : "закрытое")")
+        #endif
+        await refresh()
+        return spaceID
+    }
+
+    /// Группа сообщества: шифрованная, войти может любой его участник (`restricted`).
+    func createGroup(named name: String, in spaceID: String) async -> String? {
+        guard let account, let server else { return nil }
+        guard let roomID = try? await account.client.createRoom(.init(name: name)) else { return nil }
+        let rule: JSONValue = ["join_rule": "restricted",
+                               "allow": [["type": "m.room_membership", "room_id": .string(spaceID)]]]
+        do {
+            try await account.client.addSpaceChild(spaceID: spaceID, childID: roomID, via: [server])
+            _ = try? await account.client.setSpaceParent(roomID: roomID, spaceID: spaceID, via: [server], canonical: true)
+            _ = try? await account.client.setState(roomID: roomID, type: "m.room.join_rules", content: rule)
+        } catch {
+            _ = try? await account.client.leave(roomID: roomID)
+            return nil
+        }
+        return roomID
+    }
+
+    /// Группа из сообщества: уже в ней — просто открываем, иначе входим.
+    func joinGroup(_ roomID: String) async -> Bool {
+        guard let account else { return false }
+        if lines.contains(where: { $0.id == roomID && $0.membership == .join }) { return true }
+        return (try? await account.client.join(roomID, via: server.map { [$0] } ?? [])) != nil
+    }
+
+    /// Домен своей учётки: через него входим в комнаты сервера.
+    private var server: String? { me?.split(separator: ":", maxSplits: 1).last.map(String.init) }
+
     #if DEBUG
     /// Самопроверка: свой шифрованный чат без участников, чтобы пробные реплики никому не уходили.
     func ensurePrivateRoom(named name: String) async {
@@ -974,8 +1072,12 @@ final class AppSession {
 
     private func refresh() async {
         guard let account, let me else { return }
-        let fresh = try? await ChatDigest.lines(store: account.store, me: me, decrypt: opener())
-        if let fresh, fresh != lines { lines = fresh }
+        if let fresh = try? await ChatDigest.lines(store: account.store, me: me, decrypt: opener()) {
+            let chats = fresh.filter { !$0.isSpace }
+            let spaces = fresh.filter { $0.isSpace && $0.membership == .join }
+            if chats != lines { lines = chats }
+            if spaces != communities { communities = spaces }
+        }
         if layoutWrites == 0, let saved = try? await ChatLayout.load(store: account.store), layoutWrites == 0, saved != layout {
             layout = saved
         }

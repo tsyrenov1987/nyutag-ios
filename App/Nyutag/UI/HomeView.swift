@@ -16,7 +16,7 @@ struct HomeView: View {
             TabView(selection: $tab) {
                 Tab(words(.chats), systemImage: "bubble.left.and.bubble.right", value: 0) { ChatListView() }
                 Tab(words(.contacts), systemImage: "person.2", value: 1) { ContactsView() }
-                Tab(words(.communities), systemImage: "circle.hexagongrid", value: 2) { SoonView(title: words(.communities)) }
+                Tab(words(.communities), systemImage: "circle.hexagongrid", value: 2) { CommunitiesView() }
             }
         }
         .background(Theme.milk.ignoresSafeArea())
@@ -27,7 +27,10 @@ struct HomeView: View {
             DeviceCheckView()
         }
         #if DEBUG
-        .onAppear { if ProcessInfo.processInfo.environment["NYUTAG_UI_CONTACTS"] != nil { tab = 1 } }
+        .onAppear {
+            if ProcessInfo.processInfo.environment["NYUTAG_UI_CONTACTS"] != nil { tab = 1 }
+            if ProcessInfo.processInfo.environment["NYUTAG_UI_COMMUNITY"] != nil { tab = 2 }
+        }
         // Сброс пароля живёт на экране входа; NYUTAG_UI_RESET показывает его и без выхода из аккаунта.
         .sheet(isPresented: .constant(ProcessInfo.processInfo.environment["NYUTAG_UI_RESET"] != nil)) { PasswordResetView() }
         .task {
@@ -546,21 +549,5 @@ struct SavedPillow: View {
             }
             .frame(width: size, height: size)
             .accessibilityHidden(true)
-    }
-}
-
-struct SoonView: View {
-    @Environment(Words.self) private var words
-    let title: String
-
-    var body: some View {
-        NavigationStack {
-            Text(words(.soon))
-                .foregroundStyle(Theme.quiet)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Theme.milk.ignoresSafeArea())
-                .navigationTitle(title)
-                .navigationBarTitleDisplayMode(.inline)
-        }
     }
 }

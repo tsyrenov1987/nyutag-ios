@@ -167,7 +167,6 @@ extension Phrase {
     static let communities = Phrase(bxr: "Оршонууд", ru: "Сообщества", en: "Communities")
     static let chatsEmpty = Phrase(bxr: "Эндэ таны чатнууд гараха", ru: "Здесь появятся ваши чаты",
                                    en: "Your chats will appear here")
-    static let soon = Phrase(bxr: "Удангүй", ru: "Скоро", en: "Coming soon")
     static let emptyChat = Phrase(bxr: "Хоосон хөөрэлдөөн", ru: "Пустой чат", en: "Empty chat")
     static let you = Phrase(bxr: "Та", ru: "Вы", en: "You")
     static let invited = Phrase(bxr: "Танда урилга", ru: "Вас приглашают", en: "You're invited")
@@ -454,4 +453,48 @@ extension Phrase {
     static let autoDeleteMonth = Phrase(bxr: "1 һара", ru: "1 месяц", en: "1 month")
     static let autoDeleteError = Phrase(bxr: "Таймер хубилгажа шадабагүй. Дахин оролдогты.",
                                         ru: "Не удалось изменить таймер. Попробуйте ещё раз.", en: "Couldn’t change the timer. Try again.")
+
+    static let communitiesSearch = Phrase(bxr: "Оршон бэдэрхэ", ru: "Поиск сообществ", en: "Search communities")
+    static let communitiesMine = Phrase(bxr: "Минии оршонууд", ru: "Мои сообщества", en: "My communities")
+    static let communitiesAll = Phrase(bxr: "Бүхы оршонууд", ru: "Все сообщества", en: "All communities")
+    static let communitiesEmpty = Phrase(bxr: "Оршон үшөө үгы. Түрүүшынхиеэ байгуулагты!",
+                                         ru: "Сообществ пока нет. Создайте первое!", en: "No communities yet. Create the first one!")
+    static let communitiesFailed = Phrase(bxr: "Оршонууд ачаалагдабагүй. Доошоо татажа дахин оролдогты.",
+                                          ru: "Сообщества не загрузились. Потяните вниз, чтобы повторить.",
+                                          en: "Couldn't load communities. Pull down to try again.")
+    static let communityOpen = Phrase(bxr: "Нээлттэй", ru: "Открытое", en: "Open")
+    static let communityOpenHint = Phrase(bxr: "Хэн бүхэн бэдэржэ олоод, ороод болохо.",
+                                          ru: "Любой найдёт его в поиске и сможет вступить.",
+                                          en: "Anyone can find it in search and join.")
+    static let communityClosed = Phrase(bxr: "Хаалттай", ru: "Закрытое", en: "Closed")
+    static let communityClosedHint = Phrase(bxr: "Хэн бүхэн бэдэржэ олоод, гуйлта эльгээхэ. Шэнэ гэшүүдые админ зүбшөөнэ.",
+                                            ru: "Любой найдёт его в поиске и подаст заявку. Новых участников одобряет админ.",
+                                            en: "Anyone can find it in search and send a request. An admin approves new members.")
+    static let communityClosedBadge = Phrase(bxr: "Хаалттай · гуйлтаар", ru: "Закрытое · по заявке", en: "Closed · by request")
+    static let communityMembers = Phrase(bxr: "Гэшүүд: {1}", ru: "Участников: {1}", en: "Members: {1}")
+    static let communityGroups = Phrase(bxr: "Бүлэгүүд", ru: "Группы", en: "Groups")
+    static let communityNoGroups = Phrase(bxr: "Эндэ бүлэг үшөө үгы", ru: "Здесь пока нет групп", en: "No groups yet")
+    static let communityNoGroupsHint = Phrase(bxr: "Удангүй админ нэмэхэ. Тэрэ зуура нүхэдөө уригты.",
+                                              ru: "Скоро их добавит админ. А пока позовите друзей.",
+                                              en: "The admin will add them soon. Meanwhile, invite friends.")
+    static let communityJoin = Phrase(bxr: "Оршондо орохо", ru: "Вступить", en: "Join")
+    static let communityRequest = Phrase(bxr: "Гуйлта эльгээхэ", ru: "Подать заявку", en: "Request to join")
+    static let communityRequested = Phrase(bxr: "Гуйлта эльгээгдэбэ. Админ зүбшөөхэдэ, оршон эндэ гараха.",
+                                           ru: "Заявка отправлена. Когда админ одобрит, сообщество появится здесь.",
+                                           en: "Request sent. Once an admin approves it, the community shows up here.")
+    static let communityInvite = Phrase(bxr: "Уриха", ru: "Пригласить", en: "Invite")
+    static let communityInviteText = Phrase(bxr: "Нютаг соо «{1}» оршондо орогты: «Оршонууд» таб. Татажа абаха: https://nyutag.chat",
+                                            ru: "Вступайте в сообщество «{1}» в Нютаге: вкладка «Сообщества». Скачать: https://nyutag.chat",
+                                            en: "Join the community “{1}” on Nyutag: it's in the Communities tab. Get the app: https://nyutag.chat")
+    static let communityLeave = Phrase(bxr: "Гараха", ru: "Выйти", en: "Leave")
+    static let communityLeaveAsk = Phrase(bxr: "Оршонһоо гараха гүт? Бүлэгүүд соо үлэхэт.",
+                                          ru: "Выйти из сообщества? В его группах вы останетесь.",
+                                          en: "Leave the community? You'll stay in its groups.")
+    static let communityNew = Phrase(bxr: "Шэнэ оршон", ru: "Новое сообщество", en: "New community")
+    static let communityName = Phrase(bxr: "Нэрэ", ru: "Название", en: "Name")
+    static let communityAbout = Phrase(bxr: "Юун тухай", ru: "О чём сообщество", en: "What it's about")
+    static let communityCreate = Phrase(bxr: "Байгуулха", ru: "Создать", en: "Create")
+    static let communityGroupNew = Phrase(bxr: "Шэнэ бүлэг", ru: "Новая группа", en: "New group")
+    static let communityFailed = Phrase(bxr: "Бүтэбэгүй. Дахин оролдогты.", ru: "Не получилось. Попробуйте ещё раз.",
+                                        en: "That didn't work. Try again.")
 }
