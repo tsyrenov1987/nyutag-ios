@@ -2,7 +2,8 @@
 // звонка), вместо микрофона — тон 440 Гц. Сигналы идут через ядро как у приложения, кадры — через релей
 // (SOCKS до ядра, см. LiveCallRelayTests).
 //   NYUTAG_CALL_PEER=answer — ждать звонка с телефона и принять его;
-//   NYUTAG_CALL_PEER=dial   — позвонить на телефон самому.
+//   NYUTAG_CALL_PEER=dial   — позвонить на телефон самому;
+//   NYUTAG_CALL_PEER=once   — без звонка: послать фото «один просмотр» и ждать, пока телефон его откроет.
 //   NYUTAG_CALL_SECONDS     — сколько говорить до отбоя (по умолчанию 20).
 //   NYUTAG_CALL_TEXT        — после звонка послать в чат текст (проверка пушей).
 //   NYUTAG_CALL_VIDEO       — видеозвонок: вместо камеры полосы, кадры собеседника считаем.
@@ -58,6 +59,10 @@ struct LiveCallPeerTests {
         let phoneDevices = try await machine.devices(for: [phone])
         print("call peer: устройства телефона: \(phoneDevices.map(\.deviceID).joined(separator: ", "))")
         print("call peer: комната с телефоном \(roomID.prefix(8))…, шифр \(try await store.room(roomID)?.isEncrypted == true)")
+        if ProcessInfo.processInfo.environment["NYUTAG_CALL_PEER"] == "once" {
+            try await sendViewOnce(client, machine, roomID: roomID)
+            return
+        }
 
         let port = UInt16(ProcessInfo.processInfo.environment["NYUTAG_TEST_SOCKS"]!)!
         let route = Route.socks5(try #require(SocksProxy(port: port, user: "probe", password: "probe")))
@@ -142,6 +147,27 @@ struct LiveCallPeerTests {
         }
         Issue.record("звонок не закончился за 3 минуты")
         await call?.hangUp()
+    }
+
+    /// NYUTAG_CALL_PEER=once — шифрованное фото «один просмотр» на телефон (проверка защиты от снимка экрана):
+    /// ждём, пока телефон откроет его и удалит реплику.
+    private func sendViewOnce(_ client: MatrixClient, _ machine: CryptoMachine, roomID: String) async throws {
+        let jpeg = try LiveViewOnceTests.jpeg()
+        let file = try await client.uploadEncrypted(jpeg, contentType: "image/jpeg")
+        let content = Attachment.content(.sealed(file), name: "once.jpg", mimetype: "image/jpeg", size: jpeg.count,
+                                         width: 320, height: 240, viewOnce: true)
+        let eventID = try await machine.sendEncrypted(roomID: roomID, type: EventType.message, content: content)
+        print("call peer: фото «один просмотр» ушло, жду просмотра")
+        let deadline = Date().addingTimeInterval(ProcessInfo.processInfo.environment["NYUTAG_CALL_SECONDS"].flatMap(Double.init) ?? 300)
+        while Date() < deadline {
+            if try await client.event(roomID: roomID, eventID: eventID).isRedacted {
+                print("call peer: телефон открыл фото и удалил")
+                return
+            }
+            try await Task.sleep(for: .seconds(3))
+        }
+        Issue.record("фото не открыто")
+        _ = try? await client.redact(roomID: roomID, eventID: eventID)
     }
 
     /// Личный чат с телефоном; если нет — создаём (обе учётки тестовые).
