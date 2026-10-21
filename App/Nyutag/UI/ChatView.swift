@@ -43,6 +43,9 @@ struct ChatView: View {
     @State private var openingID: String?
     /// Исчезающее фото: следующий снимок из галереи уйдёт с меткой; открытое сейчас — во весь экран.
     @State private var pickingOnce = false
+    /// Ролик пережимается перед отправкой: вместо скрепки крутилка.
+    @State private var preparingVideo = false
+    @State private var videoTooBig = false
     /// Текст, который откладываем: открыто окно выбора времени.
     @State private var scheduling: String?
     @State private var scheduleDate = Date.now.addingTimeInterval(3600)
@@ -118,6 +121,7 @@ struct ChatView: View {
             Button(words(.cancel), role: .cancel) {}
         }
         .alert(words(.cantDo), isPresented: $failed) { Button(words(.done)) {} }
+        .alert(words(.videoTooBig), isPresented: $videoTooBig) { Button(words(.done)) {} }
         .alert(words(.autoDeleteError), isPresented: $ruleFailed) { Button(words(.done)) {} }
         .alert(words(.schedulePast), isPresented: $schedulePast) { Button(words(.done)) {} }
         .sheet(isPresented: Binding { scheduling != nil } set: { if !$0 { scheduling = nil } }) { schedulePicker }
@@ -151,14 +155,20 @@ struct ChatView: View {
             }
             #endif
         }
-        .photosPicker(isPresented: $pickingPhoto, selection: $photoItem, matching: .images)
+        // Исчезающее — только снимок; обычный выбор — снимки и ролики.
+        .photosPicker(isPresented: $pickingPhoto, selection: $photoItem, matching: pickingOnce ? .images : .any(of: [.images, .videos]))
         .fileImporter(isPresented: $pickingFile, allowedContentTypes: [.item]) { result in
             if case .success(let url) = result { Task { await attachFile(url) } }
         }
         .onChange(of: photoItem) {
             guard let picked = photoItem else { return }
             photoItem = nil
-            Task { await attachPhoto(picked) }
+            let types = picked.supportedContentTypes
+            if types.contains(where: { $0.conforms(to: .movie) }), !types.contains(where: { $0.conforms(to: .image) }) {
+                Task { await attachVideo(picked) }
+            } else {
+                Task { await attachPhoto(picked) }
+            }
         }
         .quickLookPreview($previewURL)
         .fullScreenCover(item: $viewingOnce, onDismiss: {}) { shot in
@@ -278,10 +288,16 @@ struct ChatView: View {
                         }
                         Button(words(.fileAction), systemImage: "doc") { pickingFile = true }
                     } label: {
-                        Image(systemName: "paperclip")
-                            .font(.title3).foregroundStyle(Theme.quiet)
-                            .frame(width: 36, height: 40)
+                        Group {
+                            if preparingVideo {
+                                ProgressView().tint(Theme.quiet)
+                            } else {
+                                Image(systemName: "paperclip").font(.title3).foregroundStyle(Theme.quiet)
+                            }
+                        }
+                        .frame(width: 36, height: 40)
                     }
+                    .disabled(preparingVideo)
                     .accessibilityLabel(words(.attach))
                     .accessibilityIdentifier("chat-attach")
                 }
@@ -556,9 +572,36 @@ struct ChatView: View {
         }
     }
 
+    /// Имя файла по времени: «20261021T132705».
+    private var stamp: String {
+        Date.now.formatted(.iso8601.year().month().day().time(includingFractionalSeconds: false)).filter { $0.isNumber || $0 == "T" }
+    }
+
+    /// Ролик из галереи: копия во временной папке → пережатие до 720p → в очередь. Слишком большой — отдельное сообщение.
+    private func attachVideo(_ picked: PhotosPickerItem) async {
+        preparingVideo = true
+        defer { preparingVideo = false }
+        guard let movie = try? await picked.loadTransferable(type: PickedMovie.self) else { failed = true; return }
+        await attachVideo(at: movie.url)
+    }
+
+    private func attachVideo(at url: URL) async {
+        defer { try? FileManager.default.removeItem(at: url) }
+        let name = "video-" + stamp
+        guard let file = await OutgoingFile.video(at: url, name: name) else {
+            let bytes = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+            // Пережатый ролик заметно меньше исходного: не вышло с большим файлом — скорее всего не влез.
+            if bytes > OutgoingFile.videoLimit { videoTooBig = true } else { failed = true }
+            return
+        }
+        #if DEBUG
+        print("ui-check: видео \(file.width ?? 0)×\(file.height ?? 0), \(file.duration ?? 0) мс, \(file.data.count / 1024) КБ, миниатюра \(file.thumbnail?.count ?? 0) Б")
+        #endif
+        queue(file)
+    }
+
     private func attachPhoto(_ picked: PhotosPickerItem) async {
-        let name = "photo-" + Date.now.formatted(.iso8601.year().month().day().time(includingFractionalSeconds: false))
-            .filter { $0.isNumber || $0 == "T" }
+        let name = "photo-" + stamp
         guard let data = try? await picked.loadTransferable(type: Data.self),
               var file = await Task.detached(priority: .userInitiated, operation: { OutgoingFile.photo(data, name: name) }).value
         else { failed = true; return }
@@ -577,7 +620,8 @@ struct ChatView: View {
 
     /// Вложение сразу видно в ленте с часиками, как и текст.
     private func queue(_ file: OutgoingFile) {
-        let preview = file.mimetype.hasPrefix("image/") ? ImageMemory.downsample(file.data, maxPixels: 900) : nil
+        let source = file.mimetype.hasPrefix("image/") ? file.data : file.thumbnail
+        let preview = source.flatMap { ImageMemory.downsample($0, maxPixels: 900) }
         let pending = Outgoing(id: TransactionID.make(), text: file.name, replyTo: nil, file: file, preview: preview)
         outbox.append(pending)
         deliver(pending)
@@ -718,10 +762,20 @@ struct ChatView: View {
     private static var openedForScreenshots = false
     private static var sheetForScreenshots = false
 
-    /// NYUTAG_UI_ATTACH: `photo` — нарисованный снимок 1600×1200 (`once` — он же исчезающим), `file` — небольшой текстовый файл.
+    /// NYUTAG_UI_ATTACH: `photo` — нарисованный снимок 1600×1200 (`once` — он же исчезающим), `file` — небольшой
+    /// текстовый файл, `video` — нарисованный ролик на 2 секунды через тот же путь, что и из галереи.
     private func attachForScreenshots(_ kind: String) {
         guard !Self.attachedForScreenshots else { return }
         Self.attachedForScreenshots = true
+        if kind == "video" {
+            Task {
+                preparingVideo = true
+                defer { preparingVideo = false }
+                guard let url = await OutgoingFile.drawnVideo() else { print("ui-check: ролик не нарисовался"); return }
+                await attachVideo(at: url)
+            }
+            return
+        }
         if kind == "file" {
             queue(OutgoingFile(data: Data("Нютаг β: проверка вложения\n".utf8), name: "proverka.txt", mimetype: "text/plain"))
             return
@@ -922,6 +976,11 @@ struct Bubble: View {
                         .overlay { if opening { ProgressView().tint(.white) } }
                         .onTapGesture(perform: open)
                         .accessibilityIdentifier("attachment-\(item.id)")
+                } else if let attachment = item.attachment, attachment.isVideo {
+                    AttachmentImage(key: item.id, attachment: attachment)
+                        .overlay { VideoBadge(duration: attachment.duration, busy: opening) }
+                        .onTapGesture(perform: open)
+                        .accessibilityIdentifier("attachment-\(item.id)")
                 } else if let attachment = item.attachment {
                     Button(action: open) {
                         FileChip(name: attachment.name, size: attachment.size, ink: ink, soft: soft, busy: opening)
@@ -1018,6 +1077,7 @@ struct PendingBubble: View {
                             .frame(width: AttachmentImage.width,
                                    height: AttachmentImage.height(pixels: (file.width, file.height), image: preview))
                             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .overlay { if file.mimetype.hasPrefix("video/") { VideoBadge(duration: file.duration) } }
                     } else if let file = pending.file {
                         FileChip(name: file.name, size: file.data.count, ink: .white, soft: .white.opacity(0.75))
                     } else {

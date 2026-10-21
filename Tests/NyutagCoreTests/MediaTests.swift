@@ -57,6 +57,30 @@ struct MediaTests {
         #expect(Attachment.read(plain)?.isImage == false)
     }
 
+    @Test func videoWithThumbnail() throws {
+        let clip = try EncryptedFile.encrypt(Data("ролик".utf8), url: "mxc://nyutag.chat/V9").file
+        let thumb = try EncryptedFile.encrypt(Data("кадр".utf8), url: "mxc://nyutag.chat/T9").file
+        let preview = Attachment.Preview(source: .sealed(thumb), size: 4, width: 320, height: 180)
+        let content = Attachment.content(.sealed(clip), name: "clip.mp4", mimetype: "video/mp4", size: 5,
+                                         width: 1280, height: 720, preview: preview, duration: 2000)
+        #expect(content["msgtype"]?.string == "m.video")
+        #expect(content["info"]?["duration"]?.int == 2000)
+        #expect(content["info"]?["thumbnail_info"]?["w"]?.int == 320)
+        #expect(content["info"]?["thumbnail_info"]?["mimetype"]?.string == "image/jpeg")
+        let read = try #require(Attachment.read(content))
+        #expect(read.isVideo && !read.isImage)
+        #expect(read.thumbnail == .sealed(thumb))
+        #expect(read.duration == 2000)
+        #expect(read.width == 1280 && read.height == 720)
+
+        // Открытый чат: миниатюра по адресу.
+        let plain = Attachment.content(.plain(MXC("mxc://nyutag.chat/V8")!), name: "clip.mp4", mimetype: "video/mp4", size: 5,
+                                       preview: Attachment.Preview(source: .plain(MXC("mxc://nyutag.chat/T8")!), size: 4))
+        #expect(plain["info"]?["thumbnail_url"]?.string == "mxc://nyutag.chat/T8")
+        #expect(Attachment.read(plain)?.thumbnail == .plain(MXC("mxc://nyutag.chat/T8")!))
+        #expect(Attachment.read(plain)?.duration == nil)
+    }
+
     @Test func viewOnceMark() throws {
         let mxc = MXC("mxc://nyutag.chat/V1")!
         let once = Attachment.content(.plain(mxc), name: "photo.jpg", mimetype: "image/jpeg", size: 5, viewOnce: true)

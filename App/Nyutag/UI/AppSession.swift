@@ -479,8 +479,22 @@ final class AppSession {
             #endif
             return nil
         }
+        var preview: Attachment.Preview?
+        if let thumb = file.thumbnail {
+            // Миниатюра ролика — тем же способом, что и сам файл. Без неё ролик всё равно уйдёт.
+            let thumbSource: Attachment.Source? = if encrypted {
+                (try? await account.client.uploadEncrypted(thumb, contentType: "image/jpeg")).map(Attachment.Source.sealed)
+            } else {
+                (try? await account.client.uploadMedia(thumb, contentType: "image/jpeg", filename: "thumb.jpg")).map(Attachment.Source.plain)
+            }
+            if let thumbSource {
+                let pixels = ImageMemory.pixelSize(thumb)
+                preview = Attachment.Preview(source: thumbSource, size: thumb.count, width: pixels?.width, height: pixels?.height)
+            }
+        }
         let content = Attachment.content(source, name: file.name, mimetype: file.mimetype, size: file.data.count,
-                                         width: file.width, height: file.height, viewOnce: file.viewOnce)
+                                         width: file.width, height: file.height, viewOnce: file.viewOnce,
+                                         preview: preview, duration: file.duration)
         return await post(EventType.message, content, to: roomID, transactionID: transactionID)
     }
 
@@ -1301,6 +1315,9 @@ struct OutgoingFile: Sendable {
     var height: Int?
     /// Исчезающее фото: один просмотр у получателя.
     var viewOnce = false
+    /// У видео: кадр-миниатюра (JPEG) и длительность в мс.
+    var thumbnail: Data?
+    var duration: Int?
 }
 
 /// Расшифрованные последние реплики: список перестраивается на каждый /sync, расшифровывать заново незачем.

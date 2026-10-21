@@ -266,7 +266,8 @@ extension Phrase {
     static let typingMany = Phrase(bxr: "{1} болон {2} хүн бэшэжэ байна…", ru: "{1} и ещё {2} печатают…",
                                    en: "{1} and {2} more are typing…")
     static let attach = Phrase(bxr: "Хабсаргаха", ru: "Прикрепить", en: "Attach")
-    static let photoAction = Phrase(bxr: "Зураг", ru: "Фото", en: "Photo")
+    static let photoAction = Phrase(bxr: "Зураг, видео", ru: "Фото или видео", en: "Photo or video")
+    static let videoTooBig = Phrase(bxr: "Видео хэтэрхэй томо: 25 МБ хүрэтэр", ru: "Видео не влезло: до 25 МБ после сжатия", en: "Video is too big: up to 25 MB after compression")
     static let fileAction = Phrase(bxr: "Файл", ru: "Файл", en: "File")
     static let cantDo = Phrase(bxr: "Бүтэбэгүй. Холбоогоо шалгагты.", ru: "Не получилось. Проверьте связь.",
                                en: "That didn't work. Check your connection.")

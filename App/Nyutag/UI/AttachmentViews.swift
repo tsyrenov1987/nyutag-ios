@@ -1,11 +1,26 @@
 // Нютаг. Вложения в чате: картинка в пузыре по своим пропорциям, плашка файла с именем и размером,
 // подготовка снимка к отправке (пережать до 2560 px в JPEG — заодно уходят геометка и прочие EXIF).
 
+import AVFoundation
+import CoreTransferable
 import ImageIO
 import NyutagCore
 import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
+
+/// Ролик из галереи: PhotosPicker отдаёт его файлом, копия живёт во временной папке до отправки.
+struct PickedMovie: Transferable {
+    let url: URL
+
+    static var transferRepresentation: some TransferRepresentation {
+        FileRepresentation(contentType: .movie) { SentTransferredFile($0.url) } importing: { received in
+            let copy = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString + "." + received.file.pathExtension)
+            try FileManager.default.copyItem(at: received.file, to: copy)
+            return PickedMovie(url: copy)
+        }
+    }
+}
 
 extension OutgoingFile {
     /// Снимок из галереи: длинная сторона не больше 2560 px, JPEG. Ориентация уже применена.
@@ -24,6 +39,79 @@ extension OutgoingFile {
         return OutgoingFile(data: jpeg, name: name + ".jpg", mimetype: "image/jpeg",
                             width: Int(target.width), height: Int(target.height))
     }
+
+    /// Сервер принимает до 25 МБ за запрос; пережатый до 720p ролик длиннее нескольких минут туда не влезет.
+    static let videoLimit = 24 * 1024 * 1024
+
+    /// Ролик: пережать до 1280×720 в MP4 (H.264) — заодно уходят геометка и прочие метаданные, —
+    /// снять кадр-миниатюру и длительность. Длиннее лимита — `nil`.
+    nonisolated static func video(at url: URL, name: String) async -> OutgoingFile? {
+        let asset = AVURLAsset(url: url)
+        guard let export = AVAssetExportSession(asset: asset, presetName: AVAssetExportPreset1280x720) else { return nil }
+        let out = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString + ".mp4")
+        defer { try? FileManager.default.removeItem(at: out) }
+        export.shouldOptimizeForNetworkUse = true
+        export.metadataItemFilter = .forSharing()
+        do { try await export.export(to: out, as: .mp4) } catch { return nil }
+        guard let data = try? Data(contentsOf: out), data.count <= videoLimit else { return nil }
+        let exported = AVURLAsset(url: out)
+        let seconds = (try? await exported.load(.duration).seconds) ?? 0
+        var file = OutgoingFile(data: data, name: name + ".mp4", mimetype: "video/mp4", duration: Int((seconds * 1000).rounded()))
+        if let track = try? await exported.loadTracks(withMediaType: .video).first,
+           let (size, transform) = try? await track.load(.naturalSize, .preferredTransform) {
+            let box = CGRect(origin: .zero, size: size).applying(transform)
+            file.width = Int(abs(box.width).rounded())
+            file.height = Int(abs(box.height).rounded())
+        }
+        let generator = AVAssetImageGenerator(asset: exported)
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = CGSize(width: 800, height: 800)
+        let at = CMTime(seconds: min(0.5, seconds / 2), preferredTimescale: 600)
+        if let (frame, _) = try? await generator.image(at: at) {
+            file.thumbnail = UIImage(cgImage: frame).jpegData(compressionQuality: 0.8)
+        }
+        return file
+    }
+
+    #if DEBUG
+    /// Нарисованный ролик для проверок: 2 секунды, 640×360, цвет плывёт по кругу, белый квадрат едет вправо.
+    nonisolated static func drawnVideo() async -> URL? {
+        let url = FileManager.default.temporaryDirectory.appending(path: "proverka-src.mp4")
+        try? FileManager.default.removeItem(at: url)
+        let width = 640, height = 360
+        guard let writer = try? AVAssetWriter(outputURL: url, fileType: .mp4) else { return nil }
+        let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
+            AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: width, AVVideoHeightKey: height,
+        ])
+        let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+            kCVPixelBufferWidthKey as String: width, kCVPixelBufferHeightKey as String: height,
+        ])
+        writer.add(input)
+        guard writer.startWriting() else { return nil }
+        writer.startSession(atSourceTime: .zero)
+        for frame in 0..<20 {
+            while !input.isReadyForMoreMediaData { try? await Task.sleep(for: .milliseconds(20)) }
+            guard let pool = adaptor.pixelBufferPool else { return nil }
+            var buffer: CVPixelBuffer?
+            CVPixelBufferPoolCreatePixelBuffer(nil, pool, &buffer)
+            guard let buffer else { return nil }
+            CVPixelBufferLockBaseAddress(buffer, [])
+            let context = CGContext(data: CVPixelBufferGetBaseAddress(buffer), width: width, height: height, bitsPerComponent: 8,
+                                    bytesPerRow: CVPixelBufferGetBytesPerRow(buffer), space: CGColorSpaceCreateDeviceRGB(),
+                                    bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
+            context?.setFillColor(UIColor(hue: CGFloat(frame) / 20, saturation: 0.6, brightness: 0.9, alpha: 1).cgColor)
+            context?.fill(CGRect(x: 0, y: 0, width: width, height: height))
+            context?.setFillColor(UIColor.white.cgColor)
+            context?.fill(CGRect(x: 40 + frame * 24, y: 140, width: 80, height: 80))
+            CVPixelBufferUnlockBaseAddress(buffer, [])
+            adaptor.append(buffer, withPresentationTime: CMTime(value: CMTimeValue(frame), timescale: 10))
+        }
+        input.markAsFinished()
+        await writer.finishWriting()
+        return writer.status == .completed ? url : nil
+    }
+    #endif
 
     /// Файл из «Файлов». Тип — по расширению; неизвестный уходит как поток байт.
     nonisolated static func file(at url: URL) -> OutgoingFile? {
@@ -111,7 +199,7 @@ struct AttachmentImage: View {
             if let shown {
                 Image(uiImage: shown).resizable().scaledToFill()
             } else if broken {
-                Image(systemName: "photo.badge.exclamationmark").font(.title2).foregroundStyle(Theme.quiet)
+                Image(systemName: attachment.isVideo ? "film" : "photo.badge.exclamationmark").font(.title2).foregroundStyle(Theme.quiet)
             } else {
                 ProgressView()
             }
@@ -140,6 +228,40 @@ struct AttachmentImage: View {
         guard let decoded else { broken = true; return }
         ImageMemory.put(decoded, key)
         image = decoded
+    }
+}
+
+/// Поверх миниатюры ролика: значок воспроизведения и длительность в уголке.
+struct VideoBadge: View {
+    let duration: Int?
+    var busy = false
+
+    var body: some View {
+        ZStack(alignment: .bottomTrailing) {
+            Color.clear
+            if busy {
+                ProgressView().tint(.white).frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                Image(systemName: "play.circle.fill")
+                    .font(.system(size: 44)).foregroundStyle(.white.opacity(0.92))
+                    .shadow(radius: 4)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            if let duration {
+                Text(Self.clock(duration))
+                    .font(.caption2.monospacedDigit().bold()).foregroundStyle(.white)
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .background(.black.opacity(0.55), in: Capsule())
+                    .padding(6)
+            }
+        }
+    }
+
+    /// «0:07», «1:23:05».
+    static func clock(_ ms: Int) -> String {
+        let total = max(0, ms + 500) / 1000
+        let h = total / 3600, m = total % 3600 / 60, s = total % 60
+        return h > 0 ? String(format: "%d:%02d:%02d", h, m, s) : String(format: "%d:%02d", m, s)
     }
 }
 

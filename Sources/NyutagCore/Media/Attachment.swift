@@ -22,11 +22,30 @@ public struct Attachment: Sendable, Equatable {
     public let height: Int?
     /// Исчезающее фото: метка `chat.nyutag.view_once` в содержимом, формат общий с Android.
     public let viewOnce: Bool
+    /// Длительность видео или звука, мс.
+    public let duration: Int?
+
+    /// Миниатюра к отправке: своя картинка (JPEG) по тем же правилам шифрования, что и сам файл.
+    public struct Preview: Sendable, Equatable {
+        public let source: Source
+        public let mimetype: String
+        public let size: Int
+        public let width: Int?
+        public let height: Int?
+
+        public init(source: Source, mimetype: String = "image/jpeg", size: Int, width: Int? = nil, height: Int? = nil) {
+            self.source = source
+            self.mimetype = mimetype
+            self.size = size
+            self.width = width
+            self.height = height
+        }
+    }
 
     public static let viewOnceKey = "chat.nyutag.view_once"
 
     public init(msgtype: String = "m.file", source: Source, thumbnail: Source? = nil, name: String, mimetype: String? = nil,
-                size: Int? = nil, width: Int? = nil, height: Int? = nil, viewOnce: Bool = false) {
+                size: Int? = nil, width: Int? = nil, height: Int? = nil, viewOnce: Bool = false, duration: Int? = nil) {
         self.msgtype = msgtype
         self.source = source
         self.thumbnail = thumbnail
@@ -36,6 +55,7 @@ public struct Attachment: Sendable, Equatable {
         self.width = width
         self.height = height
         self.viewOnce = viewOnce
+        self.duration = duration
     }
 
     /// Вложение из содержимого реплики; у текста и у битого содержимого — `nil`.
@@ -47,16 +67,31 @@ public struct Attachment: Sendable, Equatable {
         return Attachment(msgtype: msgtype, source: source, thumbnail: locate(file: info?["thumbnail_file"], url: info?["thumbnail_url"]),
                           name: name, mimetype: info?["mimetype"]?.string, size: info?["size"]?.int,
                           width: info?["w"]?.int, height: info?["h"]?.int,
-                          viewOnce: content[viewOnceKey]?.bool == true)
+                          viewOnce: content[viewOnceKey]?.bool == true, duration: info?["duration"]?.int)
     }
 
     /// Содержимое реплики с вложением. `body` — имя файла: старые клиенты покажут хотя бы его.
+    /// У видео — миниатюра (`thumbnail_file` или `thumbnail_url` c `thumbnail_info`) и длительность в мс.
     public static func content(_ source: Source, name: String, mimetype: String, size: Int,
-                               width: Int? = nil, height: Int? = nil, viewOnce: Bool = false) -> JSONValue {
+                               width: Int? = nil, height: Int? = nil, viewOnce: Bool = false,
+                               preview: Preview? = nil, duration: Int? = nil) -> JSONValue {
         var info: [String: JSONValue] = ["mimetype": .string(mimetype), "size": .int(size)]
         if let width, let height {
             info["w"] = .int(width)
             info["h"] = .int(height)
+        }
+        if let duration { info["duration"] = .int(duration) }
+        if let preview {
+            var thumbInfo: [String: JSONValue] = ["mimetype": .string(preview.mimetype), "size": .int(preview.size)]
+            if let w = preview.width, let h = preview.height {
+                thumbInfo["w"] = .int(w)
+                thumbInfo["h"] = .int(h)
+            }
+            info["thumbnail_info"] = .object(thumbInfo)
+            switch preview.source {
+            case .plain(let mxc): info["thumbnail_url"] = .string(mxc.description)
+            case .sealed(let file): info["thumbnail_file"] = try? JSONValue(data: JSONEncoder().encode(file))
+            }
         }
         var content: [String: JSONValue] = ["msgtype": .string(msgtype(for: mimetype)), "body": .string(name),
                                             "filename": .string(name), "info": .object(info)]
@@ -80,6 +115,9 @@ public struct Attachment: Sendable, Equatable {
     public var isImage: Bool {
         msgtype == "m.image" && !["image/gif", "image/svg+xml"].contains(mimetype ?? "")
     }
+
+    /// Видео в пузыре: миниатюра со значком воспроизведения, по нажатию — проигрыватель.
+    public var isVideo: Bool { msgtype == "m.video" }
 
     static let kinds: Set<String> = ["m.image", "m.file", "m.video", "m.audio"]
 
