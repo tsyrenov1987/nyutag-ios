@@ -19,6 +19,13 @@
 	<array>
 		<string>chat.nyutag.messenger.background.refresh</string>
 	</array>
+	<key>UILaunchScreen</key>
+	<dict>
+		<key>UIColorName</key>
+		<string>LogoBlue</string>
+		<key>UIImageName</key>
+		<string>LogoMark</string>
+	</dict>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>

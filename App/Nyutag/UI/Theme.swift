@@ -37,6 +37,19 @@ extension Color {
     }
 }
 
+/// Знак Нютага, как на иконке: юрта-реплика с соёмбо на синем значка.
+struct NyutagLogo: View {
+    var size: CGFloat = 96
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: size * 0.225, style: .continuous)
+            .fill(Color("LogoBlue").gradient)
+            .overlay { Image("LogoMark").resizable().scaledToFit().padding(size * 0.2) }
+            .frame(width: size, height: size)
+            .accessibilityLabel("Нютаг")
+    }
+}
+
 /// Аватар: картинка (позже, из медиа) или первая буква на цвете из пятёрки.
 struct Pillow: View {
     let seed: String

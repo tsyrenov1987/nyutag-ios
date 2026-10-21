@@ -31,6 +31,7 @@ struct SignUpView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
+                    NyutagLogo(size: 52)
                     Text(words(.signUpLead)).foregroundStyle(Theme.quiet)
                     form
                     if let failure { FailureNote(text: message(failure)) }

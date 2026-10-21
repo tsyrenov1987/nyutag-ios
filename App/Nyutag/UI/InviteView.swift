@@ -51,6 +51,7 @@ struct InviteView: View {
                         .resizable()
                         .scaledToFit()
                         .frame(width: 200, height: 200)
+                        .overlay { NyutagLogo(size: 44).padding(3).background(.white, in: RoundedRectangle(cornerRadius: 12, style: .continuous)) }
                         .padding(10)
                         .background(.white, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                         .accessibilityHidden(true)
@@ -152,11 +153,11 @@ struct InviteView: View {
         }
     }
 
-    /// QR рисует система (Core Image), без сторонних библиотек.
+    /// QR рисует система (Core Image), без сторонних библиотек. Запас на ошибки высокий (H): середину закрывает знак.
     static func qr(_ text: String) -> UIImage? {
         let filter = CIFilter.qrCodeGenerator()
         filter.message = Data(text.utf8)
-        filter.correctionLevel = "M"
+        filter.correctionLevel = "H"
         guard let image = filter.outputImage?.transformed(by: CGAffineTransform(scaleX: 8, y: 8)),
               let cg = CIContext().createCGImage(image, from: image.extent) else { return nil }
         return UIImage(cgImage: cg)

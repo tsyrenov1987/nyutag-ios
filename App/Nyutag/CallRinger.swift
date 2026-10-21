@@ -6,6 +6,7 @@ import AVFAudio
 import CallKit
 import NyutagCore
 import PushKit
+import UIKit
 
 @MainActor
 final class CallRinger: NSObject {
@@ -44,6 +45,7 @@ final class CallRinger: NSObject {
         configuration.maximumCallsPerCallGroup = 1
         configuration.supportedHandleTypes = [.generic]
         configuration.includesCallsInRecents = true
+        configuration.iconTemplateImageData = UIImage(named: "LogoGlyph")?.pngData()
         provider = CXProvider(configuration: configuration)
         super.init()
         provider.setDelegate(self, queue: nil)

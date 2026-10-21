@@ -74,12 +74,15 @@ struct ChatListView: View {
                 }
                 let shown = session.layout.arrange(session.lines, folder: folder)
                 if shown.isEmpty {
-                    Text(words(folder == nil ? .chatsEmpty : .folderEmpty))
-                        .multilineTextAlignment(.center)
-                        .foregroundStyle(Theme.quiet)
-                        .padding(.top, 120)
-                        .padding(.horizontal, 32)
-                        .frame(maxWidth: .infinity)
+                    VStack(spacing: 18) {
+                        if folder == nil { NyutagLogo(size: 72) }
+                        Text(words(folder == nil ? .chatsEmpty : .folderEmpty))
+                            .multilineTextAlignment(.center)
+                            .foregroundStyle(Theme.quiet)
+                    }
+                    .padding(.top, 120)
+                    .padding(.horizontal, 32)
+                    .frame(maxWidth: .infinity)
                 } else {
                     LazyVStack(spacing: 8) {
                         ForEach(shown) { line in
@@ -434,6 +437,11 @@ struct Ticks: View {
 
 /// Меню под своим аватаром. Выход спрятан в «Дополнительно», не на виду.
 struct MeMenu: View {
+    static let version: String = {
+        let info = Bundle.main.infoDictionary
+        return "\(info?["CFBundleShortVersionString"] as? String ?? "") (\(info?["CFBundleVersion"] as? String ?? ""))"
+    }()
+
     @Environment(Words.self) private var words
     @Environment(AppSession.self) private var session
     @Environment(\.dismiss) private var dismiss
@@ -506,6 +514,14 @@ struct MeMenu: View {
                     Button(words(.signOut)) { askSignOut = true }
                         .foregroundStyle(Theme.ink)
                         .accessibilityIdentifier("sign-out")
+                }
+                Section {
+                    VStack(spacing: 8) {
+                        NyutagLogo(size: 44)
+                        Text("Нютаг \(Self.version)").font(.footnote).foregroundStyle(Theme.quiet)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .listRowBackground(Color.clear)
                 }
             }
             .scrollContentBackground(.hidden)

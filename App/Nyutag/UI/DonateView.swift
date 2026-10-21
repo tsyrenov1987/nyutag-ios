@@ -21,9 +21,13 @@ struct DonateView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 18) {
-                    Image(systemName: "heart.circle.fill")
-                        .font(.system(size: 64))
-                        .foregroundStyle(Theme.gold)
+                    NyutagLogo(size: 76)
+                        .overlay(alignment: .bottomTrailing) {
+                            Image(systemName: "heart.circle.fill")
+                                .font(.system(size: 30))
+                                .foregroundStyle(.white, Theme.gold)
+                                .offset(x: 8, y: 8)
+                        }
                         .accessibilityHidden(true)
                     Text(words(.donateBody))
                         .foregroundStyle(Theme.ink)

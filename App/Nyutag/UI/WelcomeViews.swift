@@ -8,9 +8,7 @@ struct LanguageView: View {
     var body: some View {
         VStack(spacing: 28) {
             Spacer()
-            Image(systemName: "bubble.left.and.text.bubble.right.fill")
-                .font(.system(size: 56))
-                .foregroundStyle(Theme.sky, Theme.gold)
+            NyutagLogo(size: 104)
             VStack(spacing: 6) {
                 Text("Нютаг").font(.system(.largeTitle, design: .rounded, weight: .bold)).foregroundStyle(Theme.ink)
                 Text("Хэлэн шэлэгты · Выберите язык · Choose a language")
@@ -55,6 +53,7 @@ struct SignInView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 VStack(alignment: .leading, spacing: 8) {
+                    NyutagLogo(size: 64).padding(.bottom, 8)
                     Text(words(.welcome))
                         .font(.system(.largeTitle, design: .rounded, weight: .bold)).foregroundStyle(Theme.ink)
                     Text(words(.signInLead)).foregroundStyle(Theme.quiet)
