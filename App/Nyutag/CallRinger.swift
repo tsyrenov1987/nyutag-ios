@@ -209,7 +209,7 @@ final class CallRinger: NSObject {
         }
         let id = ring.signal.callID
         let uuid = uuid(for: id)
-        let video = if case .ring(_, let video, _) = ring.signal { video } else { false }
+        let video = if case .ring(_, let video, _, _) = ring.signal { video } else { false }
         reportIncoming(id, uuid: uuid, handle: ring.sender, name: caller, video: video)
         guard ring.isRinging() else {
             // Пуш опоздал: звонок уже кончился.

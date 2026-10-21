@@ -36,6 +36,16 @@ public struct CallSecret: Sendable {
     public let slot: String
     let sendKey: SymmetricKey
     let receiveKey: SymmetricKey
+
+    /// Групповой звонок: у каждого участника свой случайный ключ, им он шифрует свои кадры, а остальные — открывают.
+    /// Одноразовые числа не повторяются: этим ключом шифрует только его хозяин.
+    public static func group(slot: String, key: Data) -> CallSecret? {
+        guard key.count == 32 else { return nil }
+        let symmetric = SymmetricKey(data: key)
+        return CallSecret(slot: slot, sendKey: symmetric, receiveKey: symmetric)
+    }
+
+    public static func makeGroupKey() -> Data { SymmetricKey(size: .bits256).withUnsafeBytes { Data($0) } }
 }
 
 public enum FrameKind: UInt8, Sendable {

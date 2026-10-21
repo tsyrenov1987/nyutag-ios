@@ -2,6 +2,9 @@
 // `chat.nyutag.ring` — открытый звонок-будильник: по его типу шлюз шлёт VoIP-пуш (пушкин nyutag_voip), поэтому
 // он не шифруется и ничего секретного не несёт. Остальные — `chat.nyutag.call.offer|answer|end`, в шифрованной
 // комнате идут шифром: в offer и answer лежат открытые ключи X25519, из которых стороны выводят ключ кадров.
+// Групповой звонок (только в шифрованной комнате): будильник с `group`, дальше каждый вошедший шлёт
+// `chat.nyutag.call.join` со слотом релея, своим ключом кадров и меткой, ушедший — `chat.nyutag.call.leave`.
+// Ключ кадров защищён шифром комнаты: его читают только участники комнаты.
 
 import Foundation
 
@@ -10,8 +13,10 @@ public enum CallEventType {
     public static let offer = "chat.nyutag.call.offer"
     public static let answer = "chat.nyutag.call.answer"
     public static let end = "chat.nyutag.call.end"
+    public static let join = "chat.nyutag.call.join"
+    public static let leave = "chat.nyutag.call.leave"
 
-    static let all: Set<String> = [ring, offer, answer, end]
+    static let all: Set<String> = [ring, offer, answer, end, join, leave]
 }
 
 public enum CallEndReason: String, Sendable, Equatable {
@@ -26,14 +31,18 @@ public enum CallEndReason: String, Sendable, Equatable {
 
 public enum CallSignal: Sendable, Equatable {
     /// Звонок пошёл. `lifetime` — сколько звонить, после него будильник считается пропущенным.
-    case ring(callID: String, video: Bool, lifetime: Duration)
+    case ring(callID: String, video: Bool, lifetime: Duration, group: Bool = false)
     case offer(callID: String, key: Data, video: Bool)
     case answer(callID: String, key: Data, deviceID: String)
     case end(callID: String, reason: CallEndReason)
+    /// Вошёл в групповой звонок: кадры с меткой `tag` открываются ключом `key`.
+    case join(callID: String, slot: String, key: Data, tag: UInt32, deviceID: String)
+    case leave(callID: String, deviceID: String)
 
     public var callID: String {
         switch self {
-        case .ring(let id, _, _), .offer(let id, _, _), .answer(let id, _, _), .end(let id, _): id
+        case .ring(let id, _, _, _), .offer(let id, _, _), .answer(let id, _, _), .end(let id, _), .join(let id, _, _, _, _),
+             .leave(let id, _): id
         }
     }
 
@@ -43,6 +52,8 @@ public enum CallSignal: Sendable, Equatable {
         case .offer: CallEventType.offer
         case .answer: CallEventType.answer
         case .end: CallEventType.end
+        case .join: CallEventType.join
+        case .leave: CallEventType.leave
         }
     }
 
@@ -56,9 +67,9 @@ public enum CallSignal: Sendable, Equatable {
 
     public var content: JSONValue {
         switch self {
-        case .ring(let id, let video, let lifetime):
+        case .ring(let id, let video, let lifetime, let group):
             let ms = Int(lifetime.components.seconds * 1000)
-            return ["call_id": .string(id), "video": .bool(video), "lifetime": .int(ms),
+            return ["call_id": .string(id), "video": .bool(video), "lifetime": .int(ms), "group": .bool(group),
                     "sender_ts": .int(Int(Date().timeIntervalSince1970 * 1000)),
                     // Пушкин передаёт телефону содержимое как есть; по этому полю приложение понимает, что звонок свой.
                     "m.call.intent": .string(video ? "video" : "audio"), "version": .int(Self.version)]
@@ -70,6 +81,11 @@ public enum CallSignal: Sendable, Equatable {
                     "version": .int(Self.version)]
         case .end(let id, let reason):
             return ["call_id": .string(id), "reason": .string(reason.rawValue), "version": .int(Self.version)]
+        case .join(let id, let slot, let key, let tag, let device):
+            return ["call_id": .string(id), "slot": .string(slot), "key": .string(key.base64EncodedString()),
+                    "tag": .int(Int(tag)), "device_id": .string(device), "version": .int(Self.version)]
+        case .leave(let id, let device):
+            return ["call_id": .string(id), "device_id": .string(device), "version": .int(Self.version)]
         }
     }
 
@@ -84,7 +100,7 @@ public enum CallSignal: Sendable, Equatable {
         case CallEventType.ring:
             let ms = content["lifetime"]?.int ?? 45_000
             self = .ring(callID: id, video: content["video"]?.bool ?? false,
-                         lifetime: .milliseconds(min(max(ms, 5_000), 120_000)))
+                         lifetime: .milliseconds(min(max(ms, 5_000), 120_000)), group: content["group"]?.bool ?? false)
         case CallEventType.offer:
             guard let key = key() else { return nil }
             self = .offer(callID: id, key: key, video: content["video"]?.bool ?? false)
@@ -93,6 +109,14 @@ public enum CallSignal: Sendable, Equatable {
             self = .answer(callID: id, key: key, deviceID: device)
         case CallEventType.end:
             self = .end(callID: id, reason: CallEndReason(rawValue: content["reason"]?.string ?? "") ?? .hangUp)
+        case CallEventType.join:
+            guard let key = key(), let slot = content["slot"]?.string, CallID.isValid(slot),
+                  let tag = content["tag"]?.int, tag > 0, tag <= Int(UInt32.max),
+                  let device = content["device_id"]?.string else { return nil }
+            self = .join(callID: id, slot: slot, key: key, tag: UInt32(tag), deviceID: device)
+        case CallEventType.leave:
+            guard let device = content["device_id"]?.string else { return nil }
+            self = .leave(callID: id, deviceID: device)
         default:
             return nil
         }
@@ -125,7 +149,7 @@ public struct CallMessage: Sendable, Equatable {
 
     /// Будильник ещё звонит: старые из первой синхронизации или пришедшие с опозданием не поднимают экран.
     public func isRinging(now: Date = Date()) -> Bool {
-        guard case .ring(_, _, let lifetime) = signal, let timestamp else { return false }
+        guard case .ring(_, _, let lifetime, _) = signal, let timestamp else { return false }
         let age = now.timeIntervalSince1970 * 1000 - Double(timestamp)
         return age < Double(lifetime.components.seconds * 1000)
     }

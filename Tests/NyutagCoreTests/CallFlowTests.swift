@@ -140,6 +140,115 @@ import Testing
         try await until { await call.phase == .ended(.lost) }
     }
 
+    // MARK: Групповые
+
+    static let carol = "@carol:nyutag.chat"
+
+    @Test func groupCallJoinsEveryoneAndMixesVoices() async throws {
+        let line = Line()
+        let alice = line.center(Self.alice, "A1"), bob = line.center(Self.bob, "B1"), carol = line.center(Self.carol, "C1")
+        let call = try #require(await alice.dialGroup(roomID: Self.room))
+        #expect(call.group && call.isCaller)
+        let atBob = try #require(await first(bob.incoming)), atCarol = try #require(await first(carol.incoming))
+        #expect(atBob.group && atBob.peer == Self.alice && atCarol.group)
+        #expect(await atBob.phase == .ringing)
+        await atBob.accept()
+        try await waitLive(call)
+        try await waitLive(atBob)
+        await atCarol.accept()
+        try await waitLive(atCarol)
+        // Каждый видит двух других и слышит обоих: принимает вдвое больше кадров, чем шлёт.
+        for session in [call, atBob, atCarol] {
+            try await until { await session.others.count == 2 }
+        }
+        try await until {
+            let stats = await atCarol.stats
+            return (stats?.outputLevel ?? 0) > 0.05 && (stats?.received ?? 0) > 2 * 20
+        }
+        let before = await atCarol.stats ?? VoiceStats()
+        try await Task.sleep(for: .milliseconds(600))
+        let after = await atCarol.stats ?? VoiceStats()
+        let ratio = Double(after.received - before.received) / Double(max(after.sent - before.sent, 1))
+        #expect(ratio > 1.5)
+        #expect(line.relay.slotsSeen == 1)
+        #expect(line.relay.plaintextLeaked == false)
+        // Кэрол ушла: остальные разговаривают дальше.
+        await atCarol.hangUp()
+        try await until {
+            let left = await call.others.count, right = await atBob.others.count
+            return left == 1 && right == 1
+        }
+        #expect(await call.phase.isEnded == false)
+        #expect(line.posted.contains { if case .leave(call.callID, "C1") = $0 { true } else { false } })
+        // Ушёл и Боб: Алиса одна — звонок кончается.
+        await atBob.hangUp()
+        try await until { await call.phase == .ended(.hangUp) }
+        #expect(line.relay.openLinks == 0)
+    }
+
+    @Test func groupDeclineIsSilentAndUnansweredStopsRinging() async throws {
+        let line = Line()
+        // Будильник меряется целыми секундами: короче секунды он уже «старый».
+        line.ringTimeout = .seconds(1)
+        let alice = line.center(Self.alice, "A1"), bob = line.center(Self.bob, "B1"), carol = line.center(Self.carol, "C1")
+        let call = try #require(await alice.dialGroup(roomID: Self.room))
+        let atBob = try #require(await first(bob.incoming)), atCarol = try #require(await first(carol.incoming))
+        await atBob.hangUp()
+        #expect(await atBob.phase == .ended(.declined))
+        // Отказ одного не гасит звонок у остальных.
+        #expect(await call.phase == .calling)
+        #expect(await atCarol.phase == .ringing)
+        #expect(!line.posted.contains { if case .end = $0 { true } else { false } })
+        try await until { await call.phase == .ended(.noAnswer) }
+        try await until { await atCarol.phase == .ended(.noAnswer) }
+    }
+
+    @Test func groupRingDoesNotDisturbBusy() async throws {
+        let line = Line()
+        let other = "!other:nyutag.chat"
+        let alice = line.center(Self.alice, "A1"), bob = line.center(Self.bob, "B1")
+        let carol = line.center(Self.carol, "C1", rooms: [other])
+        _ = line.center(Self.bob, "B1", rooms: [other], sharing: bob)
+        let first = try #require(await alice.dial(roomID: Self.room, peer: Self.bob))
+        await try #require(await Self.first(bob.incoming)).accept()
+        try await waitLive(first)
+        let group = try #require(await carol.dialGroup(roomID: other))
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(await group.phase == .calling)
+        #expect(!line.posted.contains { if case .end(group.callID, _) = $0 { true } else { false } })
+        await first.hangUp()
+        await group.hangUp()
+        #expect(line.posted.contains { if case .end(group.callID, .hangUp) = $0 { true } else { false } })
+    }
+
+    @Test func groupJoinedOnAnotherDeviceStopsRinging() async throws {
+        let line = Line()
+        let alice = line.center(Self.alice, "A1")
+        let phone = line.center(Self.bob, "B1"), pad = line.center(Self.bob, "B2")
+        let call = try #require(await alice.dialGroup(roomID: Self.room))
+        let onPhone = try #require(await first(phone.incoming)), onPad = try #require(await first(pad.incoming))
+        await onPhone.accept()
+        try await until { await onPad.phase == .ended(.elsewhere) }
+        try await waitLive(call)
+        await call.hangUp()
+        try await until { await onPhone.phase == .ended(.hangUp) }
+    }
+
+    /// join расшифровался раньше, чем пришёл открытый будильник.
+    @Test func groupJoinBeforeRingIsKept() async throws {
+        let line = Line()
+        let bob = line.center(Self.bob, "B1")
+        let id = CallID.make(), slot = CallID.make()
+        let now = Int(Date().timeIntervalSince1970 * 1000)
+        await bob.absorb(CallMessage(signal: .join(callID: id, slot: slot, key: CallSecret.makeGroupKey(), tag: 9,
+                                                   deviceID: "A1"), roomID: Self.room, sender: Self.alice, timestamp: now))
+        await bob.absorb(CallMessage(signal: .ring(callID: id, video: false, lifetime: .seconds(45), group: true),
+                                     roomID: Self.room, sender: Self.alice, timestamp: now))
+        let session = try #require(await bob.active())
+        #expect(await session.others.map(\.user) == [Self.alice])
+        await session.hangUp()
+    }
+
     // MARK: Помощники
 
     static func first(_ stream: AsyncStream<CallSession>) async -> CallSession? {

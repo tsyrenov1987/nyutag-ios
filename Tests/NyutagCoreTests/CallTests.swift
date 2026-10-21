@@ -10,7 +10,10 @@ import Testing
         for signal in [CallSignal.ring(callID: id, video: false, lifetime: .seconds(45)),
                        .offer(callID: id, key: key, video: true),
                        .answer(callID: id, key: key, deviceID: "DEV"),
-                       .end(callID: id, reason: .declined)] {
+                       .end(callID: id, reason: .declined),
+                       .ring(callID: id, video: false, lifetime: .seconds(45), group: true),
+                       .join(callID: id, slot: CallID.make(), key: key, tag: 77, deviceID: "DEV"),
+                       .leave(callID: id, deviceID: "DEV")] {
             #expect(CallSignal(type: signal.eventType, content: signal.content) == signal)
         }
         #expect(CallSignal.ring(callID: id, video: false, lifetime: .seconds(45)).wantsRoomEncryption == false)
@@ -19,6 +22,12 @@ import Testing
         #expect(CallSignal(type: CallEventType.offer, content: ["call_id": .string(id), "key": "AAAA"]) == nil)
         #expect(CallSignal(type: "m.call.invite", content: ["call_id": .string(id)]) == nil)
         #expect(CallSignal(type: CallEventType.end, content: ["call_id": "a b"]) == nil)
+        // Join без метки или с плохим слотом не открывает приём.
+        #expect(CallSignal(type: CallEventType.join, content: ["call_id": .string(id), "slot": "x y", "tag": 5,
+                                                              "key": .string(key.base64EncodedString()), "device_id": "D"]) == nil)
+        #expect(CallSignal(type: CallEventType.join, content: ["call_id": .string(id), "slot": .string(id), "tag": 0,
+                                                              "key": .string(key.base64EncodedString()), "device_id": "D"]) == nil)
+        #expect(CallSignal.join(callID: id, slot: id, key: key, tag: 1, deviceID: "D").wantsRoomEncryption)
         // Будильник Android-клиента без call_id не поднимает наш экран.
         #expect(CallSignal(type: CallEventType.ring, content: ["lifetime": 90000, "m.call.intent": "audio"]) == nil)
     }

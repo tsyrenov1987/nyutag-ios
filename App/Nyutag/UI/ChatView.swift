@@ -48,7 +48,7 @@ struct ChatView: View {
     }
 
     /// Звонить можно, когда в чате ровно один собеседник.
-    @State private var canCall = false
+    @State private var callKind = AppSession.CallKind.none
 
     private var line: ChatLine? { session.lines.first { $0.id == roomID } }
     private var isGroup: Bool { !(line?.isDirect ?? false) }
@@ -110,10 +110,14 @@ struct ChatView: View {
         }
         .toolbar(.hidden, for: .tabBar)
         .toolbar {
-            if canCall {
+            if callKind != .none {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button(words(.callAction), systemImage: "phone") { Task { await session.startCall(in: roomID) } }
+                    Button(words(callKind == .group ? .callGroupAction : .callAction), systemImage: "phone") {
+                        Task { await session.startCall(in: roomID) }
+                    }
                 }
+            }
+            if callKind == .direct {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(words(.callVideoAction), systemImage: "video") {
                         Task { await session.startCall(in: roomID, video: true) }
@@ -124,7 +128,7 @@ struct ChatView: View {
                 Pillow(seed: roomID, title: line?.title ?? "·", size: 32)
             }
         }
-        .task(id: roomID) { canCall = await session.callPeer(roomID) != nil }
+        .task(id: roomID) { callKind = await session.callKind(roomID) }
         .task(id: session.revision) {
             await reload()
             #if DEBUG

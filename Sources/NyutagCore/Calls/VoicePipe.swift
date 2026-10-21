@@ -1,6 +1,7 @@
 // Нютаг. Конвейер голоса одного звонка. Три потока: захват (микрофон → Opus → шифр → релей), сеть (кадр → шифр →
 // буфер дрожания) и воспроизведение (буфер → Opus → динамик). Воспроизведение тянет кадры само, в темпе звуковой
 // карты, поэтому часы отправителя и получателя не расходятся: лишнее срезает буфер дрожания.
+// В групповом звонке у каждого участника свой буфер и декодер, при воспроизведении голоса складываются.
 
 import Foundation
 import Synchronization
@@ -22,34 +23,73 @@ public protocol VoiceIO: AnyObject, Sendable {
 }
 
 public final class VoicePipe: @unchecked Sendable {
+    /// Голос одного собеседника: свой шифр, буфер дрожания и декодер. Декодер и `playing` — только поток
+    /// воспроизведения.
+    private final class Track: @unchecked Sendable {
+        let opener: CallCipher
+        let jitter = Mutex(JitterBuffer())
+        let received = Atomic<Int>(0)
+        let decoder: VoiceDecoder
+        var playing: [Float] = []
+        var playIndex = 0
+
+        init?(_ secret: CallSecret) {
+            guard let decoder = VoiceDecoder() else { return nil }
+            opener = CallCipher(secret)
+            self.decoder = decoder
+        }
+    }
+
     private struct Shared {
         var sealer: CallCipher
-        var jitter = JitterBuffer()
         var stats = VoiceStats()
         var muted = false
     }
 
+    /// Метка своих кадров в групповом звонке: релей раздаёт кадры всем, по метке получатель находит ключ.
+    /// В звонке один на один меток нет.
+    private let tag: UInt32?
     private let shared: Mutex<Shared>
-    private let opener: CallCipher
+    private let tracks: Mutex<[UInt32: Track]>
     private let encoder: VoiceEncoder
-    private let decoder: VoiceDecoder
     private let send: @Sendable (Data) -> Void
     /// Только поток захвата.
     private var pending: [Float] = []
     /// Только поток воспроизведения.
-    private var playing: [Float] = []
-    private var playIndex = 0
+    private var mix: [Float] = []
     private let silence = [Float](repeating: 0, count: VoiceFormat.frameSamples)
 
-    public init?(secret: CallSecret, send: @escaping @Sendable (Data) -> Void) {
-        guard let encoder = VoiceEncoder(), let decoder = VoiceDecoder() else { return nil }
-        shared = Mutex(Shared(sealer: CallCipher(secret)))
-        opener = CallCipher(secret)
+    public convenience init?(secret: CallSecret, send: @escaping @Sendable (Data) -> Void) {
+        guard let track = Track(secret) else { return nil }
+        self.init(tag: nil, sealer: secret, tracks: [0: track], send: send)
+    }
+
+    /// Групповой звонок: свои кадры шифруем своим ключом и метим `tag`, голоса участников добавляет `add`.
+    public convenience init?(group secret: CallSecret, tag: UInt32, send: @escaping @Sendable (Data) -> Void) {
+        self.init(tag: tag, sealer: secret, tracks: [:], send: send)
+    }
+
+    private init?(tag: UInt32?, sealer: CallSecret, tracks: [UInt32: Track], send: @escaping @Sendable (Data) -> Void) {
+        guard let encoder = VoiceEncoder() else { return nil }
+        self.tag = tag
+        shared = Mutex(Shared(sealer: CallCipher(sealer)))
+        self.tracks = Mutex(tracks)
         self.encoder = encoder
-        self.decoder = decoder
         self.send = send
         pending.reserveCapacity(VoiceFormat.frameSamples * 4)
     }
+
+    /// Участник группового звонка: его кадры с меткой `tag` открываются `secret`.
+    public func add(tag: UInt32, secret: CallSecret) {
+        guard self.tag != nil, let track = Track(secret) else { return }
+        tracks.withLock { $0[tag] = track }
+    }
+
+    public func remove(tag: UInt32) {
+        tracks.withLock { $0[tag] = nil }
+    }
+
+    public var voices: Int { tracks.withLock { $0.count } }
 
     public var muted: Bool {
         get { shared.withLock { $0.muted } }
@@ -57,12 +97,15 @@ public final class VoicePipe: @unchecked Sendable {
     }
 
     public var stats: VoiceStats {
-        shared.withLock { state in
-            var stats = state.stats
-            stats.played = state.jitter.played
-            stats.lost = state.jitter.lost
-            return stats
+        var stats = shared.withLock { $0.stats }
+        for track in tracks.withLock({ Array($0.values) }) {
+            stats.received += track.received.load(ordering: .relaxed)
+            track.jitter.withLock {
+                stats.played += $0.played
+                stats.lost += $0.lost
+            }
         }
+        return stats
     }
 
     /// Захват: отсчёты 48 кГц моно любой длины. Без звука (микрофон выключен) шлём тишину: у собеседника не
@@ -81,41 +124,73 @@ public final class VoicePipe: @unchecked Sendable {
                 state.stats.sent += 1
                 return state.sealer.seal(.audio, encoded)
             }
-            if let packet { send(packet) }
+            guard let packet else { continue }
+            if let tag { send(Self.label(tag) + packet) } else { send(packet) }
         }
     }
 
-    /// Кадр из релея. Чужие и подделанные отбрасываются.
+    /// Кадр из релея. Чужие и подделанные отбрасываются; в групповом звонке впереди метка отправителя.
     public func receive(_ packet: Data) {
-        guard let frame = opener.open(packet), frame.kind == .audio else { return }
-        shared.withLock { state in
-            state.stats.received += 1
-            state.jitter.insert(frame.sequence, frame.payload)
+        var body = packet
+        var key: UInt32 = 0
+        if tag != nil {
+            guard let (label, rest) = Self.unlabel(packet) else { return }
+            key = label
+            body = rest
         }
+        guard let track = tracks.withLock({ $0[key] }), let frame = track.opener.open(body), frame.kind == .audio else { return }
+        track.received.add(1, ordering: .relaxed)
+        track.jitter.withLock { $0.insert(frame.sequence, frame.payload) }
     }
 
-    /// Воспроизведение: заполнить буфер звуковой карты.
+    /// Воспроизведение: заполнить буфер звуковой карты. Голоса участников складываются.
     public func render(_ out: UnsafeMutableBufferPointer<Float>) {
-        var filled = 0
-        while filled < out.count {
-            if playIndex >= playing.count {
-                let pull = shared.withLock { $0.jitter.pull() }
-                switch pull {
-                case .frame(let packet):
-                    let decoded = decoder.decode(packet)
-                    playing = decoded.isEmpty ? silence : decoded
-                    let level = Self.rms(playing)
-                    shared.withLock { $0.stats.outputLevel = level }
-                case .missing, .waiting:
-                    playing = silence
-                }
-                playIndex = 0
-            }
-            let count = min(out.count - filled, playing.count - playIndex)
-            for i in 0..<count { out[filled + i] = playing[playIndex + i] }
-            filled += count
-            playIndex += count
+        for i in out.indices { out[i] = 0 }
+        let playing = tracks.withLock { Array($0.values) }
+        if mix.count < out.count { mix = [Float](repeating: 0, count: out.count) }
+        var level: Float = 0
+        for track in playing {
+            level = max(level, fill(track, out.count))
+            for i in out.indices { out[i] += mix[i] }
         }
+        if playing.count > 1 {
+            for i in out.indices { out[i] = min(max(out[i], -1), 1) }
+        }
+        shared.withLock { $0.stats.outputLevel = level }
+    }
+
+    /// Следующие `count` отсчётов голоса в `mix`. Возвращает громкость последнего декодированного кадра.
+    private func fill(_ track: Track, _ count: Int) -> Float {
+        var filled = 0
+        var level: Float = track.playing.isEmpty ? 0 : Self.rms(track.playing)
+        while filled < count {
+            if track.playIndex >= track.playing.count {
+                switch track.jitter.withLock({ $0.pull() }) {
+                case .frame(let packet):
+                    let decoded = track.decoder.decode(packet)
+                    track.playing = decoded.isEmpty ? silence : decoded
+                case .missing, .waiting:
+                    track.playing = silence
+                }
+                track.playIndex = 0
+                level = Self.rms(track.playing)
+            }
+            let n = min(count - filled, track.playing.count - track.playIndex)
+            for i in 0..<n { mix[filled + i] = track.playing[track.playIndex + i] }
+            filled += n
+            track.playIndex += n
+        }
+        return level
+    }
+
+    static func label(_ tag: UInt32) -> Data {
+        withUnsafeBytes(of: tag.bigEndian) { Data($0) }
+    }
+
+    static func unlabel(_ packet: Data) -> (UInt32, Data)? {
+        guard packet.count > 4 else { return nil }
+        let tag = packet.prefix(4).reduce(UInt32(0)) { $0 << 8 | UInt32($1) }
+        return (tag, packet.dropFirst(4))
     }
 
     static func rms(_ samples: [Float]) -> Float {

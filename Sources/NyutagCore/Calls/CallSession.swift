@@ -3,6 +3,9 @@
 // Из пары ключей обе стороны выводят слот релея и ключи кадров, подключаются к релею и, когда в слоте оба,
 // включают звук. Время разговора идёт с этого момента. Обрыв связи до 20 с переживаем переподключением.
 // Видео принимается в любом звонке; своя камера включается сама только в видеозвонке, в голосовом — кнопкой.
+// Групповой (голос): начавший шлёт ring с `group` и join со случайным слотом, своим ключом и меткой, и сразу ждёт
+// в слоте. Принявший шлёт join с тем же слотом. Каждый слушает всех, чьи join видел. Отклонивший молчит.
+// Ушедший шлёт leave; никто так и не пришёл — начавший шлёт end, и у остальных будильник гаснет.
 
 import Foundation
 import Synchronization
@@ -73,6 +76,8 @@ public actor CallSession {
     public nonisolated let peer: String
     public nonisolated let isCaller: Bool
     public nonisolated let video: Bool
+    /// Групповой звонок в комнате; `peer` — начавший его (у начавшего — комната).
+    public nonisolated let group: Bool
     /// Смены фазы для экрана звонка. Последняя — `.ended`, после неё поток закрывается.
     public nonisolated let phases: AsyncStream<CallPhase>
     private let phaseSink: AsyncStream<CallPhase>.Continuation
@@ -95,15 +100,22 @@ public actor CallSession {
     private var watch: Task<Void, Never>?
     private var lastHeard = ContinuousClock.now
     private var pendingSink: VideoSink?
+    // Групповой звонок.
+    private let groupKey = CallSecret.makeGroupKey()
+    private let groupTag = UInt32.random(in: 1...UInt32.max)
+    private var members: [String: CallMember] = [:]
+    private var joined = false
 
-    init(callID: String, roomID: String, peer: String, isCaller: Bool, video: Bool, env: CallEnvironment) {
+    init(callID: String, roomID: String, peer: String, isCaller: Bool, video: Bool, group: Bool = false,
+         env: CallEnvironment) {
         self.callID = callID
         self.roomID = roomID
         self.peer = peer
         self.isCaller = isCaller
-        self.video = video
+        self.video = group ? false : video
+        self.group = group
         self.env = env
-        cameraWanted = video
+        cameraWanted = self.video
         phase = isCaller ? .calling : .ringing
         (phases, phaseSink) = AsyncStream.makeStream(of: CallPhase.self, bufferingPolicy: .bufferingNewest(8))
         phaseSink.yield(phase)
@@ -112,6 +124,7 @@ public actor CallSession {
     // MARK: Звонящий
 
     func dial() async {
+        if group { return await dialGroup() }
         do {
             try await env.post(.ring(callID: callID, video: video, lifetime: env.ringTimeout), roomID)
             try await env.post(.offer(callID: callID, key: keys.publicKey, video: video), roomID)
@@ -120,6 +133,20 @@ public actor CallSession {
         }
         arm(after: env.ringTimeout, .noAnswer, notify: true)
     }
+
+    private func dialGroup() async {
+        slot = CallID.make()
+        do {
+            try await env.post(.ring(callID: callID, video: false, lifetime: env.ringTimeout, group: true), roomID)
+        } catch {
+            return await finish(.lost, notify: false)
+        }
+        arm(after: env.ringTimeout, .noAnswer, notify: true)
+        await joinGroup()
+    }
+
+    /// Участники группового звонка, кроме нас: кто прислал join и не ушёл.
+    public var others: [CallMember] { members.values.sorted { $0.user < $1.user } }
 
     // MARK: Нам звонят
 
@@ -134,7 +161,31 @@ public actor CallSession {
         acceptRequested = true
         set(.connecting)
         arm(after: env.connectTimeout, .lost, notify: true)
-        if theirKey != nil { await answer() }
+        if group {
+            if slot != nil { await joinGroup() }
+        } else if theirKey != nil {
+            await answer()
+        }
+    }
+
+    private func joinGroup() async {
+        guard let slot, !joined, !phase.isEnded,
+              let secret = CallSecret.group(slot: slot, key: groupKey) else { return }
+        joined = true
+        do {
+            try await env.post(.join(callID: callID, slot: slot, key: groupKey, tag: groupTag, deviceID: env.deviceID), roomID)
+        } catch {
+            return await finish(.lost, notify: false)
+        }
+        let outbox = outbox
+        guard let pipe = VoicePipe(group: secret, tag: groupTag, send: { packet in outbox.current?.send(packet) }) else {
+            return await finish(.lost, notify: true)
+        }
+        for member in members.values {
+            if let theirs = CallSecret.group(slot: slot, key: member.key) { pipe.add(tag: member.tag, secret: theirs) }
+        }
+        self.pipe = pipe
+        openLink()
     }
 
     private func answer() async {
@@ -154,6 +205,7 @@ public actor CallSession {
     func handle(_ message: CallMessage) async {
         guard message.signal.callID == callID, !phase.isEnded else { return }
         let mine = message.sender == env.me
+        if group { return await handleGroup(message, mine: mine) }
         switch message.signal {
         case .ring:
             break
@@ -180,13 +232,42 @@ public actor CallSession {
             }
             guard message.sender == peer else { return }
             await finish(reason, notify: false)
+        case .join, .leave:
+            break
+        }
+    }
+
+    private func handleGroup(_ message: CallMessage, mine: Bool) async {
+        switch message.signal {
+        case .join(_, let slot, let key, let tag, let device):
+            if mine, device == env.deviceID { return }
+            if mine, phase == .ringing { return await finish(.elsewhere, notify: false) }
+            if self.slot == nil { self.slot = slot }
+            guard slot == self.slot else { return }
+            let id = message.sender + "|" + device
+            if let old = members[id] { pipe?.remove(tag: old.tag) }
+            members[id] = CallMember(user: message.sender, deviceID: device, key: key, tag: tag)
+            if let secret = CallSecret.group(slot: slot, key: key) { pipe?.add(tag: tag, secret: secret) }
+            if acceptRequested, !joined { await joinGroup() }
+        case .leave(_, let device):
+            guard let old = members.removeValue(forKey: message.sender + "|" + device) else { return }
+            pipe?.remove(tag: old.tag)
+            if members.isEmpty, case .live = phase { await finish(.hangUp, notify: true) }
+        case .end(_, let reason):
+            // Начавший сдался, пока никто не пришёл.
+            guard !mine, message.sender == peer else { return }
+            if case .live = phase { return }
+            await finish(reason, notify: false)
+        case .ring, .offer, .answer:
+            break
         }
     }
 
     // MARK: Разговор
 
     public func hangUp() async {
-        await finish(phase == .ringing ? .declined : .hangUp, notify: true)
+        // Групповой отклоняем молча: остальные участники ждут других.
+        await finish(phase == .ringing ? .declined : .hangUp, notify: !(group && phase == .ringing))
     }
 
     public func setMuted(_ muted: Bool) { pipe?.muted = muted }
@@ -272,7 +353,7 @@ public actor CallSession {
     }
 
     private func deliver(_ packet: Data) {
-        if packet.first == FrameKind.audio.rawValue { pipe?.receive(packet) } else { videoPipe?.receive(packet) }
+        if group || packet.first == FrameKind.audio.rawValue { pipe?.receive(packet) } else { videoPipe?.receive(packet) }
         lastHeard = .now
         // Связь вернулась, когда снова пошёл звук, а не когда релей насчитал двоих.
         if lossTimer != nil {
@@ -284,7 +365,7 @@ public actor CallSession {
     private func peers(_ count: Int) async {
         guard !phase.isEnded else { return }
         if count >= 2 {
-            guard case .connecting = phase, let pipe else { return }
+            guard phase == .connecting || (group && phase == .calling), let pipe else { return }
             deadline?.cancel()
             let voice = env.makeVoice()
             do {
@@ -355,6 +436,7 @@ public actor CallSession {
 
     func finish(_ reason: CallEndReason, notify: Bool) async {
         guard !phase.isEnded else { return }
+        let before = phase
         set(.ended(reason))
         phaseSink.finish()
         voice?.stop()
@@ -365,12 +447,26 @@ public actor CallSession {
         outbox.current?.close()
         outbox.current = nil
         // Конец часто объявляет сам таймер или чтец: гасим их после отправки, иначе отмена оборвёт и её.
-        if notify { try? await env.post(.end(callID: callID, reason: reason), roomID) }
+        if notify, !group {
+            try? await env.post(.end(callID: callID, reason: reason), roomID)
+        } else if notify {
+            if joined { try? await env.post(.leave(callID: callID, deviceID: env.deviceID), roomID) }
+            // Начавший ушёл, пока никто не пришёл: у остальных гаснет будильник.
+            if before == .calling { try? await env.post(.end(callID: callID, reason: reason), roomID) }
+        }
         deadline?.cancel()
         lossTimer?.cancel()
         watch?.cancel()
         reader?.cancel()
     }
+}
+
+/// Участник группового звонка.
+public struct CallMember: Sendable, Equatable {
+    public let user: String
+    public let deviceID: String
+    let key: Data
+    let tag: UInt32
 }
 
 /// Текущий канал: в него пишет поток захвата звука, меняет его звонок при переподключении.

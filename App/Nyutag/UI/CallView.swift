@@ -42,6 +42,11 @@ final class CallDesk {
     @ObservationIgnored private var waitingRings: [CallMessage] = []
     /// Имя собеседника по комнате: стойка не знает списка чатов.
     @ObservationIgnored var name: (String, String) -> String = { _, peer in peer }
+    /// Имя участника группового звонка.
+    @ObservationIgnored var memberName: (String, String) async -> String = { _, user in user }
+    /// Кто сейчас в групповом звонке, кроме нас.
+    private(set) var members: [String] = []
+    @ObservationIgnored private var memberWatch: Task<Void, Never>?
 
     func attach(_ center: CallCenter) {
         self.center = center
@@ -78,6 +83,12 @@ final class CallDesk {
         let camera = video ? await cameraAccess() : false
         guard let session = await center.dial(roomID: roomID, peer: peer, video: video) else { return }
         if video, !camera { await session.setCamera(false) }
+        show(session)
+    }
+
+    func dialGroup(roomID: String) async {
+        guard let center, current == nil, await microphone() else { return }
+        guard let session = await center.dialGroup(roomID: roomID) else { return }
         show(session)
     }
 
@@ -149,6 +160,8 @@ final class CallDesk {
         remoteVisible = false
         remoteFeed.clear()
         localFeed.clear()
+        members = []
+        if session.group { watchMembers(session) }
         watchVideo(session)
         #if DEBUG
         selfCheck(session)
@@ -178,7 +191,31 @@ final class CallDesk {
             self.folded = false
             self.remoteVisible = false
             self.cameraOn = false
+            self.members = []
             self.videoWatch?.cancel()
+            self.memberWatch?.cancel()
+        }
+    }
+
+    /// Участники группового звонка: кто пришёл и кто ушёл, раз в секунду.
+    private func watchMembers(_ session: CallSession) {
+        memberWatch?.cancel()
+        memberWatch = Task { [weak self] in
+            var known: [String] = []
+            while !Task.isCancelled, await !session.phase.isEnded {
+                let users = Array(Set(await session.others.map(\.user))).sorted()
+                if users != known, let self {
+                    known = users
+                    var names: [String] = []
+                    for user in users { names.append(await self.memberName(session.roomID, user)) }
+                    guard self.current === session else { return }
+                    self.members = names.sorted()
+                    #if DEBUG
+                    print("ui-check: в групповом звонке \(names.count) кроме нас")
+                    #endif
+                }
+                try? await Task.sleep(for: .seconds(1))
+            }
         }
     }
 
@@ -311,6 +348,9 @@ struct CallView: View {
                     status
                         .font(.title3.monospacedDigit())
                         .foregroundStyle(.white.opacity(0.85))
+                    if session?.group == true {
+                        GroupMembers(names: desk.members)
+                    }
                 }
                 if desk.micDenied || desk.cameraDenied {
                     Text(words(desk.micDenied ? .callMicDenied : .callCameraDenied))
@@ -378,8 +418,10 @@ struct CallView: View {
             HStack(spacing: 16) {
                 RoundButton(symbol: desk.muted ? "mic.slash.fill" : "mic.fill", tint: desk.muted ? .white : nil,
                             caption: words(.callMute)) { desk.muted.toggle() }
-                RoundButton(symbol: desk.cameraOn ? "video.fill" : "video.slash.fill", tint: desk.cameraOn ? .white : nil,
-                            caption: words(.callCamera)) { Task { await desk.toggleCamera() } }
+                if desk.current?.group != true {
+                    RoundButton(symbol: desk.cameraOn ? "video.fill" : "video.slash.fill", tint: desk.cameraOn ? .white : nil,
+                                caption: words(.callCamera)) { Task { await desk.toggleCamera() } }
+                }
                 RoundButton(symbol: "speaker.wave.2.fill", tint: desk.speaker ? .white : nil,
                             caption: words(.callSpeaker)) { desk.speaker.toggle() }
                 RoundButton(symbol: "phone.down.fill", tint: .red, caption: words(.callHangUp)) {
@@ -422,6 +464,50 @@ struct CallStatus: View {
             }
         case .ended(let reason): Text(words(CallView.ending(reason)))
         case nil: Text(" ")
+        }
+    }
+}
+
+/// Кто в групповом звонке: стеклянные плашки с именами; пока никого — «ждём участников».
+private struct GroupMembers: View {
+    @Environment(Words.self) private var words
+    let names: [String]
+
+    var body: some View {
+        if names.isEmpty {
+            Text(words(.callGroupWaiting))
+                .font(.subheadline)
+                .foregroundStyle(.white.opacity(0.8))
+        } else {
+            VStack(spacing: 8) {
+                Text(words(.callGroupMembers) + " \(names.count + 1)")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.85))
+                FlowNames(names: names)
+            }
+            .padding(.horizontal, 24)
+        }
+    }
+}
+
+/// Имена в несколько строк, по ширине экрана.
+private struct FlowNames: View {
+    let names: [String]
+
+    var body: some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: 8)], spacing: 8) {
+            ForEach(names, id: \.self) { name in
+                HStack(spacing: 6) {
+                    Pillow(seed: name, title: name, size: 22)
+                    Text(name)
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .glassEffect(.regular, in: .capsule)
+            }
         }
     }
 }
@@ -532,6 +618,10 @@ extension Phrase {
     static let callFold = Phrase(bxr: "Хуряаха", ru: "Свернуть", en: "Minimize")
     static let callBack = Phrase(bxr: "Хөөрэлдөөндэ бусаха", ru: "Вернуться к звонку", en: "Back to call")
     static let callVideoAction = Phrase(bxr: "Видео залгаха", ru: "Видеозвонок", en: "Video call")
+    static let callGroupAction = Phrase(bxr: "Бүлэгөөр залгаха", ru: "Групповой звонок", en: "Group call")
+    static let callGroupWaiting = Phrase(bxr: "Хабаадагшадые хүлеэжэ байна…", ru: "Ждём участников…",
+                                         en: "Waiting for others…")
+    static let callGroupMembers = Phrase(bxr: "Хабаадагшад:", ru: "Участников:", en: "Participants:")
     static let callCamera = Phrase(bxr: "Камера", ru: "Камера", en: "Camera")
     static let callFlip = Phrase(bxr: "Камера һэлгэхэ", ru: "Сменить камеру", en: "Switch camera")
     static let callCameraDenied = Phrase(bxr: "Камера хаагдаатай. Тохиргоо соо Нютагта зүбшөөрэгты.",

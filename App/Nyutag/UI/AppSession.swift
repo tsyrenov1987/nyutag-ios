@@ -566,10 +566,38 @@ final class AppSession {
 
     // MARK: Звонки
 
-    /// Позвонить собеседнику комнаты. В комнате должен быть ровно один кроме нас.
+    enum CallKind { case none, direct, group }
+
+    /// Позвонить в комнату: один на один, если в ней ровно один кроме нас, иначе групповой (только голос).
     func startCall(in roomID: String, video: Bool = false) async {
-        guard let peer = await callPeer(roomID) else { return }
-        await calls.dial(roomID: roomID, peer: peer, video: video)
+        switch await callKind(roomID) {
+        case .direct:
+            guard let peer = await callPeer(roomID) else { return }
+            await calls.dial(roomID: roomID, peer: peer, video: video)
+        case .group:
+            await calls.dialGroup(roomID: roomID)
+        case .none:
+            break
+        }
+    }
+
+    /// Групповой — только в шифрованной комнате: ключи кадров идут шифром комнаты.
+    func callKind(_ roomID: String) async -> CallKind {
+        guard let account, let me else { return .none }
+        let members = (try? await account.store.state(roomID, type: EventType.member)) ?? []
+        let others = members.filter {
+            $0.stateKey != me && ["join", "invite"].contains($0.content["membership"]?.string ?? "")
+        }
+        if others.count == 1 { return .direct }
+        let encrypted = (try? await account.store.room(roomID))?.isEncrypted ?? false
+        return others.count > 1 && encrypted ? .group : .none
+    }
+
+    /// Имя участника комнаты для экрана группового звонка.
+    func memberName(_ roomID: String, _ user: String) async -> String {
+        let members = (try? await account?.store.state(roomID, type: EventType.member)) ?? []
+        let name = members.first { $0.stateKey == user }?.content["displayname"]?.string ?? ""
+        return name.isEmpty ? ChatDigest.localpart(user) : name
     }
 
     func callPeer(_ roomID: String) async -> String? {
@@ -615,6 +643,9 @@ final class AppSession {
             let title = self?.lines.first { $0.id == roomID }?.title ?? ""
             return title.isEmpty ? peer : title
         }
+        calls.memberName = { [weak self] roomID, user in
+            await self?.memberName(roomID, user) ?? ChatDigest.localpart(user)
+        }
         calls.attach(CallCenter(env))
         #if DEBUG
         if let room = ProcessInfo.processInfo.environment["NYUTAG_UI_CALL_ROOM"] {
@@ -659,6 +690,9 @@ final class AppSession {
             if event.type == EventType.encrypted {
                 guard let opened = await open(event, roomID) else {
                     if lockedSignals.count < 64 { lockedSignals.append((event, roomID)) }
+                    #if DEBUG
+                    print("ui-check: свежее зашифрованное из \(roomID.prefix(8))… не раскрыто")
+                    #endif
                     continue
                 }
                 clear = opened
@@ -668,6 +702,7 @@ final class AppSession {
             if waiting.contains(where: { $0.event.eventID == event.eventID }) {
                 print("ui-check: сигнал \(clear.type) раскрыт со второй попытки")
             }
+            print("ui-check: пришёл сигнал \(clear.type) из \(roomID.prefix(8))…")
             #endif
             await calls.absorb(message)
         }
