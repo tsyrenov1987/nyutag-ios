@@ -287,5 +287,23 @@ extension Phrase {
                                       en: "No other devices with Nyutag found")
     static let confirmFromDevice = Phrase(bxr: "Нүгөө төхөөрэмжөөр баталха", ru: "Подтвердить с другого устройства",
                                           en: "Confirm from another device")
+    static let pin = Phrase(bxr: "Бэхилхэ", ru: "Закрепить", en: "Pin")
+    static let unpin = Phrase(bxr: "Бэхилэлгые болюулха", ru: "Открепить", en: "Unpin")
+    static let pinned = Phrase(bxr: "Бэхилэгдэһэн", ru: "Закреплён", en: "Pinned")
+    static let pinLimit = Phrase(bxr: "5-һаа олон чат бэхилхэ аргагүй", ru: "Закрепить можно не больше 5 чатов",
+                                 en: "You can pin up to 5 chats")
+    static let folderAll = Phrase(bxr: "Бүгэдэ", ru: "Все", en: "All")
+    static let folderAdd = Phrase(bxr: "Папка руу нэмэхэ", ru: "Добавить в папку", en: "Add to folder")
+    static let folderNew = Phrase(bxr: "Шэнэ папка", ru: "Новая папка", en: "New folder")
+    static let folderName = Phrase(bxr: "Папкын нэрэ", ru: "Название папки", en: "Folder name")
+    static let folderRename = Phrase(bxr: "Папкын нэрые һэлгэхэ", ru: "Переименовать папку", en: "Rename folder")
+    static let folderDelete = Phrase(bxr: "Папка усадхаха", ru: "Удалить папку", en: "Delete folder")
+    static let folderDeleteHint = Phrase(bxr: "Чатууд жагсаалтада үлэхэ, зүгөөр папка усадхагдаха.",
+                                         ru: "Чаты останутся в списке, удалится только папка.",
+                                         en: "Chats stay in the list, only the folder is removed.")
+    static let folderEmpty = Phrase(bxr: "Папкада үшөө чат үгы. Чат дээрэ удаан дарижа, «Папка руу нэмэхэ» шэлэгты.",
+                                    ru: "В папке пока нет чатов. Зажмите чат и выберите «Добавить в папку».",
+                                    en: "No chats in this folder yet. Long-press a chat and choose “Add to folder”.")
+    static let save = Phrase(bxr: "Хадагалха", ru: "Сохранить", en: "Save")
     static let close = Phrase(bxr: "Хааха", ru: "Закрыть", en: "Close")
 }

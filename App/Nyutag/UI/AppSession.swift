@@ -20,6 +20,8 @@ final class AppSession {
 
     private(set) var phase: Phase = .launching
     private(set) var lines: [ChatLine] = []
+    /// Закреплённые чаты и папки.
+    private(set) var layout = ChatLayout()
     private(set) var me: String?
     /// Чем кончилась попытка открыть историю паролем; `needsRecoveryKey`/`needsOtherDevice` разберёт экран ключей.
     private(set) var history: PasswordUnlockOutcome?
@@ -54,6 +56,8 @@ final class AppSession {
     @ObservationIgnored private var closedChecks: Set<String> = []
     @ObservationIgnored private var startedChecks: Set<String> = []
     @ObservationIgnored private var adoptedChecks: Set<String> = []
+    /// Сколько записей раскладки ещё в пути: пока они идут, в базе старая версия, её не подхватываем.
+    @ObservationIgnored private var layoutWrites = 0
 
     init(keeper: AccountKeeper? = .app()) {
         self.keeper = keeper
@@ -115,6 +119,7 @@ final class AppSession {
         heldPassword = nil
         self.account = nil
         lines = []
+        layout = ChatLayout()
         typing = [:]
         me = nil
         history = nil
@@ -401,6 +406,31 @@ final class AppSession {
     /// Отметка прочтения: публичная, чтобы у собеседника загорелись две галочки.
     func markRead(_ roomID: String, upTo eventID: String) async {
         try? await account?.client.setReadMarkers(roomID: roomID, fullyRead: eventID, read: eventID)
+    }
+
+    // MARK: Закреп и папки
+
+    func setPinned(_ roomID: String, _ pinned: Bool) async { await change(layout.pinning(roomID, pinned)) }
+    func addFolder(_ name: String, with roomID: String?) async { await change(layout.addingFolder(name: name, with: roomID)) }
+    func renameFolder(_ id: String, to name: String) async { await change(layout.renamingFolder(id, to: name)) }
+    func deleteFolder(_ id: String) async { await change(layout.removingFolder(id)) }
+    func place(_ roomID: String, in folderID: String, _ inside: Bool) async { await change(layout.placing(roomID, in: folderID, inside)) }
+
+    /// Показываем сразу; если сервер не принял, возвращаем как было.
+    private func change(_ fresh: ChatLayout) async {
+        guard let account, let me, fresh != layout else { return }
+        let old = layout
+        layout = fresh
+        layoutWrites += 1
+        defer { layoutWrites -= 1 }
+        do {
+            try await account.client.save(fresh, userID: me, store: account.store)
+        } catch {
+            #if DEBUG
+            print("ui-check: раскладка не записана: \(error)")
+            #endif
+            if layout == fresh { layout = old }
+        }
     }
 
     // MARK: Контакты
@@ -729,6 +759,9 @@ final class AppSession {
         guard let account, let me else { return }
         let fresh = try? await ChatDigest.lines(store: account.store, me: me, decrypt: opener())
         if let fresh, fresh != lines { lines = fresh }
+        if layoutWrites == 0, let saved = try? await ChatLayout.load(store: account.store), layoutWrites == 0, saved != layout {
+            layout = saved
+        }
     }
 
     static func needsResolve(_ identifier: String) -> Bool {

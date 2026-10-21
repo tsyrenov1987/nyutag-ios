@@ -44,10 +44,19 @@ struct ChatListView: View {
     @State private var menu = false
     @State private var path: [String] = []
     @State private var keySheet = false
+    /// Открытая папка; `nil` — «Все».
+    @State private var folder: String?
+    @State private var naming: FolderNaming?
+    @State private var folderName = ""
+    @State private var deleting: ChatFolder?
 
     var body: some View {
         NavigationStack(path: $path) {
             ScrollView {
+                if !session.layout.folders.isEmpty {
+                    FolderBar(selected: $folder, naming: $naming, deleting: $deleting)
+                        .padding(.top, 2)
+                }
                 if session.historyLocked {
                     LockedHistoryCard { keySheet = true }
                         .padding(.horizontal, 12)
@@ -58,16 +67,20 @@ struct ChatListView: View {
                         .padding(.horizontal, 12)
                         .padding(.top, 4)
                 }
-                if session.lines.isEmpty {
-                    Text(words(.chatsEmpty))
+                let shown = session.layout.arrange(session.lines, folder: folder)
+                if shown.isEmpty {
+                    Text(words(folder == nil ? .chatsEmpty : .folderEmpty))
+                        .multilineTextAlignment(.center)
                         .foregroundStyle(Theme.quiet)
                         .padding(.top, 120)
+                        .padding(.horizontal, 32)
                         .frame(maxWidth: .infinity)
                 } else {
                     LazyVStack(spacing: 8) {
-                        ForEach(session.lines) { line in
+                        ForEach(shown) { line in
                             NavigationLink(value: line.id) { ChatRow(line: line) }
                                 .buttonStyle(.plain)
+                                .contextMenu { rowMenu(line.id) }
                                 .accessibilityIdentifier("chat-\(line.id)")
                         }
                     }
@@ -90,6 +103,24 @@ struct ChatListView: View {
             .navigationDestination(for: String.self) { roomID in ChatView(roomID: roomID) }
             .sheet(isPresented: $menu) { MeMenu() }
             .sheet(isPresented: $keySheet) { HistoryKeyView(canRelock: session.canRelockHistory) }
+            .alert(words(naming?.isNew == false ? .folderRename : .folderNew), isPresented: $naming.present()) {
+                TextField(words(.folderName), text: $folderName)
+                Button(words(.save)) { saveFolder() }
+                Button(words(.cancel), role: .cancel) {}
+            }
+            .onChange(of: naming) { if let naming { folderName = naming.oldName ?? "" } }
+            .confirmationDialog(words(.folderDelete), isPresented: $deleting.present(), titleVisibility: .visible,
+                                presenting: deleting) { gone in
+                Button(words(.folderDelete), role: .destructive) {
+                    if folder == gone.id { folder = nil }
+                    Task { await session.deleteFolder(gone.id) }
+                }
+                Button(words(.cancel), role: .cancel) {}
+            } message: { _ in Text(words(.folderDeleteHint)) }
+            .onChange(of: session.layout.folders) {
+                // Папку удалили на другом устройстве — возвращаемся во «Все».
+                if let folder, !session.layout.folders.contains(where: { $0.id == folder }) { self.folder = nil }
+            }
             .onChange(of: PushDoor.shared.tappedRoom, initial: true) {
                 // Коснулись уведомления: открыть его чат поверх того, что было открыто.
                 guard let room = PushDoor.shared.tappedRoom else { return }
@@ -98,6 +129,7 @@ struct ChatListView: View {
             }
             #if DEBUG
             .onChange(of: session.lines.count, initial: true) { openForScreenshots() }
+            .task { await tryLayout() }
             .onChange(of: session.historyLocked, initial: true) {
                 if session.historyLocked, ProcessInfo.processInfo.environment["NYUTAG_UI_TRY_KEY"] != nil { keySheet = true }
             }
@@ -105,7 +137,58 @@ struct ChatListView: View {
         }
     }
 
+    @ViewBuilder private func rowMenu(_ roomID: String) -> some View {
+        let layout = session.layout
+        if layout.isPinned(roomID) {
+            Button(words(.unpin), systemImage: "pin.slash") { Task { await session.setPinned(roomID, false) } }
+        } else if layout.canPinMore {
+            Button(words(.pin), systemImage: "pin") { Task { await session.setPinned(roomID, true) } }
+        } else {
+            Button(words(.pinLimit), systemImage: "pin") {}.disabled(true)
+        }
+        Menu(words(.folderAdd), systemImage: "folder") {
+            ForEach(layout.folders) { item in
+                let inside = item.rooms.contains(roomID)
+                Button(item.name, systemImage: inside ? "checkmark" : "folder") {
+                    Task { await session.place(roomID, in: item.id, !inside) }
+                }
+            }
+            Button(words(.folderNew), systemImage: "folder.badge.plus") { naming = FolderNaming(roomID: roomID) }
+        }
+    }
+
+    private func saveFolder() {
+        guard let naming else { return }
+        let name = folderName
+        Task {
+            if let id = naming.folderID {
+                await session.renameFolder(id, to: name)
+            } else {
+                await session.addFolder(name, with: naming.roomID)
+            }
+        }
+    }
+
     #if DEBUG
+    /// Самопроверка закрепа и папок: NYUTAG_UI_LAYOUT=pin — закрепить последний чат списка, folder — ещё и папка
+    /// «Проверка» с ним, открыть её; clear — убрать всё. Пишет на сервер, как живое меню.
+    private func tryLayout() async {
+        guard let mode = ProcessInfo.processInfo.environment["NYUTAG_UI_LAYOUT"] else { return }
+        while session.lines.count < 2 { try? await Task.sleep(for: .milliseconds(300)) }
+        try? await Task.sleep(for: .seconds(3))
+        if mode == "clear" {
+            for pin in session.layout.pins { await session.setPinned(pin, false) }
+            for item in session.layout.folders { await session.deleteFolder(item.id) }
+        } else if let last = session.lines.last {
+            await session.setPinned(last.id, true)
+            if mode == "folder" {
+                await session.addFolder("Проверка", with: last.id)
+                folder = session.layout.folders.first { $0.name == "Проверка" }?.id
+            }
+        }
+        print("ui-check: раскладка \(mode): закреплено \(session.layout.pins.count), папок \(session.layout.folders.count), сверху \(session.layout.arrange(session.lines).first?.title ?? "-")")
+    }
+
     /// Снимки экранов: открыть чат по части названия из SIMCTL_CHILD_NYUTAG_UI_OPEN_CHAT.
     private func openForScreenshots() {
         guard path.isEmpty, let wanted = ProcessInfo.processInfo.environment["NYUTAG_UI_OPEN_CHAT"],
@@ -130,6 +213,11 @@ struct ChatRow: View {
                         .font(.headline).foregroundStyle(Theme.ink).lineLimit(1)
                     if line.isEncrypted {
                         Image(systemName: "lock.fill").font(.caption2).foregroundStyle(Theme.quiet)
+                    }
+                    if session.layout.isPinned(line.id) {
+                        Image(systemName: "pin.fill").font(.caption2).foregroundStyle(Theme.quiet)
+                            .rotationEffect(.degrees(45))
+                            .accessibilityLabel(words(.pinned))
                     }
                     Spacer(minLength: 4)
                     if line.lastIsMine { Ticks(delivery: line.delivery) }
@@ -227,6 +315,65 @@ struct ChatRow: View {
         }
         let day = calendar.dateComponents([.day, .month], from: date)
         return String(format: "%02d.%02d", day.day ?? 0, day.month ?? 0)
+    }
+}
+
+/// Новая папка (с чатом, из меню которого её завели) или переименование старой.
+struct FolderNaming: Equatable {
+    var folderID: String?
+    var oldName: String?
+    var roomID: String?
+    var isNew: Bool { folderID == nil }
+}
+
+/// Полоса папок над списком: «Все», папки, «+». Зажатая папка — переименовать или удалить.
+struct FolderBar: View {
+    @Environment(Words.self) private var words
+    @Environment(AppSession.self) private var session
+    @Binding var selected: String?
+    @Binding var naming: FolderNaming?
+    @Binding var deleting: ChatFolder?
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                chip(words(.folderAll), on: selected == nil) { selected = nil }
+                    .accessibilityIdentifier("folder-all")
+                ForEach(session.layout.folders) { folder in
+                    chip(folder.name, on: selected == folder.id) { selected = folder.id }
+                        .contextMenu {
+                            Button(words(.folderRename), systemImage: "pencil") {
+                                naming = FolderNaming(folderID: folder.id, oldName: folder.name)
+                            }
+                            Button(words(.folderDelete), systemImage: "trash", role: .destructive) { deleting = folder }
+                        }
+                        .accessibilityIdentifier("folder-\(folder.name)")
+                }
+                Button { naming = FolderNaming() } label: {
+                    Image(systemName: "plus").font(.subheadline.bold()).foregroundStyle(Theme.quiet)
+                        .frame(width: 34, height: 34).background(Theme.card, in: Circle())
+                }
+                .accessibilityLabel(words(.folderNew))
+            }
+            .padding(.horizontal, 12)
+        }
+    }
+
+    private func chip(_ title: String, on: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title).font(.subheadline.weight(on ? .semibold : .regular)).lineLimit(1)
+                .foregroundStyle(on ? .white : Theme.ink)
+                .padding(.horizontal, 14).frame(height: 34)
+                .background(on ? Theme.sky : Theme.card, in: Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+extension Binding {
+    /// Окно открыто, пока есть что показать; закрыли — значение сбрасывается.
+    func present<Wrapped>() -> Binding<Bool> where Value == Wrapped? {
+        Binding<Bool>(get: { wrappedValue != nil }, set: { if !$0 { wrappedValue = nil } })
     }
 }
 
