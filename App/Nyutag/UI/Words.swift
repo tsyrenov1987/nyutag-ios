@@ -391,6 +391,17 @@ extension Phrase {
     static let profileEastYearNone = Phrase(bxr: "Заагдаагүй", ru: "Не указан", en: "Not set")
     static let profileSaveFailed = Phrase(bxr: "Хадагалжа шадабагүйбди. Дахин оролдогты.",
                                           ru: "Не удалось сохранить. Попробуйте ещё раз.", en: "Could not save. Try again.")
+    static let donate = Phrase(bxr: "Нютагта туһалха", ru: "Поддержать Нютаг", en: "Support Nyutag")
+    static let donateBody = Phrase(
+        bxr: "Нютагые бага студи хэнэ. Бэшэлгэ, дуудалга, мэдүүлгэ ябуулдаг серверүүдэй түлөө бидэ өөһэдөө түлэнэбди, мүнөө алдагдалтайгаар хүдэлнэбди. Нютагта реклама үгы, байхашьегүй. Хэрэгтэй гэжэ һанабал, туһалыт: ямаршье мүнгэн серверүүдтэ ошохо.",
+        ru: "Нютаг делает маленькая студия. Серверы, через которые идут переписка, звонки и уведомления, мы оплачиваем сами и пока работаем в минус. Рекламы в Нютаге нет и не будет. Если он вам нужен, поддержите его: любая сумма идёт на серверы.",
+        en: "Nyutag is made by a tiny studio. We pay for the servers that carry your chats, calls and notifications ourselves, and so far we run at a loss. There are no ads in Nyutag and there never will be. If you find it useful, support it: every bit goes to the servers.")
+    static let donateThanks = Phrase(bxr: "Һайн даа! Таны туһаламжа Нютагай серверүүдые хүдэлгэнэ.",
+                                     ru: "Спасибо! Ваша поддержка держит серверы Нютага.",
+                                     en: "Thank you! Your support keeps Nyutag's servers running.")
+    static let donateUnavailable = Phrase(bxr: "Магазинтай холбоо үгы. Һүүлдэ дахин оролдыт.",
+                                          ru: "Не удалось связаться с магазином. Попробуйте позже.",
+                                          en: "Could not reach the store. Please try again later.")
     static let myPhone = Phrase(bxr: "Минии дугаар", ru: "Мой номер", en: "My phone number")
     static let myPhonePlaceholder = Phrase(bxr: "+7 900 000-00-00", ru: "+7 900 000-00-00", en: "+1 555 000 0000")
     static let myPhoneChange = Phrase(bxr: "Шэнэ дугаар", ru: "Новый номер", en: "New number")

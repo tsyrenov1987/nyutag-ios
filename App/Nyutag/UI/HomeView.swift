@@ -136,7 +136,7 @@ struct ChatListView: View {
             .task { await tryLayout() }
             .task {
                 let env = ProcessInfo.processInfo.environment
-                guard env["NYUTAG_UI_INVITE"] != nil || env["NYUTAG_UI_ABOUT"] != nil else { return }
+                guard env["NYUTAG_UI_INVITE"] != nil || env["NYUTAG_UI_ABOUT"] != nil || env["NYUTAG_UI_DONATE"] != nil else { return }
                 while session.lines.isEmpty { try? await Task.sleep(for: .milliseconds(300)) }
                 menu = true
             }
@@ -435,6 +435,7 @@ struct MeMenu: View {
     @State private var askSignOut = false
     @State private var inviting = false
     @State private var choosingWallpaper = false
+    @State private var donating = false
     @State private var editingProfile = false
     let onSaved: () -> Void
 
@@ -478,6 +479,12 @@ struct MeMenu: View {
                         }
                     }
                     .accessibilityIdentifier("menu-wallpaper")
+                    Button { donating = true } label: {
+                        Label { Text(words(.donate)).foregroundStyle(Theme.ink) } icon: {
+                            Image(systemName: "heart.fill").foregroundStyle(Theme.gold)
+                        }
+                    }
+                    .accessibilityIdentifier("menu-donate")
                 }
                 Section(words(.language)) {
                     ForEach(Lang.allCases) { lang in
@@ -504,9 +511,11 @@ struct MeMenu: View {
             .navigationDestination(isPresented: $editingProfile) { ProfileEditView() }
             .sheet(isPresented: $inviting) { InviteView() }
             .sheet(isPresented: $choosingWallpaper) { WallpaperPicker() }
+            .sheet(isPresented: $donating) { DonateView() }
             #if DEBUG
             .onAppear {
                 if ProcessInfo.processInfo.environment["NYUTAG_UI_INVITE"] != nil { inviting = true }
+                if ProcessInfo.processInfo.environment["NYUTAG_UI_DONATE"] != nil { donating = true }
                 if ProcessInfo.processInfo.environment["NYUTAG_UI_ABOUT"] != nil { editingProfile = true }
             }
             #endif
