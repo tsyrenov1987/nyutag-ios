@@ -1,0 +1,50 @@
+Copyright (c) 2026 Nikolai Tsyrenov. All rights reserved.
+
+Нютаг для iOS: лицензия на исходный код
+
+Исходный код в этом репозитории открыт для чтения. Права на него принадлежат автору.
+
+Разрешено:
+1. Читать код, изучать его и ссылаться на него.
+2. Собирать и запускать его на своих устройствах для личной проверки и аудита безопасности.
+3. Присылать сообщения об ошибках и исправления. Присланное исправление автор может включить в проект
+   на условиях этой лицензии.
+
+Без письменного согласия автора запрещено:
+1. Публиковать приложение, собранное из этого кода или его частей, в App Store, Google Play, RuStore
+   и любых других магазинах и каталогах.
+2. Распространять код или собранные из него программы, в том числе изменённые.
+3. Использовать название «Нютаг», «Nyutag», значок и другие элементы оформления приложения.
+
+Модуль FarvaterCore подключается отдельно и распространяется на своих условиях (Apache License 2.0,
+репозиторий github.com/tsyrenov1987/farvater-core).
+
+Код предоставляется «как есть», без каких-либо гарантий. Автор не отвечает за ущерб от его использования.
+
+Связаться с автором: через GitHub (github.com/tsyrenov1987).
+
+---
+
+Nyutag for iOS: source code license
+
+The source code in this repository is published for reading. All rights belong to the author.
+
+You may:
+1. Read, study and reference the code.
+2. Build and run it on your own devices for personal testing and security review.
+3. Send bug reports and fixes. The author may include a submitted fix in the project under the terms
+   of this license.
+
+Without the author's written permission you may not:
+1. Publish an app built from this code or any part of it on the App Store, Google Play, RuStore
+   or any other store or catalogue.
+2. Distribute the code or programs built from it, modified or not.
+3. Use the names "Nyutag" and "Нютаг", the app icon or other elements of the app's design.
+
+The FarvaterCore module is included separately and comes under its own terms (Apache License 2.0,
+github.com/tsyrenov1987/farvater-core).
+
+The code is provided "as is", without warranty of any kind. The author is not liable for any damage
+arising from its use.
+
+Contact: via GitHub (github.com/tsyrenov1987).
