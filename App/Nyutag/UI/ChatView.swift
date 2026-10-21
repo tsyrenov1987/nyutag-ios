@@ -41,6 +41,8 @@ struct ChatView: View {
     @State private var pickingPhoto = false
     @State private var pickingFile = false
     @State private var pickingSticker = false
+    @State private var recorder = VoiceRecorder()
+    @State private var noMic = false
     @State private var photoItem: PhotosPickerItem?
     @State private var previewURL: URL?
     @State private var openingID: String?
@@ -136,6 +138,8 @@ struct ChatView: View {
         }
         .alert(words(.cantDo), isPresented: $failed) { Button(words(.done)) {} }
         .alert(words(.videoTooBig), isPresented: $videoTooBig) { Button(words(.done)) {} }
+        .alert(words(.voiceNoMic), isPresented: $noMic) { Button(words(.done)) {} }
+        .onDisappear { recorder.cancel() }
         .alert(words(.autoDeleteError), isPresented: $ruleFailed) { Button(words(.done)) {} }
         .alert(words(.schedulePast), isPresented: $schedulePast) { Button(words(.done)) {} }
         .sheet(isPresented: Binding { scheduling != nil } set: { if !$0 { scheduling = nil } }) { schedulePicker }
@@ -331,6 +335,9 @@ struct ChatView: View {
                 banner(title: replyTo.senderName, text: summary(replyTo.body), symbol: nil) { self.replyTo = nil }
             }
             if typing, words.buryatLetters { letterRow }
+            if recorder.recording {
+                RecordingBar(recorder: recorder, cancel: { recorder.cancel() }, send: sendVoice)
+            } else {
             HStack(alignment: .bottom, spacing: 8) {
                 if editing == nil {
                     Menu {
@@ -366,6 +373,17 @@ struct ChatView: View {
                     .padding(.horizontal, 14).padding(.vertical, 10)
                     .background(Theme.milk, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
                     .accessibilityIdentifier("chat-field")
+                if editing == nil, draft.isEmpty {
+                    Button(action: startVoice) {
+                        Image(systemName: "mic.fill")
+                            .font(.body.weight(.bold))
+                            .foregroundStyle(Theme.onGold)
+                            .frame(width: 40, height: 40)
+                            .background(Theme.gold, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+                    .accessibilityLabel(words(.voiceRecord))
+                    .accessibilityIdentifier("chat-voice")
+                } else {
                 Button(action: sendDraft) {
                     Image(systemName: editing == nil ? "arrow.up" : "checkmark")
                         .font(.body.weight(.bold))
@@ -381,8 +399,10 @@ struct ChatView: View {
                 }
                 .accessibilityLabel(words(.send))
                 .accessibilityIdentifier("chat-send")
+                }
             }
             .padding(.horizontal, 10).padding(.vertical, 8)
+            }
         }
         .background(Theme.card)
     }
@@ -507,6 +527,16 @@ struct ChatView: View {
             .accessibilityIdentifier("composer-close")
         }
         .padding(.horizontal, 16).padding(.top, 8)
+    }
+
+    private func startVoice() {
+        typing = false
+        Task { if await !recorder.start() { noMic = true } }
+    }
+
+    /// На пятой минуте запись останавливается сама и ждёт кнопки.
+    private func sendVoice() {
+        if let file = recorder.finish() { queue(file) }
     }
 
     private var canSend: Bool {
@@ -835,6 +865,7 @@ struct ChatView: View {
     private static var sentForScreenshots = false
     private static var stickerForScreenshots = false
     private static var forwardedForScreenshots = false
+    private static var voicedForScreenshots = false
 
     private func sendForScreenshots() {
         let env = ProcessInfo.processInfo.environment
@@ -848,6 +879,43 @@ struct ChatView: View {
             }
         }
         if let kind = env["NYUTAG_UI_ATTACH"] { attachForScreenshots(kind) }
+        // NYUTAG_UI_VOICE=record — начать запись; send — отправить три секунды тона как голосовое (микрофона у симулятора без окна нет);
+        // play — включить последнее голосовое и через две секунды напечатать позицию.
+        if let step = env["NYUTAG_UI_VOICE"], !Self.voicedForScreenshots {
+            Self.voicedForScreenshots = true
+            if step == "record" {
+                // Запись с микрофона симулятора (разрешение — `simctl privacy grant microphone`): полоса записи на снимке.
+                Task {
+                    let started = await recorder.start()
+                    try? await Task.sleep(for: .seconds(3))
+                    print("ui-check: запись \(started), \(String(format: "%.1f", recorder.elapsed)) с, уровней \(recorder.levels.count)")
+                }
+            } else if step == "send" {
+                if let file = VoiceSample.make() {
+                    print("ui-check: голосовое \(file.data.count) байт, \(file.duration ?? 0) мс, волна \(file.voice?.count ?? 0)")
+                    queue(file)
+                } else {
+                    print("ui-check: голосовое не собралось")
+                }
+            } else {
+                Task {
+                    // Лента из кэша может ещё не знать свежее голосовое: ждём синхронизацию до десяти секунд.
+                    var found = items.last(where: { $0.attachment?.isVoice == true })
+                    for _ in 0..<20 where found == nil {
+                        try? await Task.sleep(for: .milliseconds(500))
+                        found = items.last(where: { $0.attachment?.isVoice == true })
+                    }
+                    guard let item = found, let attachment = item.attachment else {
+                        print("ui-check: голосовых в ленте нет, событий \(items.count)")
+                        return
+                    }
+                    await VoicePlayer.shared.toggle(item.id) { await session.attachmentData(attachment, preview: false) }
+                    try? await Task.sleep(for: .seconds(2))
+                    let player = VoicePlayer.shared
+                    print("ui-check: играет \(player.current == item.id && player.isPlaying), позиция \(String(format: "%.1f", player.position)) из \(String(format: "%.1f", player.length)) с, волна \(attachment.waveform.count)")
+                }
+            }
+        }
         // NYUTAG_UI_FORWARD=saved — переслать последнюю пересылаемую реплику в «Избранное»; sheet — открыть выбор чата.
         if let target = env["NYUTAG_UI_FORWARD"], !Self.forwardedForScreenshots,
            let item = items.last(where: \.canForward) {
@@ -1166,6 +1234,8 @@ struct Bubble: View {
                         .overlay { VideoBadge(duration: attachment.duration, busy: opening) }
                         .onTapGesture(perform: open)
                         .accessibilityIdentifier("attachment-\(item.id)")
+                } else if let attachment = item.attachment, attachment.isVoice {
+                    VoiceChip(id: item.id, attachment: attachment, ink: ink, soft: soft)
                 } else if let attachment = item.attachment {
                     Button(action: open) {
                         FileChip(name: attachment.name, size: attachment.size, ink: ink, soft: soft, busy: opening)

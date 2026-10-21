@@ -543,7 +543,7 @@ final class AppSession {
         }
         let content = Attachment.content(source, name: file.name, mimetype: file.mimetype, size: file.data.count,
                                          width: file.width, height: file.height, viewOnce: file.viewOnce,
-                                         preview: preview, duration: file.duration)
+                                         preview: preview, duration: file.duration, voice: file.voice)
         return await post(EventType.message, content, to: roomID, transactionID: transactionID)
     }
 
@@ -1509,6 +1509,8 @@ struct OutgoingFile: Sendable {
     /// У видео: кадр-миниатюра (JPEG) и длительность в мс.
     var thumbnail: Data?
     var duration: Int?
+    /// Голосовое: волна 0…1024 (`m.audio` с пометкой голосового).
+    var voice: [Int]?
 }
 
 /// Расшифрованные последние реплики: список перестраивается на каждый /sync, расшифровывать заново незачем.

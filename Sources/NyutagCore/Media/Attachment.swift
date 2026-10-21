@@ -24,6 +24,9 @@ public struct Attachment: Sendable, Equatable {
     public let viewOnce: Bool
     /// Длительность видео или звука, мс.
     public let duration: Int?
+    /// Голосовое (`org.matrix.msc3245.voice`) и его волна: до сотни точек 0…1024 (`org.matrix.msc1767.audio`).
+    public let isVoice: Bool
+    public let waveform: [Int]
 
     /// Миниатюра к отправке: своя картинка (JPEG) по тем же правилам шифрования, что и сам файл.
     public struct Preview: Sendable, Equatable {
@@ -43,9 +46,12 @@ public struct Attachment: Sendable, Equatable {
     }
 
     public static let viewOnceKey = "chat.nyutag.view_once"
+    static let voiceKey = "org.matrix.msc3245.voice"
+    static let audioKey = "org.matrix.msc1767.audio"
 
     public init(msgtype: String = "m.file", source: Source, thumbnail: Source? = nil, name: String, mimetype: String? = nil,
-                size: Int? = nil, width: Int? = nil, height: Int? = nil, viewOnce: Bool = false, duration: Int? = nil) {
+                size: Int? = nil, width: Int? = nil, height: Int? = nil, viewOnce: Bool = false, duration: Int? = nil,
+                isVoice: Bool = false, waveform: [Int] = []) {
         self.msgtype = msgtype
         self.source = source
         self.thumbnail = thumbnail
@@ -56,6 +62,8 @@ public struct Attachment: Sendable, Equatable {
         self.height = height
         self.viewOnce = viewOnce
         self.duration = duration
+        self.isVoice = isVoice
+        self.waveform = waveform
     }
 
     /// Вложение из содержимого реплики; у текста и у битого содержимого — `nil`.
@@ -67,14 +75,17 @@ public struct Attachment: Sendable, Equatable {
         return Attachment(msgtype: msgtype, source: source, thumbnail: locate(file: info?["thumbnail_file"], url: info?["thumbnail_url"]),
                           name: name, mimetype: info?["mimetype"]?.string, size: info?["size"]?.int,
                           width: info?["w"]?.int, height: info?["h"]?.int,
-                          viewOnce: content[viewOnceKey]?.bool == true, duration: info?["duration"]?.int)
+                          viewOnce: content[viewOnceKey]?.bool == true,
+                          duration: info?["duration"]?.int ?? content[audioKey]?["duration"]?.int,
+                          isVoice: msgtype == "m.audio" && content[voiceKey] != nil,
+                          waveform: (content[audioKey]?["waveform"]?.array ?? []).compactMap { $0.int.map { min(max($0, 0), 1024) } })
     }
 
     /// Содержимое реплики с вложением. `body` — имя файла: старые клиенты покажут хотя бы его.
     /// У видео — миниатюра (`thumbnail_file` или `thumbnail_url` c `thumbnail_info`) и длительность в мс.
     public static func content(_ source: Source, name: String, mimetype: String, size: Int,
                                width: Int? = nil, height: Int? = nil, viewOnce: Bool = false,
-                               preview: Preview? = nil, duration: Int? = nil) -> JSONValue {
+                               preview: Preview? = nil, duration: Int? = nil, voice: [Int]? = nil) -> JSONValue {
         var info: [String: JSONValue] = ["mimetype": .string(mimetype), "size": .int(size)]
         if let width, let height {
             info["w"] = .int(width)
@@ -96,6 +107,13 @@ public struct Attachment: Sendable, Equatable {
         var content: [String: JSONValue] = ["msgtype": .string(msgtype(for: mimetype)), "body": .string(name),
                                             "filename": .string(name), "info": .object(info)]
         if viewOnce { content[viewOnceKey] = true }
+        if let voice {
+            // Голосовое по MSC3245: метка и волна; остальные клиенты покажут обычный звук.
+            content[voiceKey] = [:]
+            var audio: [String: JSONValue] = ["waveform": .array(voice.map { .int($0) })]
+            if let duration { audio["duration"] = .int(duration) }
+            content[audioKey] = .object(audio)
+        }
         switch source {
         case .plain(let mxc): content["url"] = .string(mxc.description)
         case .sealed(let file): content["file"] = try? JSONValue(data: JSONEncoder().encode(file))
