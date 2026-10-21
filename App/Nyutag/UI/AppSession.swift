@@ -444,6 +444,17 @@ final class AppSession {
         return await post(EventType.message, .object(content), to: roomID, transactionID: transactionID)
     }
 
+    /// Переслать реплику в другой чат. Берём её из базы (расшифровав), правленый текст — как его видно в ленте.
+    func forward(_ item: FeedItem, from roomID: String, to target: String) async -> String? {
+        guard let account, let stored = try? await account.store.event(item.id) else { return nil }
+        let event = stored.type == EventType.encrypted ? await opener()(stored, roomID) : stored
+        guard let event else { return nil }
+        var replaced: JSONValue?
+        if item.edited, case .text(let text) = item.body { replaced = ["msgtype": "m.text", "body": .string(text)] }
+        guard let out = Forwarding.content(of: event, replaced: replaced) else { return nil }
+        return await post(out.type, out.content, to: target)
+    }
+
     /// Новый текст своей реплики.
     func edit(_ eventID: String, text: String, in roomID: String) async -> Bool {
         await post(EventType.message, Relations.edit(of: eventID, text: text), to: roomID) != nil

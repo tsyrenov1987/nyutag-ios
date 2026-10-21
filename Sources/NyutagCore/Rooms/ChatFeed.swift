@@ -64,6 +64,8 @@ public struct FeedItem: Sendable, Equatable, Identifiable {
     public let attachment: Attachment?
     /// Только у своих реплик: прочитал ли кто-то из собеседников её или более позднюю.
     public let isRead: Bool
+    /// Переслано из другого чата.
+    public var forwarded = false
 
     public var isNotice: Bool { if case .notice = body { true } else { false } }
 
@@ -182,7 +184,8 @@ public enum ChatFeed {
                                   body: body, edited: edits[id] != nil && body != .deleted, reply: reply,
                                   reactions: body == .deleted ? [] : counted,
                                   attachment: attachment,
-                                  isRead: sender == me && readUpTo.map { ts <= $0 } == true))
+                                  isRead: sender == me && readUpTo.map { ts <= $0 } == true,
+                                  forwarded: body != .deleted && event.content[Forwarding.forwardedKey]?.bool == true))
         }
         return items
     }

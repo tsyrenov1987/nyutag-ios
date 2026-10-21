@@ -246,6 +246,13 @@ extension Phrase {
                                             ru: "Не удалось удалить аккаунт. Проверьте пароль и связь.",
                                             en: "Could not delete the account. Check the password and the connection.")
 
+    // Пересылка; бурятский не сверен с носителем
+    static let forward = Phrase(bxr: "Дамжуулха", ru: "Переслать", en: "Forward")
+    static let forwarded = Phrase(bxr: "Дамжуулагдаһан", ru: "Переслано", en: "Forwarded")
+    static let forwardFailed = Phrase(bxr: "Дамжуулагдабагүй. Холбоогоо шалгагты.",
+                                      ru: "Не удалось переслать. Проверьте связь.",
+                                      en: "Could not forward. Check the connection.")
+
     // Устройства, где открыт аккаунт; бурятский не сверен с носителем
     static let devices = Phrase(bxr: "Төхеөрөмжэнүүд", ru: "Устройства", en: "Devices")
     static let devicesLead = Phrase(bxr: "Аккаунт эдэ төхеөрөмжэнүүд дээрэ нээгдэһэн. Танихагүй төхеөрөмжэһөө гараха.",

@@ -33,6 +33,7 @@ struct ChatView: View {
     @State private var editing: FeedItem?
     @State private var deleting: FeedItem?
     @State private var reporting: FeedItem?
+    @State private var forwarding: FeedItem?
     @State private var reportSent = false
     @State private var failed = false
     @State private var typingSentAt: Date?
@@ -146,6 +147,7 @@ struct ChatView: View {
             Button(words(.cancel), role: .cancel) {}
         } message: { Text(words(.chatLeaveHint)) }
         .sheet(item: $reporting) { item in ReportSheet(item: item, roomID: roomID) { reportSent = true } }
+        .sheet(item: $forwarding) { item in ForwardSheet(item: item, roomID: roomID) }
         .alert(words(.reportSent), isPresented: $reportSent) { Button(words(.done)) {} }
         .sheet(isPresented: $choosingWallpaper) { WallpaperPicker(roomID: roomID) }
         .sheet(isPresented: $pickingSticker) { StickerPicker(roomID: roomID) { sendSticker($0) } }
@@ -609,6 +611,8 @@ struct ChatView: View {
             open(item)
         case .report:
             reporting = item
+        case .forward:
+            forwarding = item
         case .saveSticker:
             guard let attachment = item.attachment, case .plain(let mxc) = attachment.source else { return }
             let sticker = Sticker(shortcode: attachment.name.isEmpty ? "sticker" : attachment.name, mxc: mxc, body: attachment.name,
@@ -830,6 +834,7 @@ struct ChatView: View {
     /// Самопроверка отправки: текст из SIMCTL_CHILD_NYUTAG_UI_SEND уходит один раз за запуск.
     private static var sentForScreenshots = false
     private static var stickerForScreenshots = false
+    private static var forwardedForScreenshots = false
 
     private func sendForScreenshots() {
         let env = ProcessInfo.processInfo.environment
@@ -843,6 +848,19 @@ struct ChatView: View {
             }
         }
         if let kind = env["NYUTAG_UI_ATTACH"] { attachForScreenshots(kind) }
+        // NYUTAG_UI_FORWARD=saved — переслать последнюю пересылаемую реплику в «Избранное»; sheet — открыть выбор чата.
+        if let target = env["NYUTAG_UI_FORWARD"], !Self.forwardedForScreenshots,
+           let item = items.last(where: \.canForward) {
+            Self.forwardedForScreenshots = true
+            if target == "sheet" {
+                forwarding = item
+            } else if let saved = session.savedRoom {
+                Task {
+                    let eventID = await session.forward(item, from: roomID, to: saved)
+                    print("ui-check: переслано в Избранное: \(eventID ?? "не прошло")")
+                }
+            }
+        }
         // NYUTAG_UI_STICKER=add — нарисовать стикер, положить в свой набор и отправить; send — отправить первый свой.
         if let step = env["NYUTAG_UI_STICKER"], !Self.stickerForScreenshots {
             Self.stickerForScreenshots = true
@@ -1014,7 +1032,7 @@ struct ChatView: View {
 
 /// Одна строка ленты: плашка или пузырь со своей стороны.
 struct FeedRow: View {
-    enum Action { case reply, edit, delete, react(String), open, report, saveSticker }
+    enum Action { case reply, edit, delete, react(String), open, report, saveSticker, forward }
 
     /// Быстрые реакции в меню, по порядку.
     static let quick = ["👍", "❤️", "😂", "😮", "😢", "🙏"]
@@ -1059,6 +1077,9 @@ struct FeedRow: View {
             .controlGroupStyle(.palette)
         }
         Button(words(.reply), systemImage: "arrowshape.turn.up.left") { perform(.reply) }
+        if item.canForward {
+            Button(words(.forward), systemImage: "arrowshape.turn.up.right") { perform(.forward) }
+        }
         if case .text(let text) = item.body {
             Button(words(.copy), systemImage: "doc.on.doc") { UIPasteboard.general.string = text }
         }
@@ -1092,6 +1113,10 @@ struct Bubble: View {
             if showsAuthor {
                 Text(item.senderName).font(.caption.bold())
                     .foregroundStyle(Theme.avatarTints[Int(Pillow.stableHash(item.sender) % UInt32(Theme.avatarTints.count))])
+            }
+            if item.forwarded {
+                Label(words(.forwarded), systemImage: "arrowshape.turn.up.right")
+                    .font(.caption).foregroundStyle(soft)
             }
             if let quote = item.reply {
                 HStack(spacing: 8) {
@@ -1263,6 +1288,7 @@ struct PendingBubble: View {
 
 /// Стикер в ленте: без пузыря, подпись автора над ним в группе, время под ним.
 struct StickerCard: View {
+    @Environment(Words.self) private var words
     let item: FeedItem
     let mxc: MXC
     let showsAuthor: Bool
@@ -1272,6 +1298,12 @@ struct StickerCard: View {
             if showsAuthor {
                 Text(item.senderName).font(.caption.bold())
                     .foregroundStyle(Theme.avatarTints[Int(Pillow.stableHash(item.sender) % UInt32(Theme.avatarTints.count))])
+            }
+            if item.forwarded {
+                Label(words(.forwarded), systemImage: "arrowshape.turn.up.right")
+                    .font(.caption).foregroundStyle(Theme.quiet)
+                    .padding(.horizontal, 8).padding(.vertical, 2)
+                    .background(Theme.card.opacity(0.85), in: Capsule())
             }
             StickerImage(mxc: mxc, size: 160)
                 .accessibilityIdentifier("sticker-\(item.id)")
@@ -1409,5 +1441,72 @@ struct ReportSheet: View {
         if block { _ = await session.setBlocked(item.sender, true) }
         dismiss()
         onSent()
+    }
+}
+
+extension FeedItem {
+    /// Пересылать можно текст и вложения, кроме одноразовых.
+    var canForward: Bool {
+        switch body {
+        case .text: true
+        case .attachment: attachment.map { !$0.viewOnce } ?? false
+        default: false
+        }
+    }
+}
+
+/// Куда переслать: список своих чатов, «Избранное» первым. Нажатие — пересылка и закрытие.
+struct ForwardSheet: View {
+    @Environment(Words.self) private var words
+    @Environment(AppSession.self) private var session
+    @Environment(\.dismiss) private var dismiss
+    let item: FeedItem
+    let roomID: String
+    @State private var query = ""
+    @State private var sending: String?
+    @State private var failed = false
+
+    private var targets: [ChatLine] {
+        let joined = session.lines.filter { $0.membership == .join && !$0.isSpace }
+        let found = query.isEmpty ? joined : joined.filter { $0.title.localizedCaseInsensitiveContains(query) }
+        return found.filter { $0.id == session.savedRoom } + found.filter { $0.id != session.savedRoom }
+    }
+
+    var body: some View {
+        NavigationStack {
+            List(targets) { line in
+                Button {
+                    Task { await send(to: line.id) }
+                } label: {
+                    HStack {
+                        ChatRow(line: line)
+                        if sending == line.id { ProgressView() }
+                    }
+                }
+                .disabled(sending != nil)
+                .accessibilityIdentifier("forward-\(line.id)")
+            }
+            .listStyle(.plain)
+            .searchable(text: $query)
+            .navigationTitle(words(.forward))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button(words(.cancel)) { dismiss() } }
+            }
+            .alert(words(.forwardFailed), isPresented: $failed) { Button(words(.done)) {} }
+        }
+        #if DEBUG
+        .onAppear { print("ui-check: выбор чата для пересылки, чатов \(targets.count)") }
+        #endif
+    }
+
+    private func send(to target: String) async {
+        sending = target
+        defer { sending = nil }
+        if await session.forward(item, from: roomID, to: target) != nil {
+            dismiss()
+        } else {
+            failed = true
+        }
     }
 }
