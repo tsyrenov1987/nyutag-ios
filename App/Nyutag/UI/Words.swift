@@ -112,6 +112,31 @@ extension Phrase {
     static let cancel = Phrase(bxr: "Болюулха", ru: "Отмена", en: "Cancel")
     static let done = Phrase(bxr: "Бэлэн", ru: "Готово", en: "Done")
 
+    // Старая история под прежним ключом
+    static let historyLockedTitle = Phrase(bxr: "Хуушан бэшэгүүд хаалтатай", ru: "Старые сообщения закрыты",
+                                           en: "Older messages are locked")
+    static let historyLockedLead = Phrase(bxr: "Урдань хадагалһан һэргээлгын түлхюурээ оруулагты",
+                                          ru: "Введите ключ восстановления, который вы сохраняли раньше",
+                                          en: "Enter the recovery key you saved earlier")
+    static let historyKeyExplain = Phrase(
+        bxr: "Энэ аккаунт дээрэ бэшэгүүд урдань түлхюураар хаагдаһан байна. Нэгэ дахин оруулаад, саашадаа нюуса үгөөрөө оронот.",
+        ru: "Раньше переписку этого аккаунта запирал отдельный ключ. Введите его один раз, дальше на любом устройстве хватит пароля.",
+        en: "This account's messages were locked with a separate key. Enter it once; after that your password is enough on any device.")
+    static let historyKeyExplainNoPassword = Phrase(
+        bxr: "Ключ оруулбал, хуушан бэшэгүүд энэ түхеэрэлгэ дээрэ нээгдэхэ.",
+        ru: "Ключ откроет старые сообщения на этом устройстве.",
+        en: "The key opens older messages on this device.")
+    static let recoveryKey = Phrase(bxr: "Һэргээлгын түлхюур", ru: "Ключ восстановления", en: "Recovery key")
+    static let paste = Phrase(bxr: "Оруулха", ru: "Вставить", en: "Paste")
+    static let openHistory = Phrase(bxr: "Бэшэгүүдые нээхэ", ru: "Открыть историю", en: "Open history")
+    static let openingHistory = Phrase(bxr: "Нээжэ байна…", ru: "Открываем…", en: "Opening…")
+    static let wrongKey = Phrase(bxr: "Түлхюур таарахагүй байна. Үсэг бүриие шалгагты.",
+                                 ru: "Ключ не подходит. Проверьте каждый знак.",
+                                 en: "This key doesn't fit. Check every character.")
+    static let historyOpened = Phrase(bxr: "Хуушан бэшэгүүд нээгдэбэ", ru: "Старые сообщения открыты",
+                                      en: "Older messages are open")
+    static let later = Phrase(bxr: "Һүүлдэ", ru: "Позже", en: "Later")
+
     // Экран чата
     static let messageField = Phrase(bxr: "Бэшэг", ru: "Сообщение", en: "Message")
     static let send = Phrase(bxr: "Эльгээхэ", ru: "Отправить", en: "Send")

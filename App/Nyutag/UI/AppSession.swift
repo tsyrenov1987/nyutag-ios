@@ -11,6 +11,8 @@ final class AppSession {
 
     enum SignInFailure: Error, Equatable { case wrongPassword, tooOften, noNetwork, broken }
 
+    enum KeyFailure: Error, Equatable { case wrongKey, noNetwork, broken }
+
     private(set) var phase: Phase = .launching
     private(set) var lines: [ChatLine] = []
     private(set) var me: String?
@@ -25,6 +27,8 @@ final class AppSession {
     @ObservationIgnored private var machine: CryptoMachine?
     @ObservationIgnored private var pump: Task<Void, Never>?
     @ObservationIgnored private let opened = OpenedCache()
+    /// Пароль этого входа, только в памяти и только пока история заперта старым ключом: им её перезапрём.
+    @ObservationIgnored private var heldPassword: String?
 
     init(keeper: AccountKeeper? = .app()) {
         self.keeper = keeper
@@ -70,11 +74,59 @@ final class AppSession {
         guard let account, let keeper else { return }
         await stop()
         try? await keeper.signOut(account)
+        Self.rememberLockedHistory(false, for: account.session.userID)
+        heldPassword = nil
         self.account = nil
         lines = []
         me = nil
         history = nil
         phase = .signedOut
+    }
+
+    // MARK: Старая история
+
+    /// Хранилище ключей заперто прежним ключом восстановления, а не паролем: старые сообщения пока под замком.
+    var historyLocked: Bool { history == .needsRecoveryKey }
+    /// Пароль этого входа ещё в памяти: ключ сразу перезапрёт хранилище паролем.
+    var canRelockHistory: Bool { heldPassword != nil }
+
+    /// Открыть старую историю ключом восстановления. Если пароль этого входа ещё в памяти, хранилище сразу
+    /// перезапирается им, и на следующих устройствах хватит пароля. Без пароля (после перезапуска) только открываем.
+    func openHistory(recoveryKey: String) async throws(KeyFailure) {
+        guard let machine, let me else { throw .broken }
+        let key = recoveryKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        do {
+            let imported: Int
+            if let heldPassword {
+                imported = try await machine.relockWithPassword(recoveryKey: key, password: heldPassword)
+            } else {
+                _ = try await machine.secretStorageKey(recoveryKey: key)
+                try await machine.importCrossSigning(recoveryKey: key)
+                imported = (try? await machine.restoreBackup(recoveryKey: key).imported) ?? 0
+            }
+            heldPassword = nil
+            history = .opened(imported: imported)
+            Self.rememberLockedHistory(false, for: me)
+            await refresh()
+            revision += 1
+        } catch .wrongRecoveryKey {
+            throw .wrongKey
+        } catch .server(let error) {
+            if case .network = error.kind { throw .noNetwork }
+            throw .broken
+        } catch {
+            throw .broken
+        }
+    }
+
+    /// Флаг без секретов: карточка «старые сообщения закрыты» должна пережить перезапуск.
+    private static func rememberLockedHistory(_ locked: Bool, for userID: String) {
+        let key = "nyutag.historyLocked.\(userID)"
+        if locked { UserDefaults.standard.set(true, forKey: key) } else { UserDefaults.standard.removeObject(forKey: key) }
+    }
+
+    private static func lockedHistoryRemembered(for userID: String) -> Bool {
+        UserDefaults.standard.bool(forKey: "nyutag.historyLocked.\(userID)")
     }
 
     // MARK: Открытый чат
@@ -150,6 +202,13 @@ final class AppSession {
             if let password {
                 // Пароль уже проверен сервером: им же запираем или открываем хранилище ключей.
                 history = try? await machine.unlockWithPassword(password)
+                if history == .needsRecoveryKey { heldPassword = password }
+                Self.rememberLockedHistory(history == .needsRecoveryKey, for: account.session.userID)
+                #if DEBUG
+                print("ui-check: история по паролю: \(history.map { "\($0)" } ?? "ошибка")")
+                #endif
+            } else if Self.lockedHistoryRemembered(for: account.session.userID) {
+                history = .needsRecoveryKey
             }
         } catch {
             // Без машины переписка в шифрованных чатах остаётся под замком, остальное работает.

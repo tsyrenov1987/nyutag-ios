@@ -21,10 +21,16 @@ struct ChatListView: View {
     @Environment(AppSession.self) private var session
     @State private var menu = false
     @State private var path: [String] = []
+    @State private var keySheet = false
 
     var body: some View {
         NavigationStack(path: $path) {
             ScrollView {
+                if session.historyLocked {
+                    LockedHistoryCard { keySheet = true }
+                        .padding(.horizontal, 12)
+                        .padding(.top, 4)
+                }
                 if session.lines.isEmpty {
                     Text(words(.chatsEmpty))
                         .foregroundStyle(Theme.quiet)
@@ -54,8 +60,12 @@ struct ChatListView: View {
             }
             .navigationDestination(for: String.self) { roomID in ChatView(roomID: roomID) }
             .sheet(isPresented: $menu) { MeMenu() }
+            .sheet(isPresented: $keySheet) { HistoryKeyView(canRelock: session.canRelockHistory) }
             #if DEBUG
             .onChange(of: session.lines.count, initial: true) { openForScreenshots() }
+            .onChange(of: session.historyLocked, initial: true) {
+                if session.historyLocked, ProcessInfo.processInfo.environment["NYUTAG_UI_TRY_KEY"] != nil { keySheet = true }
+            }
             #endif
         }
     }

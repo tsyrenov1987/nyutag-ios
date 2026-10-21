@@ -1,5 +1,6 @@
 import Foundation
 @testable import NyutagCore
+import NyutagCrypto
 import Testing
 
 /// Хранилище секретов под паролем аккаунта: вход паролем на новом устройстве поднимает историю без recovery-кода.
@@ -72,5 +73,33 @@ import Testing
         let third = try await device(server, Self.alice, "A3")
         #expect(try await third.machine.unlockWithPassword("pw", iterations: Self.iterations) == .opened(imported: 1))
         await #expect(throws: E2EEError.wrongRecoveryKey) { try await third.machine.restoreBackup(recoveryKey: code) }
+    }
+
+    @Test func wrongKeyChangesNothingAndKeyAloneOpensHistory() async throws {
+        let server = FakeHomeserver()
+        let alice = try await device(server, Self.alice, "A1")
+        let bob = try await device(server, Self.bob, "B1")
+        server.setMembers([Self.alice, Self.bob], roomID: Self.room)
+        try await bob.machine.sendEncrypted(roomID: Self.room, type: EventType.message,
+                                            content: OutboundTests().text("старое"))
+        _ = await OutboundTests().read(server, alice)
+        let code = try await alice.machine.enableRecovery(password: nil)
+        let other = RecoveryKey.encode(Random.bytes(32))
+
+        let fresh = try await device(server, Self.alice, "A2")
+        await #expect(throws: E2EEError.wrongRecoveryKey) {
+            try await fresh.machine.relockWithPassword(recoveryKey: other, password: "pw", iterations: Self.iterations)
+        }
+        await #expect(throws: E2EEError.wrongRecoveryKey) {
+            try await fresh.machine.relockWithPassword(recoveryKey: "не ключ", password: "pw", iterations: Self.iterations)
+        }
+        #expect(try await fresh.machine.unlockWithPassword("pw", iterations: Self.iterations) == .needsRecoveryKey)
+
+        // После перезапуска пароля в памяти нет: приложение только открывает хранилище ключом, без перезапирания.
+        _ = try await fresh.machine.secretStorageKey(recoveryKey: code)
+        try await fresh.machine.importCrossSigning(recoveryKey: code)
+        #expect(try await fresh.machine.restoreBackup(recoveryKey: code).imported == 1)
+        #expect(await OutboundTests().read(server, fresh) == ["старое"])
+        #expect(try await fresh.machine.unlockWithPassword("pw", iterations: Self.iterations) == .needsRecoveryKey)
     }
 }
