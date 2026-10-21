@@ -4,6 +4,7 @@ import SwiftUI
 /// Корень: сначала язык (один раз), дальше вход или главный экран.
 struct ContentView: View {
     @State private var words = Words()
+    @State private var wallpapers = Wallpapers()
     @State private var session = AppSession.shared
 
     var body: some View {
@@ -20,6 +21,7 @@ struct ContentView: View {
         }
         .environment(words)
         .environment(session)
+        .environment(wallpapers)
         .environment(session.calls)
         .environment(\.locale, (words.lang ?? .ru).locale)
         .tint(Theme.sky)

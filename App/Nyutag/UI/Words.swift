@@ -391,6 +391,21 @@ extension Phrase {
     static let profileEastYearNone = Phrase(bxr: "Заагдаагүй", ru: "Не указан", en: "Not set")
     static let profileSaveFailed = Phrase(bxr: "Хадагалжа шадабагүйбди. Дахин оролдогты.",
                                           ru: "Не удалось сохранить. Попробуйте ещё раз.", en: "Could not save. Try again.")
+    static let wallpaper = Phrase(bxr: "Хөөрэлдөөнэй дэбисхэр", ru: "Обои чатов", en: "Chat wallpaper")
+    static let wallpaperForChat = Phrase(bxr: "Энэ хөөрэлдөөнэй дэбисхэр", ru: "Обои этого чата", en: "Wallpaper for this chat")
+    static let wallpaperAsEverywhere = Phrase(bxr: "Бусадтал адли", ru: "Как во всех", en: "Same as all")
+    static let wallpaperMilk = Phrase(bxr: "Һүн", ru: "Молоко", en: "Milk")
+    static let wallpaperBaikal = Phrase(bxr: "Байгал", ru: "Байкал", en: "Baikal")
+    static let wallpaperSteppe = Phrase(bxr: "Тала", ru: "Степь", en: "Steppe")
+    static let wallpaperDawn = Phrase(bxr: "Үүр", ru: "Заря", en: "Dawn")
+    static let wallpaperNight = Phrase(bxr: "Һүни", ru: "Ночь", en: "Night")
+    static let wallpaperPhoto = Phrase(bxr: "Фото", ru: "Фото", en: "Photo")
+    static let wallpaperPickPhoto = Phrase(bxr: "Галерейһээ фото абаха", ru: "Выбрать фото из галереи", en: "Choose a photo")
+    static let wallpaperPhotoFailed = Phrase(bxr: "Энэ фото уншагдаагүй.", ru: "Не удалось открыть это фото.",
+                                             en: "Couldn't open this photo.")
+    static let wallpaperSampleTheirs = Phrase(bxr: "Сайн байна! Юу шэнэб?", ru: "Сайн байна! Как дела?", en: "Hi! How are you?")
+    static let wallpaperSampleMine = Phrase(bxr: "Сайн, сайн. Ши юу хэжэ байнаш?", ru: "Хорошо! А ты чем занят?",
+                                            en: "Good! What are you up to?")
     static let scheduledReminder = Phrase(bxr: "Һүүлдэ эльгээхэ бэшэг эльгээгдээгүй", ru: "Отложенное сообщение ещё не ушло",
                                           en: "A scheduled message hasn't been sent yet")
     static let autoDelete = Phrase(bxr: "Бэшэгүүдые автоматаар усадхаха", ru: "Автоудаление сообщений",

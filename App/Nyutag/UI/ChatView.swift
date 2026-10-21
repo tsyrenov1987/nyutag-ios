@@ -19,6 +19,7 @@ struct ChatView: View {
     /// Карточка собеседника личного чата.
     @State private var partner: String?
     @State private var showingPartner = false
+    @State private var choosingWallpaper = false
     @State private var limit = 80
     @State private var hasOlder = true
     @State private var loadingOlder = false
@@ -101,7 +102,7 @@ struct ChatView: View {
         }
         .defaultScrollAnchor(.bottom)
         .scrollDismissesKeyboard(.interactively)
-        .background(Theme.milk.ignoresSafeArea())
+        .background(WallpaperBackground(roomID: roomID).ignoresSafeArea())
         .safeAreaInset(edge: .bottom, spacing: 0) { composer }
         .navigationTitle(line?.title.isEmpty == false ? line!.title : words(.emptyChat))
         .navigationSubtitle(typingLine)
@@ -117,6 +118,7 @@ struct ChatView: View {
         .sheet(isPresented: Binding { scheduling != nil } set: { if !$0 { scheduling = nil } }) { schedulePicker }
         .sheet(isPresented: $showingScheduled) { scheduledList }
         .sheet(isPresented: $showingPartner) { if let partner { PersonCard(userID: partner) } }
+        .sheet(isPresented: $choosingWallpaper) { WallpaperPicker(roomID: roomID) }
         .task {
             partner = await session.partner(in: roomID)
             #if DEBUG
@@ -167,6 +169,7 @@ struct ChatView: View {
                     if partner != nil {
                         Button(words(.profile), systemImage: "person.crop.circle") { showingPartner = true }
                     }
+                    Button(words(.wallpaperForChat), systemImage: "paintpalette") { choosingWallpaper = true }
                     Picker(selection: Binding { rule.choice } set: { setRule($0) }) {
                         ForEach(AutoDelete.choices, id: \.self) { Text(ruleName($0)).tag($0) }
                     } label: {
@@ -639,6 +642,10 @@ struct ChatView: View {
         }
         if let kind = env["NYUTAG_UI_ATTACH"] { attachForScreenshots(kind) }
         // NYUTAG_UI_SHEET=schedule — окно выбора времени для текста NYUTAG_UI_SEND, scheduled — очередь чата.
+        if !Self.sheetForScreenshots, let sheet = env["NYUTAG_UI_SHEET"], sheet == "wallpaper" {
+            Self.sheetForScreenshots = true
+            choosingWallpaper = true
+        }
         if !Self.sheetForScreenshots, let sheet = env["NYUTAG_UI_SHEET"], sheet != "partner" {
             Self.sheetForScreenshots = true
             if sheet == "schedule" { draft = env["NYUTAG_UI_SEND"] ?? "Проверка"; askSchedule() } else { showingScheduled = true }

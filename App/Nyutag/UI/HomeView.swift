@@ -434,6 +434,7 @@ struct MeMenu: View {
     @Environment(\.dismiss) private var dismiss
     @State private var askSignOut = false
     @State private var inviting = false
+    @State private var choosingWallpaper = false
     @State private var editingProfile = false
     let onSaved: () -> Void
 
@@ -471,6 +472,12 @@ struct MeMenu: View {
                         }
                     }
                     .accessibilityIdentifier("menu-invite")
+                    Button { choosingWallpaper = true } label: {
+                        Label { Text(words(.wallpaper)).foregroundStyle(Theme.ink) } icon: {
+                            Image(systemName: "paintpalette").foregroundStyle(Theme.sky)
+                        }
+                    }
+                    .accessibilityIdentifier("menu-wallpaper")
                 }
                 Section(words(.language)) {
                     ForEach(Lang.allCases) { lang in
@@ -496,6 +503,7 @@ struct MeMenu: View {
             }
             .navigationDestination(isPresented: $editingProfile) { ProfileEditView() }
             .sheet(isPresented: $inviting) { InviteView() }
+            .sheet(isPresented: $choosingWallpaper) { WallpaperPicker() }
             #if DEBUG
             .onAppear {
                 if ProcessInfo.processInfo.environment["NYUTAG_UI_INVITE"] != nil { inviting = true }
