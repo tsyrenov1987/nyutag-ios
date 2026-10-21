@@ -15,6 +15,7 @@ struct HomeView: View {
             Tab(words(.contacts), systemImage: "person.2", value: 1) { ContactsView() }
             Tab(words(.communities), systemImage: "circle.hexagongrid", value: 2) { SoonView(title: words(.communities)) }
         }
+        .onChange(of: PushDoor.shared.tappedRoom) { if PushDoor.shared.tappedRoom != nil { tab = 0 } }
         .sheet(isPresented: Bindable(session).showDeviceCheck, onDismiss: { Task { await session.closeDeviceCheck() } }) {
             DeviceCheckView()
         }
@@ -82,6 +83,12 @@ struct ChatListView: View {
             .navigationDestination(for: String.self) { roomID in ChatView(roomID: roomID) }
             .sheet(isPresented: $menu) { MeMenu() }
             .sheet(isPresented: $keySheet) { HistoryKeyView(canRelock: session.canRelockHistory) }
+            .onChange(of: PushDoor.shared.tappedRoom, initial: true) {
+                // Коснулись уведомления: открыть его чат поверх того, что было открыто.
+                guard let room = PushDoor.shared.tappedRoom else { return }
+                PushDoor.shared.tappedRoom = nil
+                path = [room]
+            }
             #if DEBUG
             .onChange(of: session.lines.count, initial: true) { openForScreenshots() }
             .onChange(of: session.historyLocked, initial: true) {

@@ -100,7 +100,11 @@ struct ChatView: View {
         .quickLookPreview($previewURL)
         .onChange(of: previewURL) { if previewURL == nil { OpenedFiles.clear() } }
         .onChange(of: draft) { noteTyping() }
-        .onDisappear { stopTyping() }
+        .onAppear { PushDoor.shared.openRoom = roomID }
+        .onDisappear {
+            stopTyping()
+            if PushDoor.shared.openRoom == roomID { PushDoor.shared.openRoom = nil }
+        }
         .toolbar(.hidden, for: .tabBar)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {

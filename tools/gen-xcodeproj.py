@@ -118,6 +118,7 @@ fileref("app_swift", "NyutagApp.swift", "sourcecode.swift")
 fileref("content_swift", "ContentView.swift", "sourcecode.swift")
 fileref("accounts_swift", "AppAccounts.swift", "sourcecode.swift")
 fileref("selfcheck_swift", "SelfCheck.swift", "sourcecode.swift")
+fileref("pushdoor_swift", "PushDoor.swift", "sourcecode.swift")
 fileref("tunnel_bridge", "CoreBridge.swift", "sourcecode.swift")
 fileref("tunnel_net", "NetworkWatch.swift", "sourcecode.swift")
 fileref("tunnel_hub", "TunnelHub.swift", "sourcecode.swift")
@@ -157,6 +158,7 @@ b_swift_app = bf("app_swift", F["app_swift"], "NyutagApp.swift", "Sources")
 b_swift_content = bf("content_swift", F["content_swift"], "ContentView.swift", "Sources")
 b_swift_accounts = bf("accounts_swift", F["accounts_swift"], "AppAccounts.swift", "Sources")
 b_swift_selfcheck = bf("selfcheck_swift", F["selfcheck_swift"], "SelfCheck.swift", "Sources")
+b_swift_pushdoor = bf("pushdoor_swift", F["pushdoor_swift"], "PushDoor.swift", "Sources")
 b_tunnel = [bf("tunnel_bridge", F["tunnel_bridge"], "CoreBridge.swift", "Sources"),
             bf("tunnel_net", F["tunnel_net"], "NetworkWatch.swift", "Sources"),
             bf("tunnel_hub", F["tunnel_hub"], "TunnelHub.swift", "Sources")]
@@ -177,7 +179,7 @@ def phase(name, isa, files, extra=()):
                [("files", lst(files)), ("runOnlyForDeploymentPostprocessing", "0")])
 
 
-ph_app_src = phase("Sources:app", "PBXSourcesBuildPhase", [b_swift_app, b_swift_content, b_swift_accounts, b_swift_selfcheck] + b_tunnel + b_ui)
+ph_app_src = phase("Sources:app", "PBXSourcesBuildPhase", [b_swift_app, b_swift_content, b_swift_accounts, b_swift_selfcheck, b_swift_pushdoor] + b_tunnel + b_ui)
 ph_app_fw = phase("Frameworks:app", "PBXFrameworksBuildPhase", [b_pkg_app, b_farvater])
 ph_app_res = phase("Resources:app", "PBXResourcesBuildPhase", [b_assets, b_res])
 ph_embed = phase("Embed Foundation Extensions", "PBXCopyFilesBuildPhase", [b_embed],
@@ -199,7 +201,7 @@ def group(key, comment, children, path=None, name=None):
 
 g_tunnel = group("tunnel", "Tunnel", [F["tunnel_bridge"], F["tunnel_net"], F["tunnel_hub"]], "Tunnel")
 g_ui = group("ui", "UI", [F["ui:" + n] for n in UI_FILES], "UI")
-g_nyutag = group("nyutag", "Nyutag", [F["app_swift"], F["content_swift"], F["accounts_swift"], F["selfcheck_swift"], g_tunnel, g_ui, F["assets"], F["app_plist"], F["app_ent"]], "Nyutag")
+g_nyutag = group("nyutag", "Nyutag", [F["app_swift"], F["content_swift"], F["accounts_swift"], F["selfcheck_swift"], F["pushdoor_swift"], g_tunnel, g_ui, F["assets"], F["app_plist"], F["app_ent"]], "Nyutag")
 g_nse = group("nse", "NyutagNSE", [F["nse_swift"], F["nse_plist"], F["nse_ent"]], "NyutagNSE")
 g_apps = group("apps", "App", [g_nyutag, g_nse, F["resources"]], "App")
 g_products = group("products", "Products", [APP_PROD, NSE_PROD], None, "Products")

@@ -136,12 +136,38 @@ import Testing
         let pusher = try #require(server.pushers(user: Self.bob).first)
         #expect(server.pushers(user: Self.bob).count == 1)
         #expect(pusher["app_id"] == "chat.nyutag.messenger.ios.prod")
-        #expect(pusher["pushkey"] == "0aff01")
+        #expect(pusher["pushkey"] == "Cv8B")
         #expect(pusher["data", "url"] == "http://127.0.0.1:5000/_matrix/push/v1/notify")
         #expect(pusher["data", "nyutag_cipher"] == 1)
         #expect(pusher["data", "default_payload", "aps", "mutable-content"] == 1)
         #expect(pusher["data", "format"] == nil)
         try await client.removeApplePush(token: token, environment: .production)
         #expect(server.pushers(user: Self.bob).isEmpty)
+    }
+
+    @Test func betaBuildHasItsOwnGatewayApp() {
+        // Шлюз держит для β отдельное приложение с topic chat.nyutag.messenger.dev.
+        #expect(ApplePusher.appID(.beta) == "chat.nyutag.messenger.ios.beta")
+        #expect(ApplePusher.appID(.sandbox) == "chat.nyutag.messenger.ios.dev")
+    }
+
+    @Test func gatewayCaptionIsReadWhenEventIsNot() {
+        func info(_ key: String, _ args: [String]) -> [AnyHashable: Any] {
+            ["aps": ["alert": ["loc-key": key, "loc-args": args], "mutable-content": 1], "room_id": Self.room,
+             "event_id": "$e"]
+        }
+        let open = ApplePusher.gatewayPreview(in: info("MSG_FROM_USER_IN_ROOM_WITH_CONTENT", ["Алиса", "Проверка", "привет"]))
+        #expect(open?.senderName == "Алиса")
+        #expect(open?.roomName == "Проверка")
+        #expect(open?.kind == .text("привет"))
+        #expect(open?.isDirect == false)
+        let emote = ApplePusher.gatewayPreview(in: info("ACTION_FROM_USER_IN_ROOM", ["Проверка", "Алиса", "машет"]))
+        #expect(emote?.senderName == "Алиса")
+        #expect(emote?.roomName == "Проверка")
+        let locked = ApplePusher.gatewayPreview(in: info("MSG_FROM_USER", ["Алиса"]))
+        #expect(locked?.kind == .locked)
+        #expect(locked?.isDirect == true)
+        #expect(ApplePusher.gatewayPreview(in: info("SOMETHING_NEW", ["Алиса"])) == nil)
+        #expect(ApplePusher.gatewayPreview(in: ["room_id": Self.room]) == nil)
     }
 }

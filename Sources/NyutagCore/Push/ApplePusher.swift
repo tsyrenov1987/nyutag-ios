@@ -9,6 +9,9 @@ public enum ApplePusher {
     public enum Environment: String, Sendable {
         case production = "prod"
         case sandbox = "dev"
+        /// Тестовая сборка «Нютаг β» (свой bundle `chat.nyutag.messenger.dev`, песочница APNs): у шлюза своё
+        /// приложение с этим topic, иначе APNs отвергнет токен как чужой.
+        case beta = "beta"
     }
 
     static let gateway = "http://127.0.0.1:5000/_matrix/push/v1/notify"
@@ -18,8 +21,9 @@ public enum ApplePusher {
 
     public static func appID(_ environment: Environment) -> String { appIDBase + environment.rawValue }
 
-    /// Токен APNs в том виде, в каком его ждёт шлюз: шестнадцатеричная строка.
-    public static func pushKey(_ token: Data) -> String { token.map { String(format: "%02x", $0) }.joined() }
+    /// Токен APNs в том виде, в каком его ждёт шлюз: base64 с дополнением. Sygnal сам переводит его в hex для APNs;
+    /// hex он бы раскодировал как base64 и отправил мусор (APNs отвечает 400 BadDeviceToken).
+    public static func pushKey(_ token: Data) -> String { token.base64EncodedString() }
 
     /// Зашифрованное событие, вложенное шлюзом в пуш; `nil`, если шлюз его не положил (не влезло, старый шлюз).
     public static func carriedEvent(in userInfo: [AnyHashable: Any]) -> Event? {
@@ -31,6 +35,34 @@ public enum ApplePusher {
             return nil
         }
         return Event(eventID: eventID, type: EventType.encrypted, sender: sender, content: content, roomID: roomID)
+    }
+
+    /// Подпись, которую собрал сам шлюз: ключ локализации и аргументы в `aps.alert`. Строк под эти ключи в
+    /// приложении нет, iOS показала бы ключ как есть — поэтому расширение разбирает их, когда не смогло
+    /// прочитать событие само. Порядок аргументов у каждого ключа свой (так их кладёт Sygnal).
+    public static func gatewayPreview(in userInfo: [AnyHashable: Any]) -> PushPreview? {
+        guard let alert = (userInfo["aps"] as? [AnyHashable: Any])?["alert"] as? [AnyHashable: Any],
+              let key = alert["loc-key"] as? String, let roomID = userInfo["room_id"] as? String else { return nil }
+        let args = (alert["loc-args"] as? [Any])?.map { $0 as? String } ?? []
+        func arg(_ i: Int) -> String? { i < args.count ? args[i].flatMap { $0.isEmpty ? nil : $0 } : nil }
+        let sender: String?, room: String?, kind: PushPreview.Kind
+        switch key {
+        case "MSG_FROM_USER_IN_ROOM_WITH_CONTENT": (sender, room, kind) = (arg(0), arg(1), arg(2).map { .text($0) } ?? .other)
+        case "MSG_FROM_USER_WITH_CONTENT": (sender, room, kind) = (arg(0), nil, arg(1).map { .text($0) } ?? .other)
+        case "IMAGE_FROM_USER_IN_ROOM": (sender, room, kind) = (arg(0), arg(2), .image)
+        case "IMAGE_FROM_USER": (sender, room, kind) = (arg(0), nil, .image)
+        case "ACTION_FROM_USER_IN_ROOM": (sender, room, kind) = (arg(1), arg(0), arg(2).map { .text($0) } ?? .other)
+        case "ACTION_FROM_USER": (sender, room, kind) = (arg(0), nil, arg(1).map { .text($0) } ?? .other)
+        // Без текста шлюз шлёт, когда сообщение зашифровано.
+        case "MSG_FROM_USER_IN_ROOM": (sender, room, kind) = (arg(0), arg(1), .locked)
+        case "MSG_FROM_USER": (sender, room, kind) = (arg(0), nil, .locked)
+        case "VOICE_CALL_FROM_USER", "VIDEO_CALL_FROM_USER": (sender, room, kind) = (arg(0), nil, .call)
+        case "USER_INVITE_TO_NAMED_ROOM": (sender, room, kind) = (arg(0), arg(1), .invite)
+        case "USER_INVITE_TO_CHAT": (sender, room, kind) = (arg(0), nil, .invite)
+        default: return nil
+        }
+        return PushPreview(roomID: roomID, eventID: userInfo["event_id"] as? String ?? "", sender: nil,
+                           senderName: sender, roomName: room, isDirect: room == nil, kind: kind)
     }
 }
 

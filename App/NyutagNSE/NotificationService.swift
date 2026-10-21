@@ -63,7 +63,8 @@ private final class Delivery: @unchecked Sendable {
             return (base, handler)
         }
         guard let (base, handler) = taken else { return }
-        handler(preview.map { PushWording.content(for: $0, base: base) } ?? PushWording.neutral(base))
+        let shown = preview ?? ApplePusher.gatewayPreview(in: base.userInfo)
+        handler(shown.map { PushWording.content(for: $0, base: base) } ?? PushWording.neutral(base))
     }
 }
 

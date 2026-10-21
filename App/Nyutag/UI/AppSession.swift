@@ -95,6 +95,9 @@ final class AppSession {
     func signOut() async {
         guard let account, let keeper else { return }
         await stop()
+        if let token = PushDoor.shared.currentToken {
+            try? await account.client.removeApplePush(token: token, environment: PushDoor.environment)
+        }
         try? await keeper.signOut(account)
         Self.rememberHistory(nil, for: account.session.userID)
         try? await media?.clear()
@@ -483,6 +486,7 @@ final class AppSession {
         } catch {
             // Без машины переписка в шифрованных чатах остаётся под замком, остальное работает.
         }
+        Task { [weak self] in await self?.enablePush() }
         let updates = await engine.updates()
         pump = Task { [weak self] in
             for await update in updates {
@@ -494,6 +498,23 @@ final class AppSession {
         }
         await engine.start()
         await refresh()
+    }
+
+    /// Пушер на сервере: при каждом запуске, повтор с тем же токеном только обновляет запись.
+    private func enablePush() async {
+        guard let client = account?.client, let token = await PushDoor.shared.requestToken() else { return }
+        let language = Locale.current.language.languageCode?.identifier ?? "ru"
+        do {
+            try await client.registerApplePush(token: token, environment: PushDoor.environment,
+                                               deviceName: "Нютаг iPhone", language: language)
+            #if DEBUG
+            print("ui-check: пушер записан, \(ApplePusher.appID(PushDoor.environment))")
+            #endif
+        } catch {
+            #if DEBUG
+            print("ui-check: пушер не записан: \(error)")
+            #endif
+        }
     }
 
     private func noteTyping(_ response: SyncResponse) {

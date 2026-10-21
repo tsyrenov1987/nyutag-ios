@@ -3,6 +3,7 @@ import SwiftUI
 @main
 struct NyutagApp: App {
     @Environment(\.scenePhase) private var scenePhase
+    @UIApplicationDelegateAdaptor(AppDoorman.self) private var doorman
 
     init() {
         // Ядро туннеля поднимается один раз на процесс; клиенты берут путь у TunnelHub.
