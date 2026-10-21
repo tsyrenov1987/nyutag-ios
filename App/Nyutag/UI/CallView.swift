@@ -13,7 +13,12 @@ final class CallDesk {
     private(set) var peerName = ""
     private(set) var micDenied = false
     var muted = false {
-        didSet { let call = current, muted = muted; Task { await call?.setMuted(muted) } }
+        didSet {
+            guard muted != oldValue, let call = current else { return }
+            let muted = muted
+            Task { await call.setMuted(muted) }
+            CallRinger.shared.setMuted(muted, call.callID)
+        }
     }
     var speaker = false {
         didSet { DeviceVoice.setSpeaker(speaker) }
@@ -22,11 +27,17 @@ final class CallDesk {
     @ObservationIgnored private var center: CallCenter?
     @ObservationIgnored private var listener: Task<Void, Never>?
     @ObservationIgnored private var follower: Task<Void, Never>?
+    /// Будильники из VoIP-пуша, пришедшие раньше, чем поднялся вход.
+    @ObservationIgnored private var waitingRings: [CallMessage] = []
     /// Имя собеседника по комнате: стойка не знает списка чатов.
     @ObservationIgnored var name: (String, String) -> String = { _, peer in peer }
 
     func attach(_ center: CallCenter) {
         self.center = center
+        CallRinger.shared.desk = self
+        let rings = waitingRings
+        waitingRings = []
+        Task { for ring in rings { await center.absorb(ring) } }
         listener?.cancel()
         listener = Task { [weak self] in
             for await session in center.incoming {
@@ -47,14 +58,33 @@ final class CallDesk {
         show(session)
     }
 
+    /// Кнопки экрана: через CallKit, он вернёт их сюда же (performAccept/performHangUp).
     func accept() async {
-        guard let current, await microphone() else { return }
+        guard let current else { return }
+        CallRinger.shared.answer(current.callID)
+    }
+
+    func hangUp() async {
+        guard let current else { return }
+        CallRinger.shared.end(current.callID)
+    }
+
+    /// Принять. Без микрофона всё равно принимаем: звонок уже принят на экране CallKit, собеседника хотя бы слышно.
+    func performAccept(_ callID: String) async {
+        guard let current, current.callID == callID else { return }
+        _ = await microphone()
         await current.accept()
     }
 
-    func hangUp() async { await current?.hangUp() }
+    func performHangUp(_ callID: String) async {
+        guard let current, current.callID == callID else { return }
+        await current.hangUp()
+    }
 
-    func absorb(_ message: CallMessage) async { await center?.absorb(message) }
+    func absorb(_ message: CallMessage) async {
+        guard let center else { return waitingRings.append(message) }
+        await center.absorb(message)
+    }
 
     private func microphone() async -> Bool {
         let granted = await AVAudioApplication.requestRecordPermission()
@@ -70,10 +100,12 @@ final class CallDesk {
         #if DEBUG
         selfCheck(session)
         #endif
+        CallRinger.shared.track(session)
         follower?.cancel()
         follower = Task { [weak self] in
             for await phase in session.phases {
                 self?.phase = phase
+                CallRinger.shared.follow(phase, of: session)
                 #if DEBUG
                 print("ui-check: звонок \(session.callID.prefix(6)): \(phase)")
                 #endif

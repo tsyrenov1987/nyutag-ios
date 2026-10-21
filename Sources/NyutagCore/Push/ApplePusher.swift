@@ -98,3 +98,71 @@ extension MatrixClient {
         let _: EmptyResponse = try await request(.post, "pushers/set", body: body)
     }
 }
+
+// MARK: Звонки: VoIP-пуш
+
+extension ApplePusher {
+    /// У шлюза для VoIP своё приложение рядом с обычным: topic `<bundle>.voip`, пушкин `nyutag_voip.VoipPushkin`
+    /// пропускает только будильник `chat.nyutag.ring`.
+    public static func voipAppID(_ environment: Environment) -> String { appID(environment) + ".voip" }
+
+    static let ringRuleID = "nyutag.ring"
+
+    /// Будильник из VoIP-пуша: шлюз кладёт открытое событие целиком (комната, отправитель, содержимое).
+    /// Время берём из `sender_ts`: серверного времени в пуше нет.
+    public static func ring(in payload: [AnyHashable: Any]) -> CallMessage? {
+        guard (payload["nyutag_ring"] as? Int) == 1 || (payload["nyutag_ring"] as? Bool) == true,
+              let roomID = payload["room_id"] as? String, let sender = payload["sender"] as? String,
+              let raw = payload["content"], JSONSerialization.isValidJSONObject(raw),
+              let data = try? JSONSerialization.data(withJSONObject: raw),
+              let content = try? JSONDecoder().decode(JSONValue.self, from: data),
+              let signal = CallSignal(type: CallEventType.ring, content: content) else { return nil }
+        return CallMessage(signal: signal, roomID: roomID, sender: sender, eventID: payload["event_id"] as? String,
+                           timestamp: content["sender_ts"]?.int)
+    }
+
+    /// Имя звонящего для экрана CallKit: что положил шлюз, иначе Matrix ID.
+    public static func ringCaller(in payload: [AnyHashable: Any]) -> String? {
+        for key in ["sender_display_name", "room_name", "sender"] {
+            if let name = payload[key] as? String, !name.isEmpty { return name }
+        }
+        return nil
+    }
+}
+
+extension MatrixClient {
+    /// Второй пушер устройства — для звонков. Ни шифротекста, ни mutable-content: пуш будит PushKit, а не расширение.
+    public func registerVoipPush(token: Data, environment: ApplePusher.Environment, deviceName: String,
+                                 language: String) async throws(MatrixError) {
+        let body: JSONValue = [
+            "kind": "http",
+            "app_id": .string(ApplePusher.voipAppID(environment)),
+            "pushkey": .string(ApplePusher.pushKey(token)),
+            "app_display_name": "Нютаг",
+            "device_display_name": .string(deviceName),
+            "lang": .string(language),
+            "append": false,
+            "data": ["url": .string(ApplePusher.gateway)],
+        ]
+        let _: EmptyResponse = try await request(.post, "pushers/set", body: body)
+    }
+
+    public func removeVoipPush(token: Data, environment: ApplePusher.Environment) async throws(MatrixError) {
+        let body: JSONValue = [
+            "kind": .null,
+            "app_id": .string(ApplePusher.voipAppID(environment)),
+            "pushkey": .string(ApplePusher.pushKey(token)),
+        ]
+        let _: EmptyResponse = try await request(.post, "pushers/set", body: body)
+    }
+
+    /// Правило «будильник звонка — уведомлять»: без него сервер не отдаст `chat.nyutag.ring` шлюзу (стандартные
+    /// правила личного чата смотрят только сообщения). Повторная запись ничего не ломает.
+    public func ensureRingPushRule() async throws(MatrixError) {
+        let body: JSONValue = [
+            "conditions": [["kind": "event_match", "key": "type", "pattern": .string(CallEventType.ring)]],
+            "actions": ["notify"],
+        ]
+        let _: EmptyResponse = try await request(.put, "pushrules/global/override/\(ApplePusher.ringRuleID)", body: body)
+    }
+}

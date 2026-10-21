@@ -9,6 +9,9 @@ import Observation
 final class AppSession {
     enum Phase: Equatable { case launching, signedOut, signedIn }
 
+    /// Одна на процесс: VoIP-пуш может поднять вход раньше, чем появится экран.
+    static let shared = AppSession()
+
     enum SignInFailure: Error, Equatable { case wrongPassword, tooOften, noNetwork, broken }
 
     enum KeyFailure: Error, Equatable { case wrongKey, noNetwork, broken }
@@ -99,6 +102,9 @@ final class AppSession {
         await stop()
         if let token = PushDoor.shared.currentToken {
             try? await account.client.removeApplePush(token: token, environment: PushDoor.environment)
+        }
+        if let token = CallRinger.shared.voipToken {
+            try? await account.client.removeVoipPush(token: token, environment: PushDoor.environment)
         }
         try? await keeper.signOut(account)
         Self.rememberHistory(nil, for: account.session.userID)
@@ -489,6 +495,7 @@ final class AppSession {
             // Без машины переписка в шифрованных чатах остаётся под замком, остальное работает.
         }
         Task { [weak self] in await self?.enablePush() }
+        if let voip = CallRinger.shared.voipToken { Task { [weak self] in await self?.enableVoip(voip) } }
         startCalls(account)
         let updates = await engine.updates()
         pump = Task { [weak self] in
@@ -502,6 +509,25 @@ final class AppSession {
         }
         await engine.start()
         await refresh()
+    }
+
+    /// Пушер звонков: токен PushKit приходит сам по себе, раньше или позже входа. Вместе с ним — правило,
+    /// по которому сервер вообще отдаёт будильник шлюзу.
+    func enableVoip(_ token: Data) async {
+        guard let client = account?.client else { return }
+        let language = Locale.current.language.languageCode?.identifier ?? "ru"
+        do {
+            try await client.ensureRingPushRule()
+            try await client.registerVoipPush(token: token, environment: PushDoor.environment,
+                                              deviceName: "Нютаг iPhone", language: language)
+            #if DEBUG
+            print("ui-check: VoIP-пушер записан, \(ApplePusher.voipAppID(PushDoor.environment))")
+            #endif
+        } catch {
+            #if DEBUG
+            print("ui-check: VoIP-пушер не записан: \(error)")
+            #endif
+        }
     }
 
     /// Пушер на сервере: при каждом запуске, повтор с тем же токеном только обновляет запись.
@@ -548,7 +574,7 @@ final class AppSession {
                 guard let self, await self.postSignal(signal, to: roomID) else { throw CallPostFailure() }
             },
             openTransport: { slot in await RelayLink.open(client: client, slot: slot) },
-            makeVoice: { DeviceVoice() })
+            makeVoice: { DeviceVoice(managesSession: false) })
         calls.name = { [weak self] roomID, peer in
             let title = self?.lines.first { $0.id == roomID }?.title ?? ""
             return title.isEmpty ? peer : title

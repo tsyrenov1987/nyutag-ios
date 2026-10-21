@@ -3,7 +3,7 @@ import SwiftUI
 /// Корень: сначала язык (один раз), дальше вход или главный экран.
 struct ContentView: View {
     @State private var words = Words()
-    @State private var session = AppSession()
+    @State private var session = AppSession.shared
 
     var body: some View {
         ZStack {

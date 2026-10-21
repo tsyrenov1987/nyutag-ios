@@ -61,6 +61,18 @@ final class AppDoorman: NSObject, UIApplicationDelegate, UNUserNotificationCente
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         UNUserNotificationCenter.current().delegate = self
+        // Звонки: реестр PushKit заводим при каждом запуске, иначе VoIP-пуш не придёт.
+        MainActor.assumeIsolated {
+            let ringer = CallRinger.shared
+            ringer.onToken = { token in Task { await AppSession.shared.enableVoip(token) } }
+            ringer.onRing = { ring in
+                Task {
+                    await AppSession.shared.launch()
+                    await AppSession.shared.calls.absorb(ring)
+                }
+            }
+            ringer.start()
+        }
         return true
     }
 

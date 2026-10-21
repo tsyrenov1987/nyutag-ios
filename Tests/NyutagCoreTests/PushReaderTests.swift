@@ -170,4 +170,40 @@ import Testing
         #expect(ApplePusher.gatewayPreview(in: info("SOMETHING_NEW", ["Алиса"])) == nil)
         #expect(ApplePusher.gatewayPreview(in: ["room_id": Self.room]) == nil)
     }
+
+    @Test func voipPusherAndRingRule() async throws {
+        let server = FakeHomeserver()
+        let session = server.session(user: Self.bob, device: "B1")
+        let client = server.client(for: session)
+        let token = Data([0x0a, 0xff, 0x01])
+        try await client.registerVoipPush(token: token, environment: .beta, deviceName: "iPhone", language: "ru")
+        let pusher = try #require(server.pushers(user: Self.bob).first)
+        #expect(pusher["app_id"] == "chat.nyutag.messenger.ios.beta.voip")
+        #expect(pusher["pushkey"] == "Cv8B")
+        #expect(pusher["data", "nyutag_cipher"] == nil)
+        #expect(pusher["data", "default_payload"] == nil)
+        try await client.ensureRingPushRule()
+        let rule = try #require(server.pushRule(user: Self.bob, kind: "override", id: "nyutag.ring"))
+        #expect(rule["conditions"]?.array?.first?["pattern"] == "chat.nyutag.ring")
+        #expect(rule["actions"]?.array?.first == "notify")
+        try await client.removeVoipPush(token: token, environment: .beta)
+        #expect(server.pushers(user: Self.bob).isEmpty)
+    }
+
+    @Test func ringFromVoipPush() throws {
+        let sent = CallSignal.ring(callID: "c0ffee00c0ffee00", video: false, lifetime: .seconds(45))
+        let content = try JSONSerialization.jsonObject(with: JSONEncoder().encode(sent.content))
+        // Так кладёт пушкин nyutag_voip.VoipPushkin.
+        let payload: [AnyHashable: Any] = ["aps": ["alert": "ring"], "nyutag_ring": 1, "room_id": Self.room,
+                                           "event_id": "$ring", "sender": Self.alice, "sender_display_name": "Алиса",
+                                           "room_name": NSNull(), "content": content]
+        let ring = try #require(ApplePusher.ring(in: payload))
+        #expect(ring.signal.callID == "c0ffee00c0ffee00")
+        #expect(ring.roomID == Self.room && ring.sender == Self.alice && ring.eventID == "$ring")
+        #expect(ring.isRinging())
+        #expect(ApplePusher.ringCaller(in: payload) == "Алиса")
+        var other = payload
+        other["nyutag_ring"] = nil
+        #expect(ApplePusher.ring(in: other) == nil)
+    }
 }
