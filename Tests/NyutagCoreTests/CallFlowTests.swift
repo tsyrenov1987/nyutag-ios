@@ -34,6 +34,31 @@ import Testing
         #expect(line.relay.openLinks == 0)
     }
 
+    @Test func videoCallShowsBothSides() async throws {
+        let line = Line()
+        line.cameras = true
+        let alice = line.center(Self.alice, "A1"), bob = line.center(Self.bob, "B1")
+        let call = try #require(await alice.dial(roomID: Self.room, peer: Self.bob, video: true))
+        let incoming = try #require(await first(bob.incoming))
+        #expect(incoming.video)
+        let seenByBob = Mutex(0), seenByAlice = Mutex(0)
+        await incoming.showVideo(VideoSink(remote: { _ in seenByBob.withLock { $0 += 1 } }))
+        await call.showVideo(VideoSink(remote: { _ in seenByAlice.withLock { $0 += 1 } }))
+        await incoming.accept()
+        try await waitLive(call)
+        try await until { seenByBob.withLock { $0 } >= 10 && seenByAlice.withLock { $0 } >= 10 }
+        // Боб выключил камеру: Алиса перестаёт получать кадры, голос идёт дальше.
+        await incoming.setCamera(false)
+        try await Task.sleep(for: .milliseconds(200))
+        let frozen = seenByAlice.withLock { $0 }
+        try await Task.sleep(for: .milliseconds(400))
+        #expect(seenByAlice.withLock { $0 } == frozen)
+        try await until { (await call.stats?.outputLevel ?? 0) > 0.05 }
+        #expect(line.relay.plaintextLeaked == false)
+        await call.hangUp()
+        try await until { await incoming.phase == .ended(.hangUp) }
+    }
+
     @Test func declinedAndUnanswered() async throws {
         let line = Line()
         let alice = line.center(Self.alice, "A1"), bob = line.center(Self.bob, "B1")
@@ -147,6 +172,7 @@ final class Line: @unchecked Sendable {
     var ringTimeout: Duration = .seconds(45)
     var silenceLimit: Duration = .seconds(5)
     var lossGrace: Duration = .seconds(20)
+    var cameras = false
 
     var posted: [CallSignal] { lock.withLock { signals } }
 
@@ -167,6 +193,7 @@ final class Line: @unchecked Sendable {
         env.retryDelay = .milliseconds(50)
         env.silenceLimit = silenceLimit
         env.lossGrace = lossGrace
+        if cameras { env.makeCamera = { PatternCamera() } }
         let center = CallCenter(env)
         lock.withLock { centers.append((center, rooms)) }
         return center

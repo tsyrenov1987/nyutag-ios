@@ -2,6 +2,7 @@
 // Звонящий шлёт ring (открыто, ради VoIP-пуша) и offer со своим ключом; принявший отвечает answer со своим.
 // Из пары ключей обе стороны выводят слот релея и ключи кадров, подключаются к релею и, когда в слоте оба,
 // включают звук. Время разговора идёт с этого момента. Обрыв связи до 20 с переживаем переподключением.
+// Видео принимается в любом звонке; своя камера включается сама только в видеозвонке, в голосовом — кнопкой.
 
 import Foundation
 import Synchronization
@@ -30,6 +31,8 @@ public struct CallEnvironment: Sendable {
     public var post: @Sendable (CallSignal, String) async throws -> Void
     public var openTransport: @Sendable (String) async -> (any CallTransport)?
     public var makeVoice: @Sendable () -> any VoiceIO
+    /// Камера. `nil` — у устройства камеры нет: видео только принимаем.
+    public var makeCamera: @Sendable () -> (any VideoSource)? = { nil }
     public var ringTimeout: Duration = .seconds(45)
     public var connectTimeout: Duration = .seconds(20)
     public var lossGrace: Duration = .seconds(20)
@@ -54,6 +57,12 @@ public protocol CallTransport: Sendable {
     var inbound: AsyncStream<RelayInbound> { get }
     func send(_ packet: Data)
     func close()
+    /// Сколько байт ещё не ушло в сеть: по нему видео уступает голосу.
+    var backlog: Int { get }
+}
+
+extension CallTransport {
+    public var backlog: Int { 0 }
 }
 
 extension RelayLink: CallTransport {}
@@ -75,6 +84,9 @@ public actor CallSession {
     private var acceptRequested = false
     private var pipe: VoicePipe?
     private var voice: (any VoiceIO)?
+    private var videoPipe: VideoPipe?
+    private var camera: (any VideoSource)?
+    private var cameraWanted: Bool
     private let outbox = Outbox()
     private var slot: String?
     private var reader: Task<Void, Never>?
@@ -82,6 +94,7 @@ public actor CallSession {
     private var lossTimer: Task<Void, Never>?
     private var watch: Task<Void, Never>?
     private var lastHeard = ContinuousClock.now
+    private var pendingSink: VideoSink?
 
     init(callID: String, roomID: String, peer: String, isCaller: Bool, video: Bool, env: CallEnvironment) {
         self.callID = callID
@@ -90,6 +103,7 @@ public actor CallSession {
         self.isCaller = isCaller
         self.video = video
         self.env = env
+        cameraWanted = video
         phase = isCaller ? .calling : .ringing
         (phases, phaseSink) = AsyncStream.makeStream(of: CallPhase.self, bufferingPolicy: .bufferingNewest(8))
         phaseSink.yield(phase)
@@ -179,9 +193,46 @@ public actor CallSession {
 
     public var stats: VoiceStats? { pipe?.stats }
 
+    public var videoStats: VideoStats? { videoPipe?.stats }
+
+    /// Куда показывать картинки собеседника и свою. Можно задать до начала разговора.
+    public func showVideo(_ sink: VideoSink?) {
+        pendingSink = sink
+        videoPipe?.sink = sink
+    }
+
+    public var cameraOn: Bool { cameraWanted }
+
+    public func setCamera(_ on: Bool) {
+        cameraWanted = on
+        guard case .live = phase else { return }
+        applyCamera()
+    }
+
+    public func switchCamera() { camera?.switchCamera() }
+
+    private func applyCamera() {
+        guard let videoPipe else { return }
+        if cameraWanted, camera == nil, let made = env.makeCamera() {
+            do {
+                try made.start(videoPipe)
+                camera = made
+            } catch {
+                cameraWanted = false
+            }
+        } else if !cameraWanted, let camera {
+            camera.stop()
+            self.camera = nil
+        }
+        videoPipe.cameraOn = cameraWanted && camera != nil
+    }
+
     private func connect(_ secret: CallSecret) {
         let outbox = outbox
         pipe = VoicePipe(secret: secret) { packet in outbox.current?.send(packet) }
+        videoPipe = VideoPipe(secret: secret, send: { packet in outbox.current?.send(packet) },
+                              backlog: { outbox.current?.backlog ?? 0 })
+        videoPipe?.sink = pendingSink
         guard pipe != nil else {
             Task { await finish(.lost, notify: true) }
             return
@@ -221,7 +272,7 @@ public actor CallSession {
     }
 
     private func deliver(_ packet: Data) {
-        pipe?.receive(packet)
+        if packet.first == FrameKind.audio.rawValue { pipe?.receive(packet) } else { videoPipe?.receive(packet) }
         lastHeard = .now
         // Связь вернулась, когда снова пошёл звук, а не когда релей насчитал двоих.
         if lossTimer != nil {
@@ -245,6 +296,7 @@ public actor CallSession {
             set(.live(since: Date()))
             lastHeard = .now
             watchSilence()
+            applyCamera()
         } else if case .live = phase {
             startLossTimer()
         }
@@ -307,6 +359,9 @@ public actor CallSession {
         phaseSink.finish()
         voice?.stop()
         voice = nil
+        camera?.stop()
+        camera = nil
+        videoPipe?.close()
         outbox.current?.close()
         outbox.current = nil
         // Конец часто объявляет сам таймер или чтец: гасим их после отправки, иначе отмена оборвёт и её.

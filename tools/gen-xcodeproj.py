@@ -61,6 +61,7 @@ APP_INFO = plist(
     + arr("UIBackgroundModes", ["remote-notification", "fetch", "voip", "audio"])
     + "\t<key>ITSAppUsesNonExemptEncryption</key>\n\t<false/>\n"
     + "\t<key>NSContactsUsageDescription</key>\n\t<string>Нютаг сверяет номера из книжки с сервером, чтобы показать, кто из знакомых уже здесь. Номера не сохраняются.</string>\n"
+    + "\t<key>NSCameraUsageDescription</key>\n\t<string>Камера нужна для видеозвонков: картинка уходит собеседнику зашифрованной.</string>\n"
     + "\t<key>NSMicrophoneUsageDescription</key>\n\t<string>Микрофон нужен для звонков: голос уходит собеседнику зашифрованным.</string>\n"
     + "\t<key>NyutagAppGroup</key>\n\t<string>$(NYUTAG_APP_GROUP)</string>\n"
     # Ядро подписано нашим CA, которого нет в системных корнях. Без исключения ATS после делегата

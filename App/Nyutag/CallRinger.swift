@@ -29,10 +29,17 @@ final class CallRinger: NSObject {
     private var endWhenReady: Set<String> = []
     /// Положили трубку кнопкой CallKit: система уже знает, что звонок закончен.
     private var endedHere: Set<String> = []
+    #if DEBUG
+    /// Симулятор: CallKit сразу кладёт входящий сам (CXEndCallAction), поэтому NYUTAG_UI_NO_CALLKIT ведёт звонок
+    /// только нашим экраном.
+    let bypass = ProcessInfo.processInfo.environment["NYUTAG_UI_NO_CALLKIT"] != nil
+    #else
+    let bypass = false
+    #endif
 
     private override init() {
         let configuration = CXProviderConfiguration()
-        configuration.supportsVideo = false
+        configuration.supportsVideo = true
         configuration.maximumCallGroups = 1
         configuration.maximumCallsPerCallGroup = 1
         configuration.supportedHandleTypes = [.generic]
@@ -55,6 +62,7 @@ final class CallRinger: NSObject {
 
     /// Стойка показала звонок: исходящий заводим в CallKit, входящий из ленты (пуша не было) — сообщаем.
     func track(_ session: CallSession) {
+        guard !bypass else { return }
         let id = session.callID
         let uuid = uuid(for: id)
         if session.isCaller {
@@ -101,7 +109,12 @@ final class CallRinger: NSObject {
     func answer(_ callID: String) {
         guard let uuid = uuids[callID] else { return fallback { await self.desk?.performAccept(callID) } }
         controller.request(CXTransaction(action: CXAnswerCallAction(call: uuid))) { [weak self] error in
-            guard error != nil else { return }
+            guard let error else { return }
+            #if DEBUG
+            print("ui-check: CallKit не принял ответ: \(error.localizedDescription)")
+            #else
+            _ = error
+            #endif
             Task { @MainActor in await self?.desk?.performAccept(callID) }
         }
     }
@@ -188,12 +201,21 @@ final class CallRinger: NSObject {
             provider.reportCall(with: uuid, endedAt: Date(), reason: .failed)
             return
         }
+        if bypass {
+            let uuid = UUID()
+            provider.reportNewIncomingCall(with: uuid, update: CXCallUpdate()) { _ in }
+            provider.reportCall(with: uuid, endedAt: Date(), reason: .failed)
+            return onRing?(ring) ?? ()
+        }
         let id = ring.signal.callID
         let uuid = uuid(for: id)
         let video = if case .ring(_, let video, _) = ring.signal { video } else { false }
         reportIncoming(id, uuid: uuid, handle: ring.sender, name: caller, video: video)
         guard ring.isRinging() else {
             // Пуш опоздал: звонок уже кончился.
+            #if DEBUG
+            print("ui-check: VoIP-пуш звонка \(id.prefix(6)) опоздал")
+            #endif
             provider.reportCall(with: uuid, endedAt: Date(), reason: .unanswered)
             return forget(id)
         }
@@ -259,6 +281,9 @@ extension CallRinger: CXProviderDelegate {
         let uuid = action.callUUID
         MainActor.assumeIsolated {
             guard let id = callID(for: uuid) else { return }
+            #if DEBUG
+            print("ui-check: CallKit кладёт трубку \(id.prefix(6))")
+            #endif
             endedHere.insert(id)
             if desk?.current?.callID == id {
                 let desk = desk

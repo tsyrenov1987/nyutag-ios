@@ -567,9 +567,9 @@ final class AppSession {
     // MARK: Звонки
 
     /// Позвонить собеседнику комнаты. В комнате должен быть ровно один кроме нас.
-    func startCall(in roomID: String) async {
+    func startCall(in roomID: String, video: Bool = false) async {
         guard let peer = await callPeer(roomID) else { return }
-        await calls.dial(roomID: roomID, peer: peer)
+        await calls.dial(roomID: roomID, peer: peer, video: video)
     }
 
     func callPeer(_ roomID: String) async -> String? {
@@ -585,19 +585,32 @@ final class AppSession {
 
     private func startCalls(_ account: SignedInAccount) {
         let client = account.client
-        let env = CallEnvironment(
+        // Звук включает CallKit; без него (симулятор) — сами.
+        let ownAudio = CallRinger.shared.bypass
+        var env = CallEnvironment(
             me: account.session.userID, deviceID: account.session.deviceID,
             post: { [weak self] signal, roomID in
                 guard let self, await self.postSignal(signal, to: roomID) else { throw CallPostFailure() }
             },
             openTransport: { slot in await RelayLink.open(client: client, slot: slot) },
             makeVoice: {
-                DeviceVoice(managesSession: false, log: { line in
+                DeviceVoice(managesSession: ownAudio, log: { line in
                     #if DEBUG
                     print("ui-check: \(line)")
                     #endif
                 })
             })
+        env.makeCamera = {
+            #if DEBUG
+            if ProcessInfo.processInfo.environment["NYUTAG_UI_FAKE_CAMERA"] != nil { return StripeCamera() }
+            #endif
+            guard DeviceCamera.available else { return nil }
+            return DeviceCamera(log: { line in
+                #if DEBUG
+                print("ui-check: \(line)")
+                #endif
+            })
+        }
         calls.name = { [weak self] roomID, peer in
             let title = self?.lines.first { $0.id == roomID }?.title ?? ""
             return title.isEmpty ? peer : title
@@ -607,7 +620,7 @@ final class AppSession {
         if let room = ProcessInfo.processInfo.environment["NYUTAG_UI_CALL_ROOM"] {
             Task { [weak self] in
                 try? await Task.sleep(for: .seconds(10))
-                await self?.startCall(in: room)
+                await self?.startCall(in: room, video: ProcessInfo.processInfo.environment["NYUTAG_UI_CALL_VIDEO"] != nil)
             }
         }
         #endif

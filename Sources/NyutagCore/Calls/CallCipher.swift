@@ -4,7 +4,8 @@
 // участников по слоту и не знает ни комнаты, ни ключа.
 //
 // Кадр: [вид 1 байт][номер 4 байта BE][шифртекст][метка 16 байт]. Одноразовое число — номер кадра, дополненный
-// нулями: ключи у направлений разные, поэтому оно не повторяется. Заголовок входит в проверку подлинности.
+// нулями, а для видео и служебных — с видом в первом байте: ключи у направлений разные, у каждого вида свой счёт,
+// поэтому оно не повторяется. Заголовок входит в проверку подлинности.
 
 import CryptoKit
 import Foundation
@@ -40,9 +41,11 @@ public struct CallSecret: Sendable {
 public enum FrameKind: UInt8, Sendable {
     case audio = 1
     case video = 2
+    /// Служебное внутри звонка: просьба о ключевом кадре, камера выключена.
+    case control = 3
 }
 
-/// Запечатывает исходящие кадры и открывает входящие. Номер исходящих растёт сам.
+/// Запечатывает исходящие кадры и открывает входящие. Номер исходящих растёт сам: один шифр — один вид кадров.
 public struct CallCipher: Sendable {
     static let headerSize = 5
     private let secret: CallSecret
@@ -55,7 +58,7 @@ public struct CallCipher: Sendable {
         nextSequence &+= 1
         var header = Data([kind.rawValue])
         withUnsafeBytes(of: sequence.bigEndian) { header.append(contentsOf: $0) }
-        guard let box = try? ChaChaPoly.seal(payload, using: secret.sendKey, nonce: Self.nonce(sequence),
+        guard let box = try? ChaChaPoly.seal(payload, using: secret.sendKey, nonce: Self.nonce(kind, sequence),
                                              authenticating: header) else { return nil }
         return header + box.ciphertext + box.tag
     }
@@ -69,13 +72,15 @@ public struct CallCipher: Sendable {
         let header = Data(bytes[0..<5])
         let ciphertext = Data(bytes[5..<(bytes.count - 16)])
         let tag = Data(bytes[(bytes.count - 16)...])
-        guard let box = try? ChaChaPoly.SealedBox(nonce: Self.nonce(sequence), ciphertext: ciphertext, tag: tag),
+        guard let box = try? ChaChaPoly.SealedBox(nonce: Self.nonce(kind, sequence), ciphertext: ciphertext, tag: tag),
               let payload = try? ChaChaPoly.open(box, using: secret.receiveKey, authenticating: header) else { return nil }
         return (kind, sequence, payload)
     }
 
-    private static func nonce(_ sequence: UInt32) -> ChaChaPoly.Nonce {
+    private static func nonce(_ kind: FrameKind, _ sequence: UInt32) -> ChaChaPoly.Nonce {
         var bytes = [UInt8](repeating: 0, count: 12)
+        // Голос — с нулём, как в первой версии кадра.
+        if kind != .audio { bytes[0] = kind.rawValue }
         withUnsafeBytes(of: sequence.bigEndian) { for (i, b) in $0.enumerated() { bytes[8 + i] = b } }
         // 12 байт — ровно размер одноразового числа ChaChaPoly, конструктор не откажет.
         return try! ChaChaPoly.Nonce(data: bytes)

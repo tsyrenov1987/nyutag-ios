@@ -2,6 +2,7 @@
 // (туннель, свой CA). Бинарные сообщения — кадры собеседника как есть, текстовые — служебные (`{"peers":N}`).
 
 import Foundation
+import Synchronization
 
 public enum RelayInbound: Sendable, Equatable {
     case packet(Data)
@@ -15,6 +16,7 @@ public final class RelayLink: Sendable {
     private let task: URLSessionWebSocketTask
     public let inbound: AsyncStream<RelayInbound>
     private let continuation: AsyncStream<RelayInbound>.Continuation
+    private let unsent = Atomic<Int>(0)
 
     public init(_ task: URLSessionWebSocketTask) {
         self.task = task
@@ -53,8 +55,12 @@ public final class RelayLink: Sendable {
 
     /// Не ждёт доставки: кадр, не успевший уйти, всё равно устарел бы.
     public func send(_ packet: Data) {
-        task.send(.data(packet)) { _ in }
+        let size = packet.count
+        unsent.add(size, ordering: .relaxed)
+        task.send(.data(packet)) { [weak self] _ in self?.unsent.subtract(size, ordering: .relaxed) }
     }
+
+    public var backlog: Int { unsent.load(ordering: .relaxed) }
 
     public func close() {
         task.cancel(with: .normalClosure, reason: nil)

@@ -114,6 +114,11 @@ struct ChatView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(words(.callAction), systemImage: "phone") { Task { await session.startCall(in: roomID) } }
                 }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(words(.callVideoAction), systemImage: "video") {
+                        Task { await session.startCall(in: roomID, video: true) }
+                    }
+                }
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Pillow(seed: roomID, title: line?.title ?? "·", size: 32)

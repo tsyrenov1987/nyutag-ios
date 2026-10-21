@@ -5,6 +5,9 @@
 //   NYUTAG_CALL_PEER=dial   — позвонить на телефон самому.
 //   NYUTAG_CALL_SECONDS     — сколько говорить до отбоя (по умолчанию 20).
 //   NYUTAG_CALL_TEXT        — после звонка послать в чат текст (проверка пушей).
+//   NYUTAG_CALL_VIDEO       — видеозвонок: вместо камеры полосы, кадры собеседника считаем.
+//   NYUTAG_CALL_SWAP        — учётки наоборот: Мак входит основной, собеседник — E2EE-учётка (симулятор ночью,
+//                             чтобы не звенел телефон владельца: своих событий сервер в пуш не шлёт).
 // В конце выход: устройство Мака удаляется.
 
 import Foundation
@@ -18,20 +21,22 @@ struct LiveCallPeerTests {
         let env = ProcessInfo.processInfo.environment
         let dial = env["NYUTAG_CALL_PEER"] == "dial"
         let talk = env["NYUTAG_CALL_SECONDS"].flatMap(Double.init) ?? 20
+        let swap = env["NYUTAG_CALL_SWAP"] != nil
+        let user = swap ? LiveEnv.user! : LiveE2EEEnv.user!, password = swap ? LiveEnv.password! : LiveE2EEEnv.password!
         let client = MatrixClient(homeserver: LiveEnv.homeserver!)
         let session: Session
         do {
-            session = try await client.login(user: LiveE2EEEnv.user!, password: LiveE2EEEnv.password!,
+            session = try await client.login(user: user, password: password,
                                              deviceDisplayName: "Нютаг тест звонка (Мак)")
         } catch let error as MatrixError where error.retryAfter != nil {
             // Сервер ограничивает частые входы: ждём, сколько просит, и пробуем ещё раз.
             print("call peer: вход отложен на \(error.retryAfter!)")
             try await Task.sleep(for: error.retryAfter! + .seconds(2))
-            session = try await client.login(user: LiveE2EEEnv.user!, password: LiveE2EEEnv.password!,
+            session = try await client.login(user: user, password: password,
                                              deviceDisplayName: "Нютаг тест звонка (Мак)")
         }
         do {
-            try await run(client, session, dial: dial, talk: talk)
+            try await run(client, session, dial: dial, talk: talk, phone: "@\(swap ? LiveE2EEEnv.user! : LiveEnv.user!):nyutag.chat")
         } catch {
             print("call peer: ошибка \(error)")
             try? await client.logout()
@@ -40,7 +45,8 @@ struct LiveCallPeerTests {
         try await client.logout()
     }
 
-    private func run(_ client: MatrixClient, _ session: Session, dial: Bool, talk: Double) async throws {
+    private func run(_ client: MatrixClient, _ session: Session, dial: Bool, talk: Double, phone: String) async throws {
+        let video = ProcessInfo.processInfo.environment["NYUTAG_CALL_VIDEO"] != nil
         let store = try Store.inMemory()
         let machine = try await CryptoMachine(client: client, store: store, session: session)
         try await machine.publishKeys(serverCount: nil)
@@ -48,7 +54,6 @@ struct LiveCallPeerTests {
         await engine.addObserver(machine)
         _ = try await engine.syncOnce()
 
-        let phone = "@\(LiveEnv.user!):nyutag.chat"
         let roomID = try await sharedRoom(with: phone, store: store, client: client, me: session.userID)
         let phoneDevices = try await machine.devices(for: [phone])
         print("call peer: устройства телефона: \(phoneDevices.map(\.deviceID).joined(separator: ", "))")
@@ -58,7 +63,7 @@ struct LiveCallPeerTests {
         let route = Route.socks5(try #require(SocksProxy(port: port, user: "probe", password: "probe")))
         let core = MatrixClient(homeserver: URL(string: "https://core.nyutag.chat:6167")!,
                                 accessToken: session.accessToken, delegate: CertificateTrust.nyutagCore(), route: route)
-        let callEnv = CallEnvironment(
+        var callEnv = CallEnvironment(
             me: session.userID, deviceID: session.deviceID,
             post: { signal, room in
                 if signal.wantsRoomEncryption, try await store.room(room)?.isEncrypted == true {
@@ -69,11 +74,12 @@ struct LiveCallPeerTests {
             },
             openTransport: { slot in await RelayLink.open(client: core, slot: slot) },
             makeVoice: { ToneVoice() })
+        if video { callEnv.makeCamera = { PatternCamera() } }
         let center = CallCenter(callEnv)
 
         var call: CallSession?
         if dial {
-            call = await center.dial(roomID: roomID, peer: phone)
+            call = await center.dial(roomID: roomID, peer: phone, video: video)
             print("call peer: звоню на телефон")
         } else {
             print("call peer: жду звонка с телефона")
@@ -103,7 +109,8 @@ struct LiveCallPeerTests {
             }
             if call == nil, await center.active() != nil, let session = await incoming.next() {
                 call = session
-                print("call peer: входящий, принимаю")
+                print("call peer: входящий\(session.video ? " видео" : ""), принимаю")
+                if video { await session.setCamera(true) }
                 await session.accept()
             }
             guard let call else { continue }
@@ -114,6 +121,9 @@ struct LiveCallPeerTests {
             }
             if case .live(let since) = phase {
                 liveSince = since
+                if let video = await call.videoStats, video.sentFrames + video.receivedFrames > 0 {
+                    print("call peer: видео: ушло \(video.sentFrames) (ключевых \(video.sentKeyframes), пропущено \(video.skipped), \(video.bitRate / 1000) кбит/с), пришло \(video.receivedFrames), показано \(video.shownFrames) \(video.remoteWidth)×\(video.remoteHeight), битых \(video.brokenFrames), просил ключевых \(video.keyRequestsSent)")
+                }
                 if let stats = await call.stats {
                     print("call peer: ушло \(stats.sent), пришло \(stats.received), сыграно \(stats.played), потеряно \(stats.lost), слышно \(String(format: "%.3f", stats.outputLevel))")
                 }

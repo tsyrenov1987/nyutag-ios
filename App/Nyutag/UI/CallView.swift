@@ -2,6 +2,7 @@
 // поверх приложения — входящий с «Принять/Отклонить», исходящий и разговор с таймером.
 
 import AVFAudio
+import AVFoundation
 import NyutagCore
 import Observation
 import SwiftUI
@@ -25,6 +26,14 @@ final class CallDesk {
     var speaker = false {
         didSet { DeviceVoice.setSpeaker(speaker) }
     }
+    /// Своя камера включена.
+    private(set) var cameraOn = false
+    private(set) var cameraDenied = false
+    /// Картинка собеседника идёт: показываем её вместо аватара.
+    private(set) var remoteVisible = false
+    @ObservationIgnored let remoteFeed = PictureFeed()
+    @ObservationIgnored let localFeed = PictureFeed()
+    @ObservationIgnored private var videoWatch: Task<Void, Never>?
 
     @ObservationIgnored private var center: CallCenter?
     @ObservationIgnored private var listener: Task<Void, Never>?
@@ -64,10 +73,31 @@ final class CallDesk {
 
     var showsStrip: Bool { current != nil && folded }
 
-    func dial(roomID: String, peer: String) async {
+    func dial(roomID: String, peer: String, video: Bool = false) async {
         guard let center, current == nil, await microphone() else { return }
-        guard let session = await center.dial(roomID: roomID, peer: peer) else { return }
+        let camera = video ? await cameraAccess() : false
+        guard let session = await center.dial(roomID: roomID, peer: peer, video: video) else { return }
+        if video, !camera { await session.setCamera(false) }
         show(session)
+    }
+
+    func toggleCamera() async {
+        guard let current else { return }
+        let wanted = !cameraOn
+        if wanted, await !cameraAccess() { return }
+        cameraOn = wanted
+        if !wanted { localFeed.clear() }
+        await current.setCamera(wanted)
+    }
+
+    func switchCamera() async {
+        await current?.switchCamera()
+    }
+
+    private func cameraAccess() async -> Bool {
+        let granted = await AVCaptureDevice.requestAccess(for: .video)
+        cameraDenied = !granted
+        return granted
     }
 
     /// Кнопки экрана: через CallKit, он вернёт их сюда же (performAccept/performHangUp).
@@ -85,6 +115,10 @@ final class CallDesk {
     func performAccept(_ callID: String) async {
         guard let current, current.callID == callID else { return }
         _ = await microphone()
+        if current.video, await !cameraAccess() {
+            cameraOn = false
+            await current.setCamera(false)
+        }
         await current.accept()
     }
 
@@ -110,6 +144,12 @@ final class CallDesk {
         folded = false
         muted = false
         speaker = false
+        cameraOn = session.video
+        cameraDenied = false
+        remoteVisible = false
+        remoteFeed.clear()
+        localFeed.clear()
+        watchVideo(session)
         #if DEBUG
         selfCheck(session)
         #endif
@@ -118,6 +158,8 @@ final class CallDesk {
         follower = Task { [weak self] in
             for await phase in session.phases {
                 self?.phase = phase
+                // Видеозвонок по громкой: телефон держат перед собой.
+                if case .live = phase, session.video { self?.speaker = true }
                 CallRinger.shared.follow(phase, of: session)
                 #if DEBUG
                 print("ui-check: звонок \(session.callID.prefix(6)): \(phase)")
@@ -134,6 +176,35 @@ final class CallDesk {
             self.current = nil
             self.phase = nil
             self.folded = false
+            self.remoteVisible = false
+            self.cameraOn = false
+            self.videoWatch?.cancel()
+        }
+    }
+
+    /// Кадры звонка — на слои экрана. Картинка собеседника пропала на 2,5 с или он выключил камеру — снова аватар.
+    private func watchVideo(_ session: CallSession) {
+        let remote = remoteFeed, local = localFeed
+        let sink = VideoSink(
+            remote: { picture in Task { @MainActor [weak self] in
+                remote.show(picture)
+                if self?.remoteVisible == false { self?.remoteVisible = true }
+            } },
+            local: { picture in Task { @MainActor in local.show(picture) } },
+            remoteCameraOff: { Task { @MainActor [weak self] in
+                self?.remoteVisible = false
+                remote.clear()
+            } })
+        Task { await session.showVideo(sink) }
+        videoWatch?.cancel()
+        videoWatch = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(500))
+                guard let self, self.current === session else { return }
+                if self.remoteVisible, let last = remote.lastShown, Date().timeIntervalSince(last) > 2.5 {
+                    self.remoteVisible = false
+                }
+            }
         }
     }
 }
@@ -168,6 +239,9 @@ extension CallDesk {
             print("ui-check: микрофон \(AVAudioApplication.shared.recordPermission.rawValue), категория \(audio.category.rawValue), выход \(audio.currentRoute.outputs.map(\.portType.rawValue))")
             while await !session.phase.isEnded {
                 try? await Task.sleep(for: .seconds(2))
+                if let video = await session.videoStats, video.sentFrames + video.receivedFrames > 0 {
+                    print("ui-check: видео: ушло \(video.sentFrames) (ключевых \(video.sentKeyframes), пропущено \(video.skipped), \(video.bitRate / 1000) кбит/с), пришло \(video.receivedFrames), показано \(video.shownFrames) \(video.remoteWidth)×\(video.remoteHeight), битых \(video.brokenFrames)")
+                }
                 guard let stats = await session.stats else { continue }
                 print("ui-check: звонок: ушло \(stats.sent), пришло \(stats.received), сыграно \(stats.played), потеряно \(stats.lost), микрофон \(String(format: "%.3f", stats.inputLevel)), динамик \(String(format: "%.3f", stats.outputLevel))")
             }
@@ -186,8 +260,18 @@ struct CallView: View {
         ZStack {
             LinearGradient(colors: [Theme.sky, Theme.milk.opacity(0.4)], startPoint: .top, endPoint: .bottom)
                 .ignoresSafeArea()
+            // Слой собеседника есть всегда, чтобы первый кадр лёг сразу; виден, пока идёт картинка.
+            PictureView(feed: desk.remoteFeed)
+                .ignoresSafeArea()
+                .opacity(desk.remoteVisible ? 1 : 0)
+            if desk.remoteVisible {
+                LinearGradient(colors: [.black.opacity(0.45), .clear, .clear, .black.opacity(0.55)],
+                               startPoint: .top, endPoint: .bottom)
+                    .ignoresSafeArea()
+                    .allowsHitTesting(false)
+            }
             VStack(spacing: 18) {
-                HStack {
+                HStack(alignment: .top) {
                     if desk.canFold {
                         Button { desk.folded = true } label: {
                             Image(systemName: "chevron.down")
@@ -200,22 +284,36 @@ struct CallView: View {
                         .accessibilityLabel(words(.callFold))
                     }
                     Spacer()
+                    if desk.cameraOn, desk.phase.map(Self.isTalking) == true {
+                        preview(desk: desk)
+                    }
                 }
-                .frame(height: 44)
+                .frame(minHeight: 44)
                 .padding(.horizontal, 16)
-                Spacer().frame(height: 16)
-                Pillow(seed: session?.roomID ?? "·", title: desk.peerName, size: 128)
-                    .shadow(color: .black.opacity(0.2), radius: 18, y: 8)
-                Text(desk.peerName)
-                    .font(.largeTitle.weight(.semibold))
+                if desk.remoteVisible {
+                    VStack(spacing: 4) {
+                        Text(desk.peerName)
+                            .font(.title2.weight(.semibold))
+                            .lineLimit(1)
+                        status.font(.headline.monospacedDigit())
+                    }
                     .foregroundStyle(.white)
-                    .lineLimit(1)
-                    .padding(.horizontal, 24)
-                status
-                    .font(.title3.monospacedDigit())
-                    .foregroundStyle(.white.opacity(0.85))
-                if desk.micDenied {
-                    Text(words(.callMicDenied))
+                    .shadow(color: .black.opacity(0.4), radius: 6)
+                } else {
+                    Spacer().frame(height: 16)
+                    Pillow(seed: session?.roomID ?? "·", title: desk.peerName, size: 128)
+                        .shadow(color: .black.opacity(0.2), radius: 18, y: 8)
+                    Text(desk.peerName)
+                        .font(.largeTitle.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                        .padding(.horizontal, 24)
+                    status
+                        .font(.title3.monospacedDigit())
+                        .foregroundStyle(.white.opacity(0.85))
+                }
+                if desk.micDenied || desk.cameraDenied {
+                    Text(words(desk.micDenied ? .callMicDenied : .callCameraDenied))
                         .font(.footnote)
                         .foregroundStyle(.white)
                         .multilineTextAlignment(.center)
@@ -227,6 +325,34 @@ struct CallView: View {
             }
         }
         .animation(.smooth, value: desk.phase)
+        .animation(.smooth, value: desk.remoteVisible)
+        .animation(.smooth, value: desk.cameraOn)
+    }
+
+    private static func isTalking(_ phase: CallPhase) -> Bool {
+        switch phase {
+        case .calling, .connecting, .live: true
+        default: false
+        }
+    }
+
+    /// Своя камера в углу; нажатие меняет фронтальную и основную.
+    private func preview(desk: CallDesk) -> some View {
+        PictureView(feed: desk.localFeed)
+            .frame(width: 104, height: 150)
+            .clipShape(.rect(cornerRadius: 18))
+            .overlay(alignment: .bottomTrailing) {
+                Image(systemName: "arrow.triangle.2.circlepath.camera.fill")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .padding(6)
+                    .shadow(radius: 3)
+            }
+            .shadow(color: .black.opacity(0.3), radius: 10, y: 4)
+            .onTapGesture { Task { await desk.switchCamera() } }
+            .accessibilityAddTraits(.isButton)
+            .accessibilityLabel(words(.callFlip))
+            .transition(.scale.combined(with: .opacity))
     }
 
     @ViewBuilder private var status: some View {
@@ -241,21 +367,24 @@ struct CallView: View {
                 RoundButton(symbol: "phone.down.fill", tint: .red, caption: words(.callDecline)) {
                     Task { await desk.hangUp() }
                 }
-                RoundButton(symbol: "phone.fill", tint: Theme.read, caption: words(.callAccept)) {
+                RoundButton(symbol: desk.current?.video == true ? "video.fill" : "phone.fill", tint: Theme.read,
+                            caption: words(.callAccept)) {
                     Task { await desk.accept() }
                 }
             }
         case .ended, nil:
             EmptyView()
         default:
-            HStack(spacing: 36) {
+            HStack(spacing: 16) {
                 RoundButton(symbol: desk.muted ? "mic.slash.fill" : "mic.fill", tint: desk.muted ? .white : nil,
                             caption: words(.callMute)) { desk.muted.toggle() }
+                RoundButton(symbol: desk.cameraOn ? "video.fill" : "video.slash.fill", tint: desk.cameraOn ? .white : nil,
+                            caption: words(.callCamera)) { Task { await desk.toggleCamera() } }
+                RoundButton(symbol: "speaker.wave.2.fill", tint: desk.speaker ? .white : nil,
+                            caption: words(.callSpeaker)) { desk.speaker.toggle() }
                 RoundButton(symbol: "phone.down.fill", tint: .red, caption: words(.callHangUp)) {
                     Task { await desk.hangUp() }
                 }
-                RoundButton(symbol: "speaker.wave.2.fill", tint: desk.speaker ? .white : nil,
-                            caption: words(.callSpeaker)) { desk.speaker.toggle() }
             }
         }
     }
@@ -402,6 +531,12 @@ extension Phrase {
     static let callSpeaker = Phrase(bxr: "Динамик", ru: "Динамик", en: "Speaker")
     static let callFold = Phrase(bxr: "Хуряаха", ru: "Свернуть", en: "Minimize")
     static let callBack = Phrase(bxr: "Хөөрэлдөөндэ бусаха", ru: "Вернуться к звонку", en: "Back to call")
+    static let callVideoAction = Phrase(bxr: "Видео залгаха", ru: "Видеозвонок", en: "Video call")
+    static let callCamera = Phrase(bxr: "Камера", ru: "Камера", en: "Camera")
+    static let callFlip = Phrase(bxr: "Камера һэлгэхэ", ru: "Сменить камеру", en: "Switch camera")
+    static let callCameraDenied = Phrase(bxr: "Камера хаагдаатай. Тохиргоо соо Нютагта зүбшөөрэгты.",
+                                         ru: "Нет доступа к камере. Разрешите её Нютагу в Настройках.",
+                                         en: "No camera access. Allow it for Nyutag in Settings.")
     static let callMicDenied = Phrase(bxr: "Микрофон хаагдаатай. Тохиргоо соо Нютагта зүбшөөрэгты.",
                                       ru: "Нет доступа к микрофону. Разрешите его Нютагу в Настройках.",
                                       en: "No microphone access. Allow it for Nyutag in Settings.")
