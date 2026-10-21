@@ -27,10 +27,7 @@ struct ContentView: View {
         .tint(Theme.sky)
         .animation(.smooth, value: session.phase)
         .animation(.smooth, value: words.lang)
-        .onOpenURL { url in
-            // Ссылка-приглашение: без входа — сразу в регистрацию с кодом; вошедшему она не нужна.
-            if let code = InviteCode.code(fromLink: url), session.phase != .signedIn { session.pendingInvite = code }
-        }
+        .onOpenURL(perform: open)
         .task {
             await session.launch()
             #if DEBUG
@@ -39,11 +36,23 @@ struct ContentView: View {
         }
     }
 
+    private func open(_ url: URL) {
+        // Ссылка-приглашение: без входа — сразу в регистрацию с кодом; вошедшему она не нужна.
+        if let code = InviteCode.code(fromLink: url), session.phase != .signedIn { session.pendingInvite = code }
+        // Виджет «Зурхай» открывает вкладку «Календарь».
+        if url.scheme == "nyutag", url.host == "calendar" { session.requestedTab = 3 }
+    }
+
     #if DEBUG
     /// Снимки экранов на симуляторе: вход из SIMCTL_CHILD_NYUTAG_UI_USER/PASSWORD без набора на клавиатуре.
     private func signInForScreenshots() async {
         let env = ProcessInfo.processInfo.environment
         if env["NYUTAG_UI_SIGNOUT"] != nil { return await session.signOut() }
+        // NYUTAG_UI_URL=ссылка — как нажатие на виджет: simctl openurl спрашивает подтверждение, виджет — нет.
+        if let link = env["NYUTAG_UI_URL"].flatMap(URL.init(string:)) {
+            open(link)
+            print("ui-check: ссылка \(link), вкладка \(session.requestedTab.map(String.init) ?? "без смены")")
+        }
         defer {
             if let room = env["NYUTAG_UI_MAKE_ROOM"] { Task { await session.ensurePrivateRoom(named: room) } }
         }

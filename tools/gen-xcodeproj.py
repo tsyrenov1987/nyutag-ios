@@ -13,6 +13,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TEAM = "643UT34CF8"
 APP_ID = "chat.nyutag.messenger"
 NSE_ID = APP_ID + ".nse"
+WIDGET_ID = APP_ID + ".widget"
 GROUP = "group.chat.nyutag.messenger"
 BGTASK = APP_ID + ".background.refresh"
 IOS = "26.0"
@@ -86,6 +87,13 @@ NSE_INFO = plist(
     "\t</dict>\n"
 )
 
+# Виджет «Зурхай»: без группы приложений, данные календаря лежат в его бандле.
+WIDGET_INFO = plist(
+    "\t<key>NSExtension</key>\n\t<dict>\n"
+    "\t\t<key>NSExtensionPointIdentifier</key>\n\t\t<string>com.apple.widgetkit-extension</string>\n"
+    "\t</dict>\n"
+)
+
 
 def entitlements(extra):
     return plist(arr("com.apple.security.application-groups", ["$(NYUTAG_APP_GROUP)"]) + extra
@@ -146,19 +154,27 @@ fileref("app_ent", "Nyutag.entitlements", "text.plist.entitlements")
 # папка-ссылка: если nyutag-catalogue.txt (в gitignore) нет, в бандл попадает только .example.
 # Не «Resources»: с такой папкой в корне .app CFBundle считает бандл старым и не находит Info.plist.
 fileref("resources", "Catalogue", "folder")
+# Календарь: даты Сагаалгана и дни зурхая, общий для вкладки «Календарь» и виджета.
+fileref("calendar", "Calendar", "folder")
 fileref("nse_swift", "NotificationService.swift", "sourcecode.swift")
 fileref("nse_plist", "Info.plist", "text.plist.xml")
 fileref("nse_ent", "NyutagNSE.entitlements", "text.plist.entitlements")
+fileref("widget_swift", "ZurkhaiWidget.swift", "sourcecode.swift")
+fileref("widget_plist", "Info.plist", "text.plist.xml")
 APP_PROD = add("prod:app", "Nyutag.app", "PBXFileReference",
                [("explicitFileType", "wrapper.application"), ("includeInIndex", "0"),
                 ("path", "Nyutag.app"), ("sourceTree", "BUILT_PRODUCTS_DIR")])
 NSE_PROD = add("prod:nse", "NyutagNSE.appex", "PBXFileReference",
                [("explicitFileType", "wrapper.app-extension"), ("includeInIndex", "0"),
                 ("path", "NyutagNSE.appex"), ("sourceTree", "BUILT_PRODUCTS_DIR")])
+WIDGET_PROD = add("prod:widget", "NyutagWidget.appex", "PBXFileReference",
+                  [("explicitFileType", "wrapper.app-extension"), ("includeInIndex", "0"),
+                   ("path", "NyutagWidget.appex"), ("sourceTree", "BUILT_PRODUCTS_DIR")])
 
 PKG = uid("pkg")
 PROD_APP = uid("pkgprod:app")
 PROD_NSE = uid("pkgprod:nse")
+PROD_WIDGET = uid("pkgprod:widget")
 
 
 def bf(key, fileid, comment, phase):
@@ -180,6 +196,12 @@ b_assets = bf("assets", F["assets"], "Assets.xcassets", "Resources")
 b_appicon = bf("appicon", F["appicon"], "AppIcon.icon", "Resources")
 b_res = bf("resources", F["resources"], "Catalogue", "Resources")
 b_infoplist_strings = bf("infoplist_strings", F["infoplist_strings"], "InfoPlist.xcstrings", "Resources")
+b_cal_app = bf("calendar:app", F["calendar"], "Calendar", "Resources")
+b_cal_widget = bf("calendar:widget", F["calendar"], "Calendar", "Resources")
+b_swift_widget = bf("widget_swift", F["widget_swift"], "ZurkhaiWidget.swift", "Sources")
+b_pkg_widget = add("bf:pkg_widget", "NyutagCore in Frameworks", "PBXBuildFile", [("productRef", PROD_WIDGET)])
+b_embed_widget = add("bf:embed_widget", "NyutagWidget.appex in Embed Foundation Extensions", "PBXBuildFile",
+                     [("fileRef", WIDGET_PROD), ("settings", "{ATTRIBUTES = (RemoveHeadersOnCopy, ); }")])
 b_swift_nse = bf("nse_swift", F["nse_swift"], "NotificationService.swift", "Sources")
 b_pkg_app = add("bf:pkg_app", "NyutagCore in Frameworks", "PBXBuildFile", [("productRef", PROD_APP)])
 b_pkg_nse = add("bf:pkg_nse", "NyutagCore in Frameworks", "PBXBuildFile", [("productRef", PROD_NSE)])
@@ -195,12 +217,15 @@ def phase(name, isa, files, extra=()):
 
 ph_app_src = phase("Sources:app", "PBXSourcesBuildPhase", [b_swift_app, b_swift_content, b_swift_accounts, b_swift_selfcheck, b_swift_pushdoor, b_swift_ringer] + b_tunnel + b_ui)
 ph_app_fw = phase("Frameworks:app", "PBXFrameworksBuildPhase", [b_pkg_app, b_farvater])
-ph_app_res = phase("Resources:app", "PBXResourcesBuildPhase", [b_assets, b_appicon, b_res, b_infoplist_strings])
-ph_embed = phase("Embed Foundation Extensions", "PBXCopyFilesBuildPhase", [b_embed],
+ph_app_res = phase("Resources:app", "PBXResourcesBuildPhase", [b_assets, b_appicon, b_res, b_cal_app, b_infoplist_strings])
+ph_embed = phase("Embed Foundation Extensions", "PBXCopyFilesBuildPhase", [b_embed, b_embed_widget],
                  [("dstPath", '""'), ("dstSubfolderSpec", "13")])
 ph_nse_src = phase("Sources:nse", "PBXSourcesBuildPhase", [b_swift_nse])
 ph_nse_fw = phase("Frameworks:nse", "PBXFrameworksBuildPhase", [b_pkg_nse])
 ph_nse_res = phase("Resources:nse", "PBXResourcesBuildPhase", [])
+ph_widget_src = phase("Sources:widget", "PBXSourcesBuildPhase", [b_swift_widget])
+ph_widget_fw = phase("Frameworks:widget", "PBXFrameworksBuildPhase", [b_pkg_widget])
+ph_widget_res = phase("Resources:widget", "PBXResourcesBuildPhase", [b_cal_widget])
 
 
 def group(key, comment, children, path=None, name=None):
@@ -217,8 +242,9 @@ g_tunnel = group("tunnel", "Tunnel", [F["tunnel_bridge"], F["tunnel_net"], F["tu
 g_ui = group("ui", "UI", [F["ui:" + n] for n in UI_FILES], "UI")
 g_nyutag = group("nyutag", "Nyutag", [F["app_swift"], F["content_swift"], F["accounts_swift"], F["selfcheck_swift"], F["pushdoor_swift"], F["ringer_swift"], g_tunnel, g_ui, F["assets"], F["appicon"], F["app_plist"], F["infoplist_strings"], F["app_ent"]], "Nyutag")
 g_nse = group("nse", "NyutagNSE", [F["nse_swift"], F["nse_plist"], F["nse_ent"]], "NyutagNSE")
-g_apps = group("apps", "App", [g_nyutag, g_nse, F["resources"]], "App")
-g_products = group("products", "Products", [APP_PROD, NSE_PROD], None, "Products")
+g_widget = group("widget", "NyutagWidget", [F["widget_swift"], F["widget_plist"]], "NyutagWidget")
+g_apps = group("apps", "App", [g_nyutag, g_nse, g_widget, F["resources"], F["calendar"]], "App")
+g_products = group("products", "Products", [APP_PROD, NSE_PROD, WIDGET_PROD], None, "Products")
 g_main = group("main", "Main", [g_apps, F["farvater"], g_products])
 
 PROJ_COMMON = {
@@ -254,6 +280,12 @@ NSE_S = {
     "LD_RUNPATH_SEARCH_PATHS": "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks",
     "PRODUCT_BUNDLE_IDENTIFIER": NSE_ID, "PRODUCT_NAME": "NyutagNSE", "SKIP_INSTALL": "YES",
 }
+WIDGET_S = {
+    "APPLICATION_EXTENSION_API_ONLY": "YES", "GENERATE_INFOPLIST_FILE": "YES", "INFOPLIST_FILE": "App/NyutagWidget/Info.plist",
+    "INFOPLIST_KEY_CFBundleDisplayName": "Нютаг",
+    "LD_RUNPATH_SEARCH_PATHS": "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks",
+    "PRODUCT_BUNDLE_IDENTIFIER": WIDGET_ID, "PRODUCT_NAME": "NyutagWidget", "SKIP_INSTALL": "YES",
+}
 
 
 def cfg(key, name, s):
@@ -277,12 +309,18 @@ NSE_DEBUG = dict(NSE_S, PRODUCT_BUNDLE_IDENTIFIER=APP_ID + ".dev.nse", NYUTAG_AP
 APP_RELEASE = dict(APP_S, NYUTAG_APP_GROUP=GROUP)
 NSE_RELEASE = dict(NSE_S, NYUTAG_APP_GROUP=GROUP)
 cl_app = cfglist("app", "PBXNativeTarget", "Nyutag", [cfg("app", "Debug", APP_DEBUG), cfg("app", "Release", APP_RELEASE)])
+cl_widget = cfglist("widget", "PBXNativeTarget", "NyutagWidget",
+                    [cfg("widget", "Debug", dict(WIDGET_S, PRODUCT_BUNDLE_IDENTIFIER=APP_ID + ".dev.widget")),
+                     cfg("widget", "Release", WIDGET_S)])
 cl_nse = cfglist("nse", "PBXNativeTarget", "NyutagNSE", [cfg("nse", "Debug", NSE_DEBUG), cfg("nse", "Release", NSE_RELEASE)])
 
-T_APP, T_NSE, PROJECT = uid("target:app"), uid("target:nse"), uid("project")
+T_APP, T_NSE, T_WIDGET, PROJECT = uid("target:app"), uid("target:nse"), uid("target:widget"), uid("project")
 proxy = add("proxy:nse", "PBXContainerItemProxy", "PBXContainerItemProxy",
             [("containerPortal", PROJECT), ("proxyType", "1"), ("remoteGlobalIDString", T_NSE), ("remoteInfo", "NyutagNSE")])
 dep = add("dep:nse", "PBXTargetDependency", "PBXTargetDependency", [("target", T_NSE), ("targetProxy", proxy)])
+proxy_widget = add("proxy:widget", "PBXContainerItemProxy", "PBXContainerItemProxy",
+                   [("containerPortal", PROJECT), ("proxyType", "1"), ("remoteGlobalIDString", T_WIDGET), ("remoteInfo", "NyutagWidget")])
+dep_widget = add("dep:widget", "PBXTargetDependency", "PBXTargetDependency", [("target", T_WIDGET), ("targetProxy", proxy_widget)])
 
 
 def target(tid, name, cl, phases, deps, prod_dep, prod, ptype):
@@ -292,21 +330,24 @@ def target(tid, name, cl, phases, deps, prod_dep, prod, ptype):
                   ("productName", name), ("productReference", prod), ("productType", q(ptype))], False))
 
 
-target(T_APP, "Nyutag", cl_app, [ph_app_src, ph_app_fw, ph_app_res, ph_embed], [dep], PROD_APP, APP_PROD,
+target(T_APP, "Nyutag", cl_app, [ph_app_src, ph_app_fw, ph_app_res, ph_embed], [dep, dep_widget], PROD_APP, APP_PROD,
        "com.apple.product-type.application")
 target(T_NSE, "NyutagNSE", cl_nse, [ph_nse_src, ph_nse_fw, ph_nse_res], [], PROD_NSE, NSE_PROD,
+       "com.apple.product-type.app-extension")
+target(T_WIDGET, "NyutagWidget", cl_widget, [ph_widget_src, ph_widget_fw, ph_widget_res], [], PROD_WIDGET, WIDGET_PROD,
        "com.apple.product-type.app-extension")
 
 objs.append((PKG, 'XCLocalSwiftPackageReference "."', "XCLocalSwiftPackageReference", [("relativePath", ".")], False))
 objs.append((PROD_APP, "NyutagCore", "XCSwiftPackageProductDependency", [("package", PKG), ("productName", "NyutagCore")], False))
 objs.append((PROD_NSE, "NyutagCore", "XCSwiftPackageProductDependency", [("package", PKG), ("productName", "NyutagCore")], False))
+objs.append((PROD_WIDGET, "NyutagCore", "XCSwiftPackageProductDependency", [("package", PKG), ("productName", "NyutagCore")], False))
 objs.append((PROJECT, "Project object", "PBXProject", [
     ("attributes", "{BuildIndependentTargetsInParallel = 1; LastSwiftUpdateCheck = 2600; LastUpgradeCheck = 2600; "
-                   "TargetAttributes = {%s = {CreatedOnToolsVersion = 26.0; }; %s = {CreatedOnToolsVersion = 26.0; }; }; }" % (T_APP, T_NSE)),
+                   "TargetAttributes = {%s = {CreatedOnToolsVersion = 26.0; }; %s = {CreatedOnToolsVersion = 26.0; }; %s = {CreatedOnToolsVersion = 26.0; }; }; }" % (T_APP, T_NSE, T_WIDGET)),
     ("buildConfigurationList", cl_proj), ("compatibilityVersion", '"Xcode 14.0"'), ("developmentRegion", "ru"),
     ("hasScannedForEncodings", "0"), ("knownRegions", "(ru, en, Base, )"), ("mainGroup", g_main),
     ("packageReferences", lst([PKG])), ("productRefGroup", g_products), ("projectDirPath", '""'), ("projectRoot", '""'),
-    ("targets", lst([T_APP, T_NSE]))], False))
+    ("targets", lst([T_APP, T_NSE, T_WIDGET]))], False))
 
 ISA_ORDER = ["PBXBuildFile", "PBXContainerItemProxy", "PBXCopyFilesBuildPhase", "PBXFileReference",
              "PBXFrameworksBuildPhase", "PBXGroup", "PBXNativeTarget", "PBXProject", "PBXResourcesBuildPhase",
@@ -371,6 +412,7 @@ if __name__ == "__main__":
     write("App/Nyutag/Nyutag.entitlements", APP_ENT)
     write("App/NyutagNSE/Info.plist", NSE_INFO)
     write("App/NyutagNSE/NyutagNSE.entitlements", NSE_ENT)
+    write("App/NyutagWidget/Info.plist", WIDGET_INFO)
     write("App/Nyutag/Assets.xcassets/Contents.json", ASSET_CONTENTS)
     write("App/Nyutag/Assets.xcassets/AccentColor.colorset/Contents.json", ACCENT)
     print("Готово: Nyutag.xcodeproj")

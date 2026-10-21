@@ -32,6 +32,8 @@ final class AppSession {
     private(set) var layout = ChatLayout()
     /// Код из открытой ссылки-приглашения: экран входа откроет с ним регистрацию.
     var pendingInvite: String?
+    /// Вкладка, которую просит открыть ссылка (nyutag://calendar из виджета).
+    var requestedTab: Int?
     /// Комната «Избранного», если уже заведена.
     private(set) var savedRoom: String?
     private(set) var me: String?

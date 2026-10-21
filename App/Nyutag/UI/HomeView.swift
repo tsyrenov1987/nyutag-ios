@@ -22,6 +22,11 @@ struct HomeView: View {
         }
         .background(Theme.milk.ignoresSafeArea())
         .onChange(of: PushDoor.shared.tappedRoom) { if PushDoor.shared.tappedRoom != nil { tab = 0 } }
+        .onChange(of: session.requestedTab, initial: true) {
+            guard let requested = session.requestedTab else { return }
+            tab = requested
+            session.requestedTab = nil
+        }
         .animation(.smooth, value: session.calls.showsStrip)
         .fullScreenCover(isPresented: .constant(session.calls.current != nil && !session.calls.folded)) { CallView() }
         .sheet(isPresented: Bindable(session).showDeviceCheck, onDismiss: { Task { await session.closeDeviceCheck() } }) {
