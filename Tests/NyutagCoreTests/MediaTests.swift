@@ -35,4 +35,37 @@ struct MediaTests {
         let c = try await cache.data(MXC("mxc://x/c")!)
         #expect(c.first == 3)
     }
+
+    @Test func attachmentRoundTrip() throws {
+        let sealed = try EncryptedFile.encrypt(Data("снимок".utf8), url: "mxc://nyutag.chat/F1").file
+        let content = Attachment.content(.sealed(sealed), name: "photo.jpg", mimetype: "image/jpeg", size: 12,
+                                         width: 640, height: 480)
+        #expect(content["msgtype"]?.string == "m.image")
+        #expect(content["url"] == nil)
+        let read = try #require(Attachment.read(content))
+        #expect(read.source == .sealed(sealed))
+        #expect(read.name == "photo.jpg")
+        #expect(read.width == 640 && read.height == 480 && read.size == 12)
+        #expect(read.isImage)
+
+        let plain = Attachment.content(.plain(MXC("mxc://nyutag.chat/D2")!), name: "отчёт.pdf",
+                                       mimetype: "application/pdf", size: 900)
+        #expect(plain["msgtype"]?.string == "m.file")
+        #expect(Attachment.read(plain)?.source == .plain(MXC("mxc://nyutag.chat/D2")!))
+        #expect(Attachment.read(plain)?.isImage == false)
+    }
+
+    @Test func attachmentFromForeignClient() throws {
+        // Чужой клиент: без filename, с миниатюрой по открытому адресу; GIF показываем файлом.
+        let content = try JSONValue(parsing: """
+        {"msgtype":"m.image","body":"cat.gif","url":"mxc://s/G",
+         "info":{"mimetype":"image/gif","thumbnail_url":"mxc://s/T","w":10,"h":20}}
+        """)
+        let read = try #require(Attachment.read(content))
+        #expect(read.name == "cat.gif")
+        #expect(read.thumbnail == .plain(MXC("mxc://s/T")!))
+        #expect(!read.isImage)
+        #expect(Attachment.read(try JSONValue(parsing: #"{"msgtype":"m.image","body":"x"}"#)) == nil)
+        #expect(Attachment.read(try JSONValue(parsing: #"{"msgtype":"m.text","body":"x","url":"mxc://s/G"}"#)) == nil)
+    }
 }

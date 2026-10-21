@@ -2,9 +2,13 @@
 // свои синие, чужие белые, оба контрастны к молочному фону. Служебное и дни — на плашках с подложкой.
 // Отправка сразу показывает реплику с часиками; не ушла — подпись «нажмите, чтобы повторить».
 // Долгое нажатие на пузырь: реакции строкой сверху, ответ, копия, а у своих — правка и удаление.
+// Скрепка у поля ввода шлёт снимок из галереи или файл; касание вложения открывает его на весь экран.
 
 import NyutagCore
+import PhotosUI
+import QuickLook
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ChatView: View {
     @Environment(Words.self) private var words
@@ -23,14 +27,24 @@ struct ChatView: View {
     @State private var failed = false
     @State private var typingSentAt: Date?
     @State private var lastMarked: String?
+    @State private var pickingPhoto = false
+    @State private var pickingFile = false
+    @State private var photoItem: PhotosPickerItem?
+    @State private var previewURL: URL?
+    @State private var openingID: String?
     @FocusState private var typing: Bool
 
     struct Outgoing: Identifiable, Equatable {
         let id: String
         let text: String
         let replyTo: FeedItem?
+        /// Вложение вместо текста; `text` тогда — имя файла.
+        var file: OutgoingFile?
+        var preview: UIImage?
         var eventID: String?
         var failed = false
+
+        static func == (a: Outgoing, b: Outgoing) -> Bool { a.id == b.id && a.eventID == b.eventID && a.failed == b.failed }
     }
 
     private var line: ChatLine? { session.lines.first { $0.id == roomID } }
@@ -49,7 +63,8 @@ struct ChatView: View {
                     if previous.map({ !Calendar.current.isDate(day($0.ts), inSameDayAs: day(item.ts)) }) ?? true {
                         DayPlate(date: day(item.ts))
                     }
-                    FeedRow(item: item, showsAuthor: isGroup && startsRun(item, after: previous)) { action in
+                    FeedRow(item: item, showsAuthor: isGroup && startsRun(item, after: previous),
+                            opening: openingID == item.id) { action in
                         act(action, on: item)
                     }
                 }
@@ -73,6 +88,17 @@ struct ChatView: View {
             Button(words(.cancel), role: .cancel) {}
         }
         .alert(words(.cantDo), isPresented: $failed) { Button(words(.done)) {} }
+        .photosPicker(isPresented: $pickingPhoto, selection: $photoItem, matching: .images)
+        .fileImporter(isPresented: $pickingFile, allowedContentTypes: [.item]) { result in
+            if case .success(let url) = result { Task { await attachFile(url) } }
+        }
+        .onChange(of: photoItem) {
+            guard let picked = photoItem else { return }
+            photoItem = nil
+            Task { await attachPhoto(picked) }
+        }
+        .quickLookPreview($previewURL)
+        .onChange(of: previewURL) { if previewURL == nil { OpenedFiles.clear() } }
         .onChange(of: draft) { noteTyping() }
         .onDisappear { stopTyping() }
         .toolbar(.hidden, for: .tabBar)
@@ -102,6 +128,18 @@ struct ChatView: View {
                 banner(title: replyTo.senderName, text: summary(replyTo.body), symbol: nil) { self.replyTo = nil }
             }
             HStack(alignment: .bottom, spacing: 8) {
+                if editing == nil {
+                    Menu {
+                        Button(words(.photoAction), systemImage: "photo.on.rectangle") { pickingPhoto = true }
+                        Button(words(.fileAction), systemImage: "doc") { pickingFile = true }
+                    } label: {
+                        Image(systemName: "paperclip")
+                            .font(.title3).foregroundStyle(Theme.quiet)
+                            .frame(width: 36, height: 40)
+                    }
+                    .accessibilityLabel(words(.attach))
+                    .accessibilityIdentifier("chat-attach")
+                }
                 TextField(words(.messageField), text: $draft, axis: .vertical)
                     .lineLimit(1...6)
                     .focused($typing)
@@ -202,7 +240,56 @@ struct ChatView: View {
             deleting = item
         case .react(let key):
             run { await session.toggleReaction(key, on: item, in: roomID) }
+        case .open:
+            open(item)
         }
+    }
+
+    /// Вложение на весь экран: расшифрованная копия во временной папке, пока открыт просмотр.
+    private func open(_ item: FeedItem) {
+        guard let attachment = item.attachment, openingID == nil else { return }
+        openingID = item.id
+        Task {
+            defer { openingID = nil }
+            var name = attachment.name
+            if URL(filePath: name).pathExtension.isEmpty,
+               let ext = attachment.mimetype.flatMap({ UTType(mimeType: $0) })?.preferredFilenameExtension {
+                name += "." + ext
+            }
+            if let data = await session.attachmentData(attachment, preview: false), let url = OpenedFiles.write(data, name: name) {
+                previewURL = url
+            } else {
+                failed = true
+            }
+            #if DEBUG
+            print("ui-check: вложение \(previewURL == nil ? "не открылось" : "открыто")")
+            #endif
+        }
+    }
+
+    private func attachPhoto(_ picked: PhotosPickerItem) async {
+        let name = "photo-" + Date.now.formatted(.iso8601.year().month().day().time(includingFractionalSeconds: false))
+            .filter { $0.isNumber || $0 == "T" }
+        guard let data = try? await picked.loadTransferable(type: Data.self),
+              let file = await Task.detached(priority: .userInitiated, operation: { OutgoingFile.photo(data, name: name) }).value
+        else { failed = true; return }
+        queue(file)
+    }
+
+    private func attachFile(_ url: URL) async {
+        guard let file = await Task.detached(priority: .userInitiated, operation: { OutgoingFile.file(at: url) }).value else {
+            failed = true
+            return
+        }
+        queue(file)
+    }
+
+    /// Вложение сразу видно в ленте с часиками, как и текст.
+    private func queue(_ file: OutgoingFile) {
+        let preview = file.mimetype.hasPrefix("image/") ? ImageMemory.downsample(file.data, maxPixels: 900) : nil
+        let pending = Outgoing(id: TransactionID.make(), text: file.name, replyTo: nil, file: file, preview: preview)
+        outbox.append(pending)
+        deliver(pending)
     }
 
     /// Действие с сервером; не вышло — короткое сообщение, вышло — лента перечитается со следующей синхронизацией.
@@ -256,7 +343,13 @@ struct ChatView: View {
 
     private func deliver(_ pending: Outgoing) {
         Task {
-            let eventID = await session.send(pending.text, to: roomID, replyTo: pending.replyTo?.id, transactionID: pending.id)
+            let eventID: String? = if let file = pending.file {
+                await session.sendAttachment(file, to: roomID, transactionID: pending.id)
+            } else {
+                await session.send(pending.text, to: roomID, replyTo: pending.replyTo?.id, transactionID: pending.id)
+            }
+            // Своя картинка уже есть в памяти: обратно с сервера её не качаем.
+            if let eventID, let preview = pending.preview { ImageMemory.put(preview, eventID) }
             guard let index = outbox.firstIndex(where: { $0.id == pending.id }) else { return }
             if let eventID { outbox[index].eventID = eventID } else { outbox[index].failed = true }
             #if DEBUG
@@ -273,11 +366,42 @@ struct ChatView: View {
     private func sendForScreenshots() {
         let env = ProcessInfo.processInfo.environment
         if let step = env["NYUTAG_UI_ACT"] { actForScreenshots(step) }
+        if let kind = env["NYUTAG_UI_ATTACH"] { attachForScreenshots(kind) }
+        if env["NYUTAG_UI_OPEN"] != nil, !Self.openedForScreenshots, let last = items.last(where: { $0.attachment != nil }) {
+            Self.openedForScreenshots = true
+            open(last)
+        }
         guard !Self.sentForScreenshots, let text = env["NYUTAG_UI_SEND"] else { return }
         Self.sentForScreenshots = true
         draft = text
         sendDraft()
         print("ui-check: отправка ушла в очередь")
+    }
+
+    private static var attachedForScreenshots = false
+    private static var openedForScreenshots = false
+
+    /// NYUTAG_UI_ATTACH: `photo` — нарисованный снимок 1600×1200, `file` — небольшой текстовый файл.
+    private func attachForScreenshots(_ kind: String) {
+        guard !Self.attachedForScreenshots else { return }
+        Self.attachedForScreenshots = true
+        if kind == "file" {
+            queue(OutgoingFile(data: Data("Нютаг β: проверка вложения\n".utf8), name: "proverka.txt", mimetype: "text/plain"))
+            return
+        }
+        let size = CGSize(width: 1600, height: 1200)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let drawn = UIGraphicsImageRenderer(size: size, format: format).image { context in
+            let colors = [UIColor(Theme.sky).cgColor, UIColor(Theme.gold).cgColor] as CFArray
+            if let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors, locations: nil) {
+                context.cgContext.drawLinearGradient(gradient, start: .zero, end: CGPoint(x: size.width, y: size.height), options: [])
+            }
+            ("Нютаг β" as NSString).draw(at: CGPoint(x: 120, y: 480),
+                                          withAttributes: [.font: UIFont.boldSystemFont(ofSize: 180), .foregroundColor: UIColor.white])
+        }
+        guard let jpeg = drawn.jpegData(compressionQuality: 0.9), let file = OutgoingFile.photo(jpeg, name: "proverka") else { return }
+        queue(file)
     }
 
     /// NYUTAG_UI_ACT над своей последней текстовой репликой, по одному шагу за запуск:
@@ -325,7 +449,7 @@ struct ChatView: View {
 
 /// Одна строка ленты: плашка или пузырь со своей стороны.
 struct FeedRow: View {
-    enum Action { case reply, edit, delete, react(String) }
+    enum Action { case reply, edit, delete, react(String), open }
 
     /// Быстрые реакции в меню, по порядку.
     static let quick = ["👍", "❤️", "😂", "😮", "😢", "🙏"]
@@ -333,6 +457,7 @@ struct FeedRow: View {
     @Environment(Words.self) private var words
     let item: FeedItem
     let showsAuthor: Bool
+    var opening = false
     let perform: (Action) -> Void
 
     var body: some View {
@@ -342,7 +467,7 @@ struct FeedRow: View {
             HStack(alignment: .bottom, spacing: 0) {
                 if item.isMine { Spacer(minLength: 56) }
                 VStack(alignment: item.isMine ? .trailing : .leading, spacing: 4) {
-                    Bubble(item: item, showsAuthor: showsAuthor)
+                    Bubble(item: item, showsAuthor: showsAuthor, opening: opening) { perform(.open) }
                         .contextMenu { menu }
                     if !item.reactions.isEmpty {
                         Reactions(reactions: item.reactions) { key in perform(.react(key)) }
@@ -380,6 +505,8 @@ struct Bubble: View {
     @Environment(Words.self) private var words
     let item: FeedItem
     let showsAuthor: Bool
+    var opening = false
+    var open: () -> Void = {}
 
     private var ink: Color { item.isMine ? .white : Theme.ink }
     private var soft: Color { item.isMine ? .white.opacity(0.75) : Theme.quiet }
@@ -420,8 +547,21 @@ struct Bubble: View {
         case .text(let text):
             Text(text).foregroundStyle(ink).textSelection(.disabled)
         case .attachment(let kind, let caption):
-            VStack(alignment: .leading, spacing: 4) {
-                Label(ChatRow.label(kind, words: words), systemImage: ChatRow.symbol(kind)).foregroundStyle(ink)
+            VStack(alignment: .leading, spacing: 6) {
+                if let attachment = item.attachment, attachment.isImage {
+                    AttachmentImage(key: item.id, attachment: attachment)
+                        .overlay { if opening { ProgressView().tint(.white) } }
+                        .onTapGesture(perform: open)
+                        .accessibilityIdentifier("attachment-\(item.id)")
+                } else if let attachment = item.attachment {
+                    Button(action: open) {
+                        FileChip(name: attachment.name, size: attachment.size, ink: ink, soft: soft, busy: opening)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("attachment-\(item.id)")
+                } else {
+                    Label(ChatRow.label(kind, words: words), systemImage: ChatRow.symbol(kind)).foregroundStyle(ink)
+                }
                 if let caption { Text(caption).foregroundStyle(ink) }
             }
         case .locked:
@@ -504,7 +644,16 @@ struct PendingBubble: View {
             Spacer(minLength: 56)
             VStack(alignment: .trailing, spacing: 4) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(pending.text).foregroundStyle(.white)
+                    if let preview = pending.preview, let file = pending.file {
+                        Image(uiImage: preview).resizable().scaledToFill()
+                            .frame(width: AttachmentImage.width,
+                                   height: AttachmentImage.height(pixels: (file.width, file.height), image: preview))
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    } else if let file = pending.file {
+                        FileChip(name: file.name, size: file.data.count, ink: .white, soft: .white.opacity(0.75))
+                    } else {
+                        Text(pending.text).foregroundStyle(.white)
+                    }
                     Image(systemName: pending.failed ? "exclamationmark.arrow.circlepath" : "clock")
                         .font(.caption2).foregroundStyle(.white.opacity(0.75))
                         .frame(maxWidth: .infinity, alignment: .trailing)

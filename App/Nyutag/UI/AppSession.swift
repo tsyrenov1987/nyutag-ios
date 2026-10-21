@@ -29,6 +29,8 @@ final class AppSession {
     @ObservationIgnored private var machine: CryptoMachine?
     @ObservationIgnored private var pump: Task<Void, Never>?
     @ObservationIgnored private let opened = OpenedCache()
+    /// Скачанные вложения. Зашифрованные лежат на диске шифртекстом, открытым текстом — только в памяти.
+    @ObservationIgnored private var media: MediaCache?
     /// Пароль этого входа, только в памяти и только пока история заперта старым ключом: им её перезапрём.
     @ObservationIgnored private var heldPassword: String?
 
@@ -81,6 +83,8 @@ final class AppSession {
         await stop()
         try? await keeper.signOut(account)
         Self.rememberLockedHistory(false, for: account.session.userID)
+        try? await media?.clear()
+        media = nil
         heldPassword = nil
         self.account = nil
         lines = []
@@ -185,6 +189,41 @@ final class AppSession {
         return try? await account.client.send(roomID: roomID, type: type, content: content, transactionID: transactionID)
     }
 
+    /// Файл или картинка в чат: в шифрованный — шифртекстом (ключ уедет внутри реплики), в открытый — как есть.
+    func sendAttachment(_ file: OutgoingFile, to roomID: String, transactionID: String) async -> String? {
+        guard let account else { return nil }
+        let encrypted = (try? await account.store.room(roomID))?.isEncrypted ?? false
+        let source: Attachment.Source
+        do {
+            if encrypted {
+                source = .sealed(try await account.client.uploadEncrypted(file.data, contentType: file.mimetype))
+            } else {
+                source = .plain(try await account.client.uploadMedia(file.data, contentType: file.mimetype, filename: file.name))
+            }
+        } catch {
+            #if DEBUG
+            print("ui-check: загрузка вложения не прошла: \(error)")
+            #endif
+            return nil
+        }
+        let content = Attachment.content(source, name: file.name, mimetype: file.mimetype, size: file.data.count,
+                                         width: file.width, height: file.height)
+        return await post(EventType.message, content, to: roomID, transactionID: transactionID)
+    }
+
+    /// Содержимое вложения, уже расшифрованное. `preview` — миниатюра для ленты, если она есть.
+    func attachmentData(_ attachment: Attachment, preview: Bool) async -> Data? {
+        guard let media else { return nil }
+        switch preview ? (attachment.thumbnail ?? attachment.source) : attachment.source {
+        case .sealed(let file):
+            return try? await media.decrypted(file)
+        case .plain(let mxc):
+            // Открытую картинку без своей миниатюры уменьшит сервер.
+            let size = preview && attachment.thumbnail == nil ? (width: 800, height: 800) : nil
+            return try? await media.data(mxc, size: size)
+        }
+    }
+
     /// «Набираю текст»: сервер сам снимет отметку через 20 секунд, если не продлить.
     func setTyping(_ typing: Bool, in roomID: String) async {
         guard let account, let me else { return }
@@ -273,6 +312,8 @@ final class AppSession {
         me = account.session.userID
         let engine = SyncEngine(client: account.client, store: account.store, session: account.session)
         self.engine = engine
+        let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        media = try? MediaCache(client: account.client, directory: caches.appending(path: "media", directoryHint: .isDirectory))
         phase = .signedIn
         await refresh()
         do {
@@ -343,6 +384,15 @@ final class AppSession {
         if case .cancelled = error.kind { return .noNetwork }
         return .broken
     }
+}
+
+/// Готовый к отправке файл: картинка уже пережата, у неё известны размеры.
+struct OutgoingFile: Sendable {
+    let data: Data
+    let name: String
+    let mimetype: String
+    var width: Int?
+    var height: Int?
 }
 
 /// Расшифрованные последние реплики: список перестраивается на каждый /sync, расшифровывать заново незачем.

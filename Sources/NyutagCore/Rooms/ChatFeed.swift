@@ -60,6 +60,8 @@ public struct FeedItem: Sendable, Equatable, Identifiable {
     public let edited: Bool
     public let reply: Quote?
     public let reactions: [Reaction]
+    /// Файл или картинка реплики, если она с вложением.
+    public let attachment: Attachment?
     /// Только у своих реплик: прочитал ли кто-то из собеседников её или более позднюю.
     public let isRead: Bool
 
@@ -134,6 +136,7 @@ public enum ChatFeed {
 
         var items: [FeedItem] = []
         for event in opened {
+            var shownContent = event.content
             guard let id = event.eventID, let sender = event.sender else { continue }
             if ChatDigest.isEdit(event) { continue }
             let body: FeedItem.Body
@@ -150,6 +153,7 @@ public enum ChatFeed {
                 body = .notice(notice)
             } else if let shown = bubble(event, replaced: edits[id], me: me) {
                 body = shown
+                if let fresh = edits[id] { shownContent = fresh }
             } else {
                 continue
             }
@@ -168,9 +172,11 @@ public enum ChatFeed {
                 reactions[id]?[key].map { FeedItem.Reaction(key: key, count: $0.count, mine: $0.mine != nil, myEventID: $0.mine) }
             }
             let ts = event.originServerTS ?? 0
+            let attachment: Attachment? = if case .attachment = body { Attachment.read(shownContent) } else { nil }
             items.append(FeedItem(id: id, sender: sender, senderName: name(of: sender), isMine: sender == me, ts: ts,
                                   body: body, edited: edits[id] != nil && body != .deleted, reply: reply,
                                   reactions: body == .deleted ? [] : counted,
+                                  attachment: attachment,
                                   isRead: sender == me && readUpTo.map { ts <= $0 } == true))
         }
         return items

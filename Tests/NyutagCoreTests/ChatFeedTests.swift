@@ -192,5 +192,7 @@ struct ChatFeedTests {
         let items = try await ChatFeed.items(roomID: room, store: store, me: me)
         #expect(items.first { $0.id == "$p" }?.body == .attachment(.image, caption: nil))
         #expect(items.first { $0.id == "$q" }?.body == .attachment(.image, caption: "Байкал"))
+        #expect(items.first { $0.id == "$q" }?.attachment?.name == "IMG_2.jpg")
+        #expect(items.first { $0.id == "$q" }?.attachment?.source == .plain(MXC("mxc://x/z")!))
     }
 }
