@@ -235,7 +235,10 @@ struct ChatView: View {
                 if editing == nil {
                     Menu {
                         Button(words(.photoAction), systemImage: "photo.on.rectangle") { pickingOnce = false; pickingPhoto = true }
-                        Button(words(.viewOnceAction), systemImage: "flame") { pickingOnce = true; pickingPhoto = true }
+                        // В открытом чате ключ ушёл бы рядом с фото: исчезающее — только под шифрованием.
+                        if line?.isEncrypted == true {
+                            Button(words(.viewOnceAction), systemImage: "flame") { pickingOnce = true; pickingPhoto = true }
+                        }
                         Button(words(.fileAction), systemImage: "doc") { pickingFile = true }
                     } label: {
                         Image(systemName: "paperclip")

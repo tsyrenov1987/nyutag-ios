@@ -32,6 +32,10 @@ final class PushDoor {
     /// Спросить разрешение и получить токен. Отказ или нет связи с APNs — `nil`.
     func requestToken() async -> Data? {
         let center = UNUserNotificationCenter.current()
+        #if DEBUG
+        // SIMCTL_CHILD_NYUTAG_UI_NO_PUSH=1 — без системного окна разрешения: на симуляторе его нечем закрыть.
+        if ProcessInfo.processInfo.environment["NYUTAG_UI_NO_PUSH"] != nil { return nil }
+        #endif
         guard (try? await center.requestAuthorization(options: [.alert, .sound, .badge])) == true else { return nil }
         if let token { return token }
         UIApplication.shared.registerForRemoteNotifications()

@@ -218,7 +218,38 @@ struct ViewOnceChip: View {
     }
 }
 
-/// Одноразовый просмотр во весь экран. Пока экран записывается или транслируется, фото скрыто.
+/// Фото на слое системного поля пароля: такой слой iOS не кладёт ни в снимок экрана, ни в запись.
+/// Если слой найти не удалось (система поменяла устройство поля), показываем фото как обычно.
+struct ScreenshotShield: UIViewRepresentable {
+    let image: UIImage
+
+    func makeUIView(context: Context) -> UIView {
+        let picture = UIImageView(image: image)
+        picture.contentMode = .scaleAspectFit
+        let field = UITextField()
+        field.isSecureTextEntry = true
+        guard let shielded = field.subviews.first else { return picture }
+        shielded.subviews.forEach { $0.removeFromSuperview() }
+        shielded.removeFromSuperview()
+        shielded.isUserInteractionEnabled = false
+        picture.translatesAutoresizingMaskIntoConstraints = false
+        shielded.addSubview(picture)
+        NSLayoutConstraint.activate([
+            picture.leadingAnchor.constraint(equalTo: shielded.leadingAnchor),
+            picture.trailingAnchor.constraint(equalTo: shielded.trailingAnchor),
+            picture.topAnchor.constraint(equalTo: shielded.topAnchor),
+            picture.bottomAnchor.constraint(equalTo: shielded.bottomAnchor),
+        ])
+        #if DEBUG
+        print("ui-check: защита от снимка экрана \(type(of: shielded))")
+        #endif
+        return shielded
+    }
+
+    func updateUIView(_ view: UIView, context: Context) {}
+}
+
+/// Одноразовый просмотр во весь экран. На снимке экрана фото нет; пока экран записывается или транслируется — тоже.
 struct ViewOnceViewer: View {
     let image: UIImage
     let close: () -> Void
@@ -230,7 +261,7 @@ struct ViewOnceViewer: View {
             if captured {
                 Image(systemName: "eye.slash").font(.largeTitle).foregroundStyle(.white.opacity(0.6))
             } else {
-                Image(uiImage: image).resizable().scaledToFit().ignoresSafeArea()
+                ScreenshotShield(image: image).ignoresSafeArea()
             }
         }
         .overlay(alignment: .topTrailing) {
