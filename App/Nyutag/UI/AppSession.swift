@@ -167,6 +167,54 @@ final class AppSession {
         try? await account?.client.setReadMarkers(roomID: roomID, fullyRead: eventID, read: eventID)
     }
 
+    // MARK: Контакты
+
+    /// С кем уже есть личный чат.
+    func knownPeople() async -> [Person] {
+        guard let account, let me else { return [] }
+        return (try? await People.known(store: account.store, me: me)) ?? []
+    }
+
+    /// Номера из книжки → кто из них в Нютаге. Сервер берёт до 500 номеров за раз.
+    func lookup(phones: [String]) async -> [String: String] {
+        guard let account else { return [:] }
+        let service = NyutagService(client: account.client)
+        var found: [String: String] = [:]
+        for start in stride(from: 0, to: phones.count, by: 500) {
+            let part = Array(phones[start..<min(start + 500, phones.count)])
+            guard let matches = try? await service.lookup(phones: part) else { break }
+            found.merge(matches) { first, _ in first }
+        }
+        return found
+    }
+
+    func searchPeople(_ term: String) async -> [Person] {
+        guard let account, let me else { return [] }
+        var found = (try? await account.client.searchUsers(term)) ?? []
+        if let server = me.split(separator: ":", maxSplits: 1).last,
+           let exact = try? await account.client.person(nick: term, server: String(server)),
+           !found.contains(where: { $0.userID == exact.userID }) {
+            found.insert(exact, at: 0)
+        }
+        return found.filter { $0.userID != me }
+    }
+
+    /// Личный чат с человеком: свой, если уже есть (приглашение принимаем), иначе новый шифрованный.
+    func openDirect(with userID: String) async -> String? {
+        guard let account, let me else { return nil }
+        if let known = await knownPeople().first(where: { $0.userID == userID }), let roomID = known.directRoom {
+            if (try? await account.store.room(roomID))?.membership == .invite {
+                guard (try? await account.client.join(roomID)) != nil else { return nil }
+            }
+            return roomID
+        }
+        let roomID = try? await account.client.createDirectRoom(userID: me, with: userID)
+        #if DEBUG
+        print("ui-check: личный чат \(roomID == nil ? "не создан" : "создан")")
+        #endif
+        return roomID
+    }
+
     #if DEBUG
     /// Самопроверка: свой шифрованный чат без участников, чтобы пробные реплики никому не уходили.
     func ensurePrivateRoom(named name: String) async {

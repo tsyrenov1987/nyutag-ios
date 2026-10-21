@@ -214,4 +214,29 @@ extension Phrase {
     static let noticeTopic = Phrase(bxr: "Тайлбари: {1}", ru: "Описание: {1}", en: "Description: {1}")
     static let noticeEncrypted = Phrase(bxr: "Бэшэгүүд нюуса шифрээр хамгаалагдана", ru: "Сообщения защищены сквозным шифрованием",
                                         en: "Messages are end-to-end encrypted")
+
+    // Контакты
+    static let inNyutag = Phrase(bxr: "Нютагта", ru: "В Нютаге", en: "On Nyutag")
+    static let callToNyutag = Phrase(bxr: "Нютагта уриха", ru: "Позвать в Нютаг", en: "Invite to Nyutag")
+    static let inviteShort = Phrase(bxr: "Уриха", ru: "Позвать", en: "Invite")
+    static let foundByName = Phrase(bxr: "Нэрээр олдобо", ru: "Нашлись по имени", en: "Found by name")
+    static let searchPeople = Phrase(bxr: "Нэрэ, ник гү, али дугаар", ru: "Имя, ник или номер", en: "Name, username or number")
+    static let nobodyFound = Phrase(bxr: "Хэншье олдоогүй", ru: "Никого не нашли", en: "Nobody found")
+    static let peopleEmpty = Phrase(bxr: "Хөөрэлдэһэн хүнүүд эндэ гараха", ru: "Здесь появятся люди, с которыми вы переписываетесь",
+                                    en: "People you talk to will show up here")
+    static let bookTitle = Phrase(bxr: "Танилнуудаа Нютагһаа олохо", ru: "Найти знакомых в Нютаге",
+                                  en: "Find people you know on Nyutag")
+    static let bookLead = Phrase(bxr: "Утаһанай дугаарнуудые Нютагай сервертэ тааруулжа харана. Дугаарнууд хадагалагдахагүй.",
+                                 ru: "Номера из телефонной книги сверим с сервером Нютага. Сервер их не сохраняет.",
+                                 en: "We check the numbers in your phone book against the Nyutag server. It does not keep them.")
+    static let bookAllow = Phrase(bxr: "Контактнуудые харуулха", ru: "Открыть доступ к контактам", en: "Allow access to contacts")
+    static let bookDenied = Phrase(bxr: "Контактнууд хаалтатай. Тааруулгануудта нээжэ болоно.",
+                                   ru: "Доступ к контактам закрыт. Его можно открыть в настройках.",
+                                   en: "Contacts access is off. You can turn it on in Settings.")
+    static let openSettings = Phrase(bxr: "Тааруулганууд", ru: "Открыть настройки", en: "Open Settings")
+    static let inviteText = Phrase(bxr: "Нютагта бэшэлдэе! Татажа абаха: https://nyutag.chat",
+                                   ru: "Давай переписываться в Нютаге! Скачать: https://nyutag.chat",
+                                   en: "Let's chat on Nyutag! Get it here: https://nyutag.chat")
+    static let cantOpenChat = Phrase(bxr: "Хөөрэлдөөн нээгдэбэгүй. Дахин оролдогты.", ru: "Не получилось открыть чат. Попробуйте ещё раз.",
+                                     en: "Couldn't open the chat. Try again.")
 }

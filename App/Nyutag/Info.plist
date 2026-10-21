@@ -28,6 +28,8 @@
 	</array>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>NSContactsUsageDescription</key>
+	<string>Нютаг сверяет номера из книжки с сервером, чтобы показать, кто из знакомых уже здесь. Номера не сохраняются.</string>
 	<key>NyutagAppGroup</key>
 	<string>$(NYUTAG_APP_GROUP)</string>
 	<key>NSAppTransportSecurity</key>

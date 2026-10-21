@@ -6,13 +6,17 @@ import SwiftUI
 
 struct HomeView: View {
     @Environment(Words.self) private var words
+    @State private var tab = 0
 
     var body: some View {
-        TabView {
-            Tab(words(.chats), systemImage: "bubble.left.and.bubble.right") { ChatListView() }
-            Tab(words(.contacts), systemImage: "person.2") { SoonView(title: words(.contacts)) }
-            Tab(words(.communities), systemImage: "circle.hexagongrid") { SoonView(title: words(.communities)) }
+        TabView(selection: $tab) {
+            Tab(words(.chats), systemImage: "bubble.left.and.bubble.right", value: 0) { ChatListView() }
+            Tab(words(.contacts), systemImage: "person.2", value: 1) { ContactsView() }
+            Tab(words(.communities), systemImage: "circle.hexagongrid", value: 2) { SoonView(title: words(.communities)) }
         }
+        #if DEBUG
+        .onAppear { if ProcessInfo.processInfo.environment["NYUTAG_UI_CONTACTS"] != nil { tab = 1 } }
+        #endif
     }
 }
 
