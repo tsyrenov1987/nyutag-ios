@@ -23,6 +23,8 @@ final class AppSession {
     private(set) var lines: [ChatLine] = []
     /// Закреплённые чаты и папки.
     private(set) var layout = ChatLayout()
+    /// Комната «Избранного», если уже заведена.
+    private(set) var savedRoom: String?
     private(set) var me: String?
     /// Чем кончилась попытка открыть историю паролем; `needsRecoveryKey`/`needsOtherDevice` разберёт экран ключей.
     private(set) var history: PasswordUnlockOutcome?
@@ -125,6 +127,7 @@ final class AppSession {
         self.account = nil
         lines = []
         layout = ChatLayout()
+        savedRoom = nil
         setScheduled(scheduled.removingAccount(account.session.userID))
         typing = [:]
         me = nil
@@ -533,6 +536,28 @@ final class AppSession {
         }
     }
 
+    // MARK: Избранное
+
+    /// Чат с собой: известный — открываем (имя по умолчанию переводим на язык телефона), иначе заводим новый.
+    func openSaved(name: String, topic: String) async -> String? {
+        guard let account, let me else { return nil }
+        let known = try? await SavedMessages.load(store: account.store)
+        if let known, let room = try? await account.store.room(known), room.membership == .join || room.membership == .invite {
+            if room.membership == .invite { _ = try? await account.client.join(known) }
+            if let title = lines.first(where: { $0.id == known })?.title, SavedMessages.needsRename(title, to: name) {
+                _ = try? await account.client.setState(roomID: known, type: EventType.name, content: ["name": .string(name)])
+            }
+            savedRoom = known
+            return known
+        }
+        let roomID = try? await account.client.createSavedMessages(name: name, topic: topic, userID: me, store: account.store)
+        #if DEBUG
+        print("ui-check: избранное \(roomID == nil ? "не создано" : "создано")")
+        #endif
+        if let roomID { savedRoom = roomID }
+        return roomID
+    }
+
     // MARK: Контакты
 
     /// С кем уже есть личный чат.
@@ -865,6 +890,7 @@ final class AppSession {
         if layoutWrites == 0, let saved = try? await ChatLayout.load(store: account.store), layoutWrites == 0, saved != layout {
             layout = saved
         }
+        if let saved = try? await SavedMessages.load(store: account.store), saved != savedRoom { savedRoom = saved }
     }
 
     static func needsResolve(_ identifier: String) -> Bool {

@@ -99,9 +99,13 @@ struct ChatListView: View {
                     }
                     .accessibilityIdentifier("me-menu")
                 }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(words(.savedMessages), systemImage: "bookmark") { openSaved() }
+                        .accessibilityIdentifier("saved-messages")
+                }
             }
             .navigationDestination(for: String.self) { roomID in ChatView(roomID: roomID) }
-            .sheet(isPresented: $menu) { MeMenu() }
+            .sheet(isPresented: $menu) { MeMenu(onSaved: openSaved) }
             .sheet(isPresented: $keySheet) { HistoryKeyView(canRelock: session.canRelockHistory) }
             .alert(words(naming?.isNew == false ? .folderRename : .folderNew), isPresented: $naming.present()) {
                 TextField(words(.folderName), text: $folderName)
@@ -130,6 +134,11 @@ struct ChatListView: View {
             #if DEBUG
             .onChange(of: session.lines.count, initial: true) { openForScreenshots() }
             .task { await tryLayout() }
+            .task {
+                guard ProcessInfo.processInfo.environment["NYUTAG_UI_SAVED"] != nil else { return }
+                while session.lines.isEmpty { try? await Task.sleep(for: .milliseconds(300)) }
+                openSaved()
+            }
             .onChange(of: session.historyLocked, initial: true) {
                 if session.historyLocked, ProcessInfo.processInfo.environment["NYUTAG_UI_TRY_KEY"] != nil { keySheet = true }
             }
@@ -154,6 +163,16 @@ struct ChatListView: View {
                 }
             }
             Button(words(.folderNew), systemImage: "folder.badge.plus") { naming = FolderNaming(roomID: roomID) }
+        }
+    }
+
+    private func openSaved() {
+        Task {
+            guard let roomID = await session.openSaved(name: words(.savedMessages), topic: words(.savedMessagesTopic)) else { return }
+            path = [roomID]
+            #if DEBUG
+            print("ui-check: открыто избранное")
+            #endif
         }
     }
 
@@ -206,7 +225,11 @@ struct ChatRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            Pillow(seed: line.id, title: line.title.isEmpty ? "·" : line.title)
+            if line.id == session.savedRoom {
+                SavedPillow()
+            } else {
+                Pillow(seed: line.id, title: line.title.isEmpty ? "·" : line.title)
+            }
             VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(line.title.isEmpty ? words(.emptyChat) : line.title)
@@ -404,6 +427,7 @@ struct MeMenu: View {
     @Environment(AppSession.self) private var session
     @Environment(\.dismiss) private var dismiss
     @State private var askSignOut = false
+    let onSaved: () -> Void
 
     var body: some View {
         NavigationStack {
@@ -417,6 +441,17 @@ struct MeMenu: View {
                         }
                     }
                     .padding(.vertical, 6)
+                }
+                Section {
+                    Button {
+                        dismiss()
+                        onSaved()
+                    } label: {
+                        Label { Text(words(.savedMessages)).foregroundStyle(Theme.ink) } icon: {
+                            Image(systemName: "bookmark.fill").foregroundStyle(Theme.sky)
+                        }
+                    }
+                    .accessibilityIdentifier("menu-saved")
                 }
                 Section(words(.language)) {
                     ForEach(Lang.allCases) { lang in
@@ -448,6 +483,23 @@ struct MeMenu: View {
                 Button(words(.cancel), role: .cancel) {}
             }
         }
+    }
+}
+
+/// Значок «Избранного» вместо буквы: закладка на голубом.
+struct SavedPillow: View {
+    var size: CGFloat = 52
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: size * 0.34, style: .continuous)
+            .fill(Theme.sky.gradient)
+            .overlay {
+                Image(systemName: "bookmark.fill")
+                    .font(.system(size: size * 0.4, weight: .semibold))
+                    .foregroundStyle(.white)
+            }
+            .frame(width: size, height: size)
+            .accessibilityHidden(true)
     }
 }
 

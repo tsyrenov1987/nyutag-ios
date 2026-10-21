@@ -159,7 +159,13 @@ struct ChatView: View {
                     }
                     .pickerStyle(.menu)
                 } label: {
-                    Pillow(seed: roomID, title: line?.title ?? "·", size: 32)
+                    Group {
+                        if roomID == session.savedRoom {
+                            SavedPillow(size: 32)
+                        } else {
+                            Pillow(seed: roomID, title: line?.title ?? "·", size: 32)
+                        }
+                    }
                         .overlay(alignment: .bottomTrailing) {
                             if rule.isOn {
                                 Image(systemName: "timer").font(.system(size: 10, weight: .bold))

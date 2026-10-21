@@ -321,6 +321,9 @@ extension Phrase {
     static let scheduleBanner = Phrase(bxr: "Һүүлдэ эльгээхэ бэшэг: {1}", ru: "Отложенных сообщений: {1}", en: "Scheduled messages: {1}")
     static let scheduleSendNow = Phrase(bxr: "Мүнөө эльгээхэ", ru: "Отправить сейчас", en: "Send now")
     static let schedulePast = Phrase(bxr: "Ерээдүйн саг шэлэгты.", ru: "Выберите время в будущем.", en: "Pick a time in the future.")
+    static let savedMessages = Phrase(bxr: "Хадагалһан", ru: "Избранное", en: "Saved messages")
+    static let savedMessagesTopic = Phrase(bxr: "Өөртөө тэмдэглэл, холбоос, файлнууд", ru: "Заметки, ссылки и файлы для себя",
+                                           en: "Notes, links and files for yourself")
     static let scheduledReminder = Phrase(bxr: "Һүүлдэ эльгээхэ бэшэг эльгээгдээгүй", ru: "Отложенное сообщение ещё не ушло",
                                           en: "A scheduled message hasn't been sent yet")
     static let autoDelete = Phrase(bxr: "Бэшэгүүдые автоматаар усадхаха", ru: "Автоудаление сообщений",
