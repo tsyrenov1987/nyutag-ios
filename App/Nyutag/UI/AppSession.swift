@@ -44,6 +44,8 @@ final class AppSession {
     @ObservationIgnored private var machine: CryptoMachine?
     @ObservationIgnored private var pump: Task<Void, Never>?
     @ObservationIgnored private let opened = OpenedCache()
+    /// Свежие события, которые пока нечем расшифровать: в них может быть сигнал звонка.
+    @ObservationIgnored private var lockedSignals: [(event: Event, roomID: String)] = []
     /// Скачанные вложения. Зашифрованные лежат на диске шифртекстом, открытым текстом — только в памяти.
     @ObservationIgnored private var media: MediaCache?
     /// Пароль этого входа, только в памяти и только пока история заперта старым ключом: им её перезапрём.
@@ -343,7 +345,14 @@ final class AppSession {
         let encrypted = (try? await account.store.room(roomID))?.isEncrypted ?? false
         if encrypted {
             guard let machine else { return nil }
-            return try? await machine.sendEncrypted(roomID: roomID, type: type, content: content, transactionID: transactionID)
+            do {
+                return try await machine.sendEncrypted(roomID: roomID, type: type, content: content, transactionID: transactionID)
+            } catch {
+                #if DEBUG
+                print("ui-check: шифрованная отправка \(type) не прошла: \(error)")
+                #endif
+                return nil
+            }
         }
         return try? await account.client.send(roomID: roomID, type: type, content: content, transactionID: transactionID)
     }
@@ -496,10 +505,18 @@ final class AppSession {
         }
         Task { [weak self] in await self?.enablePush() }
         if let voip = CallRinger.shared.voipToken { Task { [weak self] in await self?.enableVoip(voip) } }
+        #if DEBUG
+        print("ui-check: это устройство \(account.session.deviceID)")
+        #endif
         startCalls(account)
         let updates = await engine.updates()
         pump = Task { [weak self] in
             for await update in updates {
+                #if DEBUG
+                if !update.response.toDevice.isEmpty, let failure = await self?.machine?.lastToDeviceFailure {
+                    print("ui-check: to-device сбой: \(failure)")
+                }
+                #endif
                 self?.noteTyping(update.response)
                 await self?.absorbCalls(update.response)
                 await self?.followDeviceCheck()
@@ -574,7 +591,13 @@ final class AppSession {
                 guard let self, await self.postSignal(signal, to: roomID) else { throw CallPostFailure() }
             },
             openTransport: { slot in await RelayLink.open(client: client, slot: slot) },
-            makeVoice: { DeviceVoice(managesSession: false) })
+            makeVoice: {
+                DeviceVoice(managesSession: false, log: { line in
+                    #if DEBUG
+                    print("ui-check: \(line)")
+                    #endif
+                })
+            })
         calls.name = { [weak self] roomID, peer in
             let title = self?.lines.first { $0.id == roomID }?.title ?? ""
             return title.isEmpty ? peer : title
@@ -597,24 +620,43 @@ final class AppSession {
             return (try? await account.client.send(roomID: roomID, type: signal.eventType, content: signal.content,
                                                     transactionID: TransactionID.make())) != nil
         }
-        return await post(signal.eventType, signal.content, to: roomID) != nil
+        let sent = await post(signal.eventType, signal.content, to: roomID) != nil
+        #if DEBUG
+        print("ui-check: сигнал \(signal.eventType) \(sent ? "ушёл" : "не ушёл")")
+        #endif
+        return sent
     }
 
     /// Сигналы звонков из свежей синхронизации. Старше двух минут не смотрим: звонок уже кончился, а расшифровка
-    /// всей истории первой синхронизации стоила бы дорого.
+    /// всей истории первой синхронизации стоила бы дорого. Ключ сеанса нового устройства собеседника часто
+    /// приходит синхронизацией позже самого сигнала: нераскрытые свежие события пробуем снова при следующих.
     private func absorbCalls(_ response: SyncResponse) async {
         let open = opener()
         let fresh = Int(Date().timeIntervalSince1970 * 1000) - 120_000
+        let waiting = lockedSignals.filter { ($0.event.originServerTS ?? 0) > fresh }
+        lockedSignals = []
+        var arrived: [(event: Event, roomID: String)] = waiting
         for (roomID, room) in response.joined {
             for event in room.timeline.events where (event.originServerTS ?? 0) > fresh {
-                var clear = event
-                if event.type == EventType.encrypted {
-                    guard let opened = await open(event, roomID) else { continue }
-                    clear = opened
-                }
-                guard let message = CallMessage(clear, roomID: roomID) else { continue }
-                await calls.absorb(message)
+                arrived.append((event, roomID))
             }
+        }
+        for (event, roomID) in arrived {
+            var clear = event
+            if event.type == EventType.encrypted {
+                guard let opened = await open(event, roomID) else {
+                    if lockedSignals.count < 64 { lockedSignals.append((event, roomID)) }
+                    continue
+                }
+                clear = opened
+            }
+            guard let message = CallMessage(clear, roomID: roomID) else { continue }
+            #if DEBUG
+            if waiting.contains(where: { $0.event.eventID == event.eventID }) {
+                print("ui-check: сигнал \(clear.type) раскрыт со второй попытки")
+            }
+            #endif
+            await calls.absorb(message)
         }
     }
 

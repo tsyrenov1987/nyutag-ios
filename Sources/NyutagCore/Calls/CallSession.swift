@@ -274,14 +274,15 @@ public actor CallSession {
         guard !phase.isEnded else { return }
         set(.ended(reason))
         phaseSink.finish()
-        deadline?.cancel()
-        lossTimer?.cancel()
-        reader?.cancel()
         voice?.stop()
         voice = nil
         outbox.current?.close()
         outbox.current = nil
+        // Конец часто объявляет сам таймер или чтец: гасим их после отправки, иначе отмена оборвёт и её.
         if notify { try? await env.post(.end(callID: callID, reason: reason), roomID) }
+        deadline?.cancel()
+        lossTimer?.cancel()
+        reader?.cancel()
     }
 }
 

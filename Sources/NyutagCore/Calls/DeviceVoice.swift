@@ -10,10 +10,17 @@ public final class DeviceVoice: VoiceIO, @unchecked Sendable {
     private let lock = NSLock()
     /// С CallKit сессию звука включает система (provider didActivate), сами её не трогаем.
     private let managesSession: Bool
+    private var watchers: [NSObjectProtocol] = []
+    /// Журнал отладки: перезапуски движка и их причины.
+    private let log: @Sendable (String) -> Void
 
-    public init(managesSession: Bool = true) {
+    public init(managesSession: Bool = true, log: @escaping @Sendable (String) -> Void = { _ in }) {
         self.managesSession = managesSession
+        self.log = log
     }
+
+    /// Движок работает (для журнала отладки).
+    public var isRunning: Bool { engine.isRunning }
 
     public func start(_ pipe: VoicePipe) throws {
         lock.lock()
@@ -66,11 +73,38 @@ public final class DeviceVoice: VoiceIO, @unchecked Sendable {
         engine.connect(source, to: engine.mainMixerNode, format: target)
         engine.prepare()
         try engine.start()
+        log("звук: движок запущен, вход \(inputFormat.sampleRate) Гц \(inputFormat.channelCount) кан.")
+        // Смена маршрута или включение сессии системой (CallKit) останавливает движок: запускаем снова.
+        let center = NotificationCenter.default
+        watchers.append(center.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine,
+                                           queue: nil) { [weak self] _ in self?.revive("смена конфигурации") })
+        #if os(iOS)
+        watchers.append(center.addObserver(forName: AVAudioSession.interruptionNotification, object: nil,
+                                           queue: nil) { [weak self] note in
+            let kind = (note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt).flatMap(AVAudioSession.InterruptionType.init)
+            if kind == .ended { self?.revive("конец прерывания") } else { self?.log("звук: прерывание") }
+        })
+        #endif
+    }
+
+    private func revive(_ why: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard source != nil, !engine.isRunning else { return log("звук: \(why), движок работает") }
+        engine.prepare()
+        do {
+            try engine.start()
+            log("звук: \(why), движок перезапущен")
+        } catch {
+            log("звук: \(why), перезапуск не удался: \(error)")
+        }
     }
 
     public func stop() {
         lock.lock()
         defer { lock.unlock() }
+        for watcher in watchers { NotificationCenter.default.removeObserver(watcher) }
+        watchers = []
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
         if let source { engine.detach(source) }

@@ -18,8 +18,17 @@ struct LiveCallPeerTests {
         let dial = env["NYUTAG_CALL_PEER"] == "dial"
         let talk = env["NYUTAG_CALL_SECONDS"].flatMap(Double.init) ?? 20
         let client = MatrixClient(homeserver: LiveEnv.homeserver!)
-        let session = try await client.login(user: LiveE2EEEnv.user!, password: LiveE2EEEnv.password!,
+        let session: Session
+        do {
+            session = try await client.login(user: LiveE2EEEnv.user!, password: LiveE2EEEnv.password!,
                                              deviceDisplayName: "Нютаг тест звонка (Мак)")
+        } catch let error as MatrixError where error.retryAfter != nil {
+            // Сервер ограничивает частые входы: ждём, сколько просит, и пробуем ещё раз.
+            print("call peer: вход отложен на \(error.retryAfter!)")
+            try await Task.sleep(for: error.retryAfter! + .seconds(2))
+            session = try await client.login(user: LiveE2EEEnv.user!, password: LiveE2EEEnv.password!,
+                                             deviceDisplayName: "Нютаг тест звонка (Мак)")
+        }
         do {
             try await run(client, session, dial: dial, talk: talk)
         } catch {
@@ -40,6 +49,8 @@ struct LiveCallPeerTests {
 
         let phone = "@\(LiveEnv.user!):nyutag.chat"
         let roomID = try await sharedRoom(with: phone, store: store, client: client, me: session.userID)
+        let phoneDevices = try await machine.devices(for: [phone])
+        print("call peer: устройства телефона: \(phoneDevices.map(\.deviceID).joined(separator: ", "))")
         print("call peer: комната с телефоном \(roomID.prefix(8))…, шифр \(try await store.room(roomID)?.isEncrypted == true)")
 
         let port = UInt16(ProcessInfo.processInfo.environment["NYUTAG_TEST_SOCKS"]!)!

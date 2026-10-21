@@ -137,6 +137,8 @@ extension CallDesk {
             Task { try? await Task.sleep(for: .seconds(seconds)); await session.hangUp() }
         }
         Task {
+            let audio = AVAudioSession.sharedInstance()
+            print("ui-check: микрофон \(AVAudioApplication.shared.recordPermission.rawValue), категория \(audio.category.rawValue), выход \(audio.currentRoute.outputs.map(\.portType.rawValue))")
             while await !session.phase.isEnded {
                 try? await Task.sleep(for: .seconds(2))
                 guard let stats = await session.stats else { continue }

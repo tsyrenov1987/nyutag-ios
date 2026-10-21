@@ -117,6 +117,18 @@ import Testing
         #expect(server.oneTimeKeyCount(user: Self.bob, device: "B1") == 50)
     }
 
+    /// Каждый запуск приложения публикует ключи без счётчика сервера: одноразовых ключей не должно прибывать.
+    @Test func relaunchDoesNotPileUpOneTimeKeys() async throws {
+        let server = FakeHomeserver()
+        let session = server.session(user: Self.bob, device: "B1")
+        let store = try Store.inMemory()
+        for _ in 0..<4 {
+            let machine = try await CryptoMachine(client: server.client(for: session), store: store, session: session)
+            try await machine.publishKeys(serverCount: nil)
+        }
+        #expect(server.oneTimeKeyCount(user: Self.bob, device: "B1") == 50)
+    }
+
     @Test func roomKeysGoToBackup() async throws {
         let server = FakeHomeserver()
         let alice = try await device(server, Self.alice, "A1")

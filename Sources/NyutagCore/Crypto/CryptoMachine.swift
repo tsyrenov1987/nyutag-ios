@@ -122,7 +122,12 @@ public actor CryptoMachine: SyncObserver {
     public func publishKeys(serverCount: Int?) async throws(E2EEError) -> Int {
         let published = (try? await store.meta("e2ee_device_keys_published")) == "1"
         let target = OlmAccount.maxOneTimeKeys / 2
-        let current = serverCount ?? 0
+        // При запуске счётчик сервера неизвестен: спрашиваем, а не считаем нулём. Иначе каждый запуск доливает
+        // ключи сверх тех, что помнит устройство, и самые старые на сервере остаются без закрытой части.
+        var current = serverCount ?? 0
+        if serverCount == nil, published {
+            do { current = try await client.uploadKeys()["signed_curve25519"] ?? 0 } catch { throw .server(error) }
+        }
         if current < target, account.unpublishedOneTimeKeys.isEmpty {
             account.generateOneTimeKeys(target - current)
         }
@@ -174,6 +179,9 @@ public actor CryptoMachine: SyncObserver {
         if (try? await store.cryptoBlob("backup_key")) != nil { _ = try? await uploadRoomKeysToBackup() }
     }
 
+    /// Последняя to-device посылка, которую не удалось открыть или принять: для журнала отладки.
+    public private(set) var lastToDeviceFailure: String?
+
     /// Расшифровывает to-device сообщения Olm и принимает ключи комнат. Возвращает расшифрованные события.
     public func receiveToDevice(_ events: [Event]) async -> [Event] {
         var decrypted: [Event] = []
@@ -187,10 +195,15 @@ public actor CryptoMachine: SyncObserver {
             }
         }
         for event in events where event.type == EventType.encrypted {
-            guard let inner = try? await decryptToDevice(event) else { continue }
+            let inner: Event
+            do { inner = try await decryptToDevice(event) } catch {
+                lastToDeviceFailure = "\(event.sender ?? "?"): \(error)"
+                continue
+            }
             decrypted.append(inner)
             switch inner.type {
-            case EventType.roomKey: try? await acceptRoomKey(inner)
+            case EventType.roomKey:
+                do { try await acceptRoomKey(inner) } catch { lastToDeviceFailure = "ключ комнаты: \(error)" }
             case EventType.forwardedRoomKey: try? await acceptForwardedRoomKey(inner)
             case Self.secretSendType: try? await acceptSecret(inner)
             case let type where VerificationEvent.all.contains(type): await receiveVerification(inner)
