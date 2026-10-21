@@ -35,6 +35,11 @@ public struct VerificationFlow: Sendable, Equatable {
     public internal(set) var decimals: [Int]?
     /// Комната, в которой идёт проверка; nil — проверка через to-device.
     public internal(set) var roomID: String? = nil
+
+    /// Эмодзи сверки с названиями, в том порядке, в каком их показывает другая сторона.
+    public var emojiSymbols: [(emoji: String, name: String, nameRU: String)] {
+        (emoji ?? []).map { SasEmoji.table[$0] }
+    }
 }
 
 /// Внутреннее состояние проверки: ключ SAS живёт только в памяти.

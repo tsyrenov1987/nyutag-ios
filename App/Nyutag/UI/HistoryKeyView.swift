@@ -94,6 +94,19 @@ struct HistoryKeyView: View {
                     .buttonStyle(.plain)
                     .disabled(!canSubmit)
                     .accessibilityIdentifier("history-open")
+
+                    // Ключа под рукой нет: ключи переписки может передать устройство, где вы уже вошли.
+                    Button(words(.confirmFromDevice)) {
+                        dismiss()
+                        Task {
+                            try? await Task.sleep(for: .milliseconds(600))
+                            session.showDeviceCheck = true
+                        }
+                    }
+                    .font(.callout.weight(.semibold)).foregroundStyle(Theme.sky)
+                    .frame(maxWidth: .infinity)
+                    .disabled(busy || done)
+                    .accessibilityIdentifier("history-other-device")
                 }
                 .padding(20)
             }

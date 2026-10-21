@@ -6,6 +6,7 @@ import SwiftUI
 
 struct HomeView: View {
     @Environment(Words.self) private var words
+    @Environment(AppSession.self) private var session
     @State private var tab = 0
 
     var body: some View {
@@ -14,8 +15,17 @@ struct HomeView: View {
             Tab(words(.contacts), systemImage: "person.2", value: 1) { ContactsView() }
             Tab(words(.communities), systemImage: "circle.hexagongrid", value: 2) { SoonView(title: words(.communities)) }
         }
+        .sheet(isPresented: Bindable(session).showDeviceCheck, onDismiss: { Task { await session.closeDeviceCheck() } }) {
+            DeviceCheckView()
+        }
         #if DEBUG
         .onAppear { if ProcessInfo.processInfo.environment["NYUTAG_UI_CONTACTS"] != nil { tab = 1 } }
+        .task {
+            // Самопроверка: NYUTAG_UI_DEVICE=ask — попросить подтверждение у своих устройств, когда машина поднимется.
+            guard ProcessInfo.processInfo.environment["NYUTAG_UI_DEVICE"] == "ask" else { return }
+            try? await Task.sleep(for: .seconds(6))
+            session.showDeviceCheck = true
+        }
         #endif
     }
 }
@@ -32,6 +42,11 @@ struct ChatListView: View {
             ScrollView {
                 if session.historyLocked {
                     LockedHistoryCard { keySheet = true }
+                        .padding(.horizontal, 12)
+                        .padding(.top, 4)
+                }
+                if session.needsOtherDevice {
+                    UnconfirmedSignInCard { session.showDeviceCheck = true }
                         .padding(.horizontal, 12)
                         .padding(.top, 4)
                 }

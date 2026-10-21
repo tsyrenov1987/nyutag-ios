@@ -13,6 +13,8 @@ final class AppSession {
 
     enum KeyFailure: Error, Equatable { case wrongKey, noNetwork, broken }
 
+    enum DeviceCheckFailure: Error, Equatable { case noOtherDevice, noNetwork }
+
     private(set) var phase: Phase = .launching
     private(set) var lines: [ChatLine] = []
     private(set) var me: String?
@@ -22,6 +24,14 @@ final class AppSession {
     private(set) var revision = 0
     /// Кто сейчас набирает текст: комната → собеседники, кроме нас.
     private(set) var typing: [String: [String]] = [:]
+    /// Проверка своего устройства по эмодзи: этот вход просит подтверждения или подтверждает новый вход.
+    private(set) var deviceCheck: VerificationFlow?
+    /// Имя другого устройства из списка устройств учётки.
+    private(set) var deviceCheckName: String?
+    /// Вход подтверждён, ключи переписки ещё идут с другого устройства.
+    private(set) var awaitingKeys = false
+    /// Окно проверки открыто: его поднимает пришедший запрос или карточка «подтвердите вход».
+    var showDeviceCheck = false
 
     @ObservationIgnored private let keeper: AccountKeeper?
     @ObservationIgnored private var account: SignedInAccount?
@@ -33,6 +43,10 @@ final class AppSession {
     @ObservationIgnored private var media: MediaCache?
     /// Пароль этого входа, только в памяти и только пока история заперта старым ключом: им её перезапрём.
     @ObservationIgnored private var heldPassword: String?
+    /// Проверки, которые человек закрыл или которые мы уже начали: второй раз не поднимаем и не начинаем.
+    @ObservationIgnored private var closedChecks: Set<String> = []
+    @ObservationIgnored private var startedChecks: Set<String> = []
+    @ObservationIgnored private var adoptedChecks: Set<String> = []
 
     init(keeper: AccountKeeper? = .app()) {
         self.keeper = keeper
@@ -82,7 +96,7 @@ final class AppSession {
         guard let account, let keeper else { return }
         await stop()
         try? await keeper.signOut(account)
-        Self.rememberLockedHistory(false, for: account.session.userID)
+        Self.rememberHistory(nil, for: account.session.userID)
         try? await media?.clear()
         media = nil
         heldPassword = nil
@@ -91,6 +105,10 @@ final class AppSession {
         typing = [:]
         me = nil
         history = nil
+        deviceCheck = nil
+        deviceCheckName = nil
+        awaitingKeys = false
+        showDeviceCheck = false
         phase = .signedOut
     }
 
@@ -117,7 +135,7 @@ final class AppSession {
             }
             heldPassword = nil
             history = .opened(imported: imported)
-            Self.rememberLockedHistory(false, for: me)
+            Self.rememberHistory(nil, for: me)
             await refresh()
             revision += 1
         } catch .wrongRecoveryKey {
@@ -130,14 +148,144 @@ final class AppSession {
         }
     }
 
-    /// Флаг без секретов: карточка «старые сообщения закрыты» должна пережить перезапуск.
-    private static func rememberLockedHistory(_ locked: Bool, for userID: String) {
+    /// Флаг без секретов: карточки «старые сообщения закрыты» и «подтвердите вход» должны пережить перезапуск.
+    private static func rememberHistory(_ outcome: PasswordUnlockOutcome?, for userID: String) {
         let key = "nyutag.historyLocked.\(userID)"
-        if locked { UserDefaults.standard.set(true, forKey: key) } else { UserDefaults.standard.removeObject(forKey: key) }
+        switch outcome {
+        case .needsRecoveryKey: UserDefaults.standard.set(true, forKey: key)
+        case .needsOtherDevice: UserDefaults.standard.set("device", forKey: key)
+        default: UserDefaults.standard.removeObject(forKey: key)
+        }
     }
 
-    private static func lockedHistoryRemembered(for userID: String) -> Bool {
-        UserDefaults.standard.bool(forKey: "nyutag.historyLocked.\(userID)")
+    private static func rememberedHistory(for userID: String) -> PasswordUnlockOutcome? {
+        let value = UserDefaults.standard.object(forKey: "nyutag.historyLocked.\(userID)")
+        if value as? String == "device" { return .needsOtherDevice }
+        return value as? Bool == true ? .needsRecoveryKey : nil
+    }
+
+    // MARK: Подтверждение с другого устройства
+
+    /// Этот вход ещё не подтверждён: ключей кросс-подписи нет, хранилища ключей на сервере тоже.
+    var needsOtherDevice: Bool { history == .needsOtherDevice }
+
+    /// Попросить подтверждение у своих других устройств: там появится запрос, потом те же эмодзи.
+    func askOtherDevice() async throws(DeviceCheckFailure) {
+        guard let machine, let me else { throw .noNetwork }
+        do {
+            let id = try await machine.requestVerification(userID: me)
+            deviceCheck = await machine.verification(id)
+            deviceCheckName = nil
+        } catch .badPayload {
+            throw .noOtherDevice
+        } catch {
+            throw .noNetwork
+        }
+    }
+
+    /// «Это я»: согласиться на запрос нового входа.
+    func acceptDeviceCheck() async {
+        guard let machine, let id = deviceCheck?.transactionID else { return }
+        // Свои задачи: экран может закрыться или перерисоваться посреди обмена, а недосланный шаг повесит проверку.
+        try? await Task { try await machine.acceptVerification(id) }.value
+        await followDeviceCheck()
+    }
+
+    func confirmEmoji() async {
+        guard let machine, let id = deviceCheck?.transactionID else { return }
+        do {
+            try await Task { try await machine.confirmSas(id) }.value
+        } catch {
+            #if DEBUG
+            print("ui-check: сверка не закончена: \(error)")
+            #endif
+        }
+        await followDeviceCheck()
+    }
+
+    /// Эмодзи разные или «это не я»: проверка отменяется у обеих сторон.
+    func rejectDeviceCheck(mismatch: Bool) async {
+        guard let machine, let id = deviceCheck?.transactionID else { return }
+        await Task {
+            await machine.cancelVerification(id, code: mismatch ? "m.mismatched_sas" : "m.user",
+                                             reason: mismatch ? "Эмодзи не совпали" : "Отменено пользователем")
+        }.value
+        await followDeviceCheck()
+    }
+
+    /// Окно закрыто: незаконченная проверка отменяется.
+    func closeDeviceCheck() async {
+        showDeviceCheck = false
+        guard let flow = deviceCheck else { return }
+        closedChecks.insert(flow.transactionID)
+        switch flow.state {
+        case .done, .cancelled: break
+        default: await machine?.cancelVerification(flow.transactionID)
+        }
+        deviceCheck = nil
+        deviceCheckName = nil
+    }
+
+    /// После каждой синхронизации и каждого действия: новое состояние проверки, пришедший запрос, ключи.
+    private func followDeviceCheck() async {
+        guard let machine, let me else { return }
+        if let current = deviceCheck {
+            if let fresh = await machine.verification(current.transactionID), fresh != current { deviceCheck = fresh }
+        } else if let incoming = await machine.verificationFlows.first(where: {
+            $0.incoming && $0.otherUserID == me && $0.roomID == nil && $0.state == .requested
+                && !closedChecks.contains($0.transactionID)
+        }) {
+            deviceCheck = incoming
+            showDeviceCheck = true
+        }
+        guard let flow = deviceCheck else { return }
+        if deviceCheckName == nil, let other = flow.otherDeviceID {
+            let device = try? await machine.devices(for: [me]).first { $0.deviceID == other }
+            deviceCheckName = device?.displayName.flatMap { $0.isEmpty ? nil : $0 }
+        }
+        if flow.state == .ready, startedChecks.insert(flow.transactionID).inserted {
+            Task { await startEmoji(flow.transactionID, afterPause: flow.incoming) }
+        }
+        if flow.state == .done, history == .needsOtherDevice || history == .needsRecoveryKey,
+           adoptedChecks.insert(flow.transactionID).inserted {
+            awaitingKeys = true
+            Task { await adoptKeysFromOtherDevice() }
+        }
+    }
+
+    /// Начинает тот, кто просил; на чужой запрос сначала ждём начала оттуда и только потом начинаем сами.
+    private func startEmoji(_ id: String, afterPause: Bool) async {
+        guard let machine else { return }
+        if afterPause { try? await Task.sleep(for: .seconds(3)) }
+        if await machine.verification(id)?.state == .ready { try? await machine.startSas(id) }
+        if deviceCheck?.transactionID == id, let fresh = await machine.verification(id) { deviceCheck = fresh }
+    }
+
+    /// Ключи кросс-подписи и бэкапа идут с проверенного устройства отдельными сообщениями. Ждём их до 30 секунд.
+    /// Хранилища на сервере не было — заводим его под паролем этого входа, и следующим входам хватит пароля.
+    private func adoptKeysFromOtherDevice() async {
+        guard let machine, let me else { return }
+        for _ in 0..<30 {
+            if await machine.hasCrossSigningKeys, await machine.hasBackupKey { break }
+            try? await Task.sleep(for: .seconds(1))
+        }
+        guard await machine.hasCrossSigningKeys else {
+            awaitingKeys = false
+            return
+        }
+        if history == .needsOtherDevice, let heldPassword {
+            history = (try? await machine.unlockWithPassword(heldPassword)) ?? .opened(imported: 0)
+        } else {
+            history = .opened(imported: 0)
+        }
+        #if DEBUG
+        print("ui-check: ключи с другого устройства пришли, история: \(history.map { "\($0)" } ?? "?")")
+        #endif
+        heldPassword = nil
+        awaitingKeys = false
+        Self.rememberHistory(nil, for: me)
+        await refresh()
+        revision += 1
     }
 
     // MARK: Открытый чат
@@ -324,13 +472,13 @@ final class AppSession {
             if let password {
                 // Пароль уже проверен сервером: им же запираем или открываем хранилище ключей.
                 history = try? await machine.unlockWithPassword(password)
-                if history == .needsRecoveryKey { heldPassword = password }
-                Self.rememberLockedHistory(history == .needsRecoveryKey, for: account.session.userID)
+                if history == .needsRecoveryKey || history == .needsOtherDevice { heldPassword = password }
+                Self.rememberHistory(history, for: account.session.userID)
                 #if DEBUG
                 print("ui-check: история по паролю: \(history.map { "\($0)" } ?? "ошибка")")
                 #endif
-            } else if Self.lockedHistoryRemembered(for: account.session.userID) {
-                history = .needsRecoveryKey
+            } else if let remembered = Self.rememberedHistory(for: account.session.userID) {
+                history = remembered
             }
         } catch {
             // Без машины переписка в шифрованных чатах остаётся под замком, остальное работает.
@@ -339,6 +487,7 @@ final class AppSession {
         pump = Task { [weak self] in
             for await update in updates {
                 self?.noteTyping(update.response)
+                await self?.followDeviceCheck()
                 await self?.refresh()
                 self?.revision += 1
             }

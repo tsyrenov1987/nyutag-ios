@@ -85,6 +85,11 @@ extension CryptoMachine {
         get async { (try? await store.cryptoBlob(CrossSigningKind.selfSigning.blobName)) != nil }
     }
 
+    /// Есть ли на этом устройстве ключ бэкапа ключей комнат.
+    public var hasBackupKey: Bool {
+        get async { (try? await store.cryptoBlob("backup_key")) != nil }
+    }
+
     // MARK: Ключи из SSSS
 
     /// Поднять ключи кросс-подписи из SSSS по recovery-коду и подписать ими это устройство.

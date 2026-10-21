@@ -253,4 +253,39 @@ extension Phrase {
                                    en: "Let's chat on Nyutag! Get it here: https://nyutag.chat")
     static let cantOpenChat = Phrase(bxr: "Хөөрэлдөөн нээгдэбэгүй. Дахин оролдогты.", ru: "Не получилось открыть чат. Попробуйте ещё раз.",
                                      en: "Couldn't open the chat. Try again.")
+
+    // Подтверждение входа с другого устройства
+    static let otherDeviceTitle = Phrase(bxr: "Оролтоо баталагты", ru: "Подтвердите вход", en: "Confirm this sign-in")
+    static let otherDeviceLead = Phrase(bxr: "Урдань ороһон утаһан гү, компьютер дээрэ Нютаг нээгты",
+                                        ru: "Откройте Нютаг там, где вы уже вошли", en: "Open Nyutag where you're already signed in")
+    static let otherDeviceWait = Phrase(
+        bxr: "Нүгөө төхөөрэмжэ дээрээ Нютаг нээгты. Тэндэ асуудал гараха, тэрэниие баталагты.",
+        ru: "Откройте Нютаг на другом устройстве. Там появится запрос, подтвердите его.",
+        en: "Open Nyutag on your other device. A request will appear there; confirm it.")
+    static let newSignInTitle = Phrase(bxr: "Шэнэ оролто", ru: "Новый вход", en: "New sign-in")
+    static let newSignInAsk = Phrase(
+        bxr: "«{1}» таны бэшэгүүдые харахаар асууна. Та өөрөө оролдоо һаа, баталжа, эмодзинуудые тааруулагты.",
+        ru: "«{1}» просит доступ к вашей переписке. Если это вы, подтвердите и сверьте эмодзи.",
+        en: "“{1}” is asking for access to your chats. If this is you, confirm and compare the emoji.")
+    static let anotherDevice = Phrase(bxr: "Нүгөө төхөөрэмжэ", ru: "Другое устройство", en: "Another device")
+    static let itsMe = Phrase(bxr: "Энэ би", ru: "Это я", en: "It's me")
+    static let notMe = Phrase(bxr: "Энэ би бэшэ", ru: "Это не я", en: "Not me")
+    static let matchingKeys = Phrase(bxr: "Түлхюурнүүдые тааруулжа байна…", ru: "Сверяем ключи…", en: "Checking keys…")
+    static let compareEmoji = Phrase(bxr: "Нүгөө дэлгэсэ дээрэхитэй тааруулагты", ru: "Сравните с экраном другого устройства",
+                                     en: "Compare with the screen of your other device")
+    static let emojiMatch = Phrase(bxr: "Таарана", ru: "Совпадают", en: "They match")
+    static let emojiDiffer = Phrase(bxr: "Таарахагүй", ru: "Не совпадают", en: "They don't match")
+    static let waitOtherSide = Phrase(bxr: "Нүгөө төхөөрэмжын баталгые хүлеэнэбди…", ru: "Ждём подтверждения на другом устройстве…",
+                                      en: "Waiting for your other device…")
+    static let signInConfirmed = Phrase(bxr: "Оролто баталагдаба", ru: "Вход подтверждён", en: "Sign-in confirmed")
+    static let keysComing = Phrase(bxr: "Бэшэгүүдэй түлхюурнүүдые абажа байна…", ru: "Получаем ключи переписки…",
+                                   en: "Getting your chat keys…")
+    static let checkStopped = Phrase(bxr: "Шалгалта зогсобо", ru: "Проверка остановлена", en: "Check stopped")
+    static let emojiMismatch = Phrase(bxr: "Эмодзинууд таарабагүй, оролто баталагдабагүй",
+                                      ru: "Эмодзи не совпали, вход не подтверждён", en: "The emoji didn't match. Sign-in not confirmed.")
+    static let noOtherDevice = Phrase(bxr: "Нютагтай нүгөө төхөөрэмжэ олдобогүй", ru: "Других устройств с Нютагом не нашли",
+                                      en: "No other devices with Nyutag found")
+    static let confirmFromDevice = Phrase(bxr: "Нүгөө төхөөрэмжөөр баталха", ru: "Подтвердить с другого устройства",
+                                          en: "Confirm from another device")
+    static let close = Phrase(bxr: "Хааха", ru: "Закрыть", en: "Close")
 }
