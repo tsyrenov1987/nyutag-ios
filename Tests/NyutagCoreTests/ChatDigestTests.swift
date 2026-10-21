@@ -65,6 +65,19 @@ struct ChatDigestTests {
         #expect(!line.lastIsMine)
     }
 
+    @Test("превью: пачка сигналов звонков после реплики не прячет её")
+    func previewBehindCallSignals() async throws {
+        let store = try Store.inMemory()
+        try await store.upsert(RoomRecord(id: "!dm", membership: .join))
+        for event in [member(me, "!dm"), member(arjuna, "!dm")] { try await store.setState(event) }
+        let rings = (0..<40).map { i in
+            Event(eventID: "$r\(i)", type: "chat.nyutag.ring", sender: arjuna, originServerTS: 200 + i,
+                  content: ["slot": .string("s\(i)")], roomID: "!dm")
+        }
+        try await store.append([text("$1", "!dm", from: arjuna, ts: 100, "перезвоню")] + rings)
+        #expect(try await ChatDigest.lines(store: store, me: me).first?.last == .text("перезвоню"))
+    }
+
     @Test("своя реплика: одна галочка, после отметки прочтения собеседником — две")
     func deliveryTicks() async throws {
         let store = try Store.inMemory()

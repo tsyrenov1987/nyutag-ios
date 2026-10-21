@@ -28,7 +28,9 @@ public struct ChatLine: Sendable, Equatable, Identifiable {
 
 public enum ChatDigest {
     /// Сколько последних событий просматривать в поисках реплики (реакции и служебные события пропускаются).
-    static let lookback = 20
+    /// Один звонок оставляет пачку сигналов (ring + шифрованные offer/answer/end), поэтому окно с запасом:
+    /// цикл всё равно останавливается на первой реплике.
+    static let lookback = 300
 
     /// Все комнаты, кроме покинутых: приглашения сверху, дальше по времени последнего события.
     public static func lines(store: Store, me: String,
