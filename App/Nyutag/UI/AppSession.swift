@@ -155,6 +155,42 @@ final class AppSession {
         await forgetLocally(account)
     }
 
+    /// Где открыт аккаунт: своё устройство первым.
+    func devices() async throws(SignInFailure) -> [AccountDevice] {
+        guard let account else { throw .broken }
+        guard await TunnelHub.shared.waitUntilUp() else { throw .noNetwork }
+        do {
+            return AccountDevice.sorted(try await account.client.devices(), current: account.session.deviceID)
+        } catch {
+            throw Self.failure(error)
+        }
+    }
+
+    var deviceID: String? { account?.session.deviceID }
+
+    func renameDevice(_ deviceID: String, to name: String) async throws(SignInFailure) {
+        guard let account else { throw .broken }
+        do {
+            try await account.client.renameDevice(deviceID, to: name)
+        } catch {
+            throw Self.failure(error)
+        }
+    }
+
+    /// Выйти на другом устройстве. Своё сюда не попадает: для него обычный выход.
+    func signOutDevice(_ deviceID: String, password: String) async throws(SignInFailure) {
+        guard let account, deviceID != account.session.deviceID else { throw .broken }
+        guard await TunnelHub.shared.waitUntilUp() else { throw .noNetwork }
+        do {
+            try await account.client.deleteDevice(deviceID, userID: account.session.userID, password: password)
+        } catch {
+            #if DEBUG
+            print("ui-check: отказ выхода на устройстве: \(error)")
+            #endif
+            throw Self.failure(error)
+        }
+    }
+
     /// Общий хвост выхода и удаления: стираем всё, что знали об учётке, и уходим на экран входа.
     private func forgetLocally(_ account: SignedInAccount) async {
         Self.rememberHistory(nil, for: account.session.userID)

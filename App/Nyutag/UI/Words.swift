@@ -246,6 +246,24 @@ extension Phrase {
                                             ru: "Не удалось удалить аккаунт. Проверьте пароль и связь.",
                                             en: "Could not delete the account. Check the password and the connection.")
 
+    // Устройства, где открыт аккаунт; бурятский не сверен с носителем
+    static let devices = Phrase(bxr: "Төхеөрөмжэнүүд", ru: "Устройства", en: "Devices")
+    static let devicesLead = Phrase(bxr: "Аккаунт эдэ төхеөрөмжэнүүд дээрэ нээгдэһэн. Танихагүй төхеөрөмжэһөө гараха.",
+                                    ru: "Здесь аккаунт открыт сейчас. Незнакомое устройство можно отключить.",
+                                    en: "Your account is signed in on these devices. Sign out any you don't recognize.")
+    static let thisDevice = Phrase(bxr: "Энэ төхеөрөмжэ", ru: "Это устройство", en: "This device")
+    static let unnamedDevice = Phrase(bxr: "Нэрэгүй төхеөрөмжэ", ru: "Устройство без имени", en: "Unnamed device")
+    static let lastSeen = Phrase(bxr: "Һүүлшын орохо: {1}", ru: "Последний вход: {1}", en: "Last seen: {1}")
+    static let renameDevice = Phrase(bxr: "Нэрэ һэлгэхэ", ru: "Переименовать", en: "Rename")
+    static let signOutDevice = Phrase(bxr: "Энэ төхеөрөмжэһөө гараха", ru: "Выйти на этом устройстве", en: "Sign out on this device")
+    static let signOutDeviceLead = Phrase(
+        bxr: "Тэрэ төхеөрөмжэ дээрэ аккаунт хаагдаха, шэнэ бэшэгүүд тэндэ ерэхэеэ болихо.",
+        ru: "На том устройстве аккаунт закроется, и новые сообщения туда приходить перестанут.",
+        en: "The account will be closed on that device and new messages will stop arriving there.")
+    static let devicesFailed = Phrase(bxr: "Болобогүй. Нюуса үгэеэ болон холбоогоо шалгагты.",
+                                      ru: "Не получилось. Проверьте пароль и связь.",
+                                      en: "That didn't work. Check the password and the connection.")
+
     // Блокировка и жалоба (App Store 1.2); бурятский не сверен с носителем
     static let block = Phrase(bxr: "Хориглохо", ru: "Заблокировать", en: "Block")
     static let unblock = Phrase(bxr: "Хоригыень болюулха", ru: "Разблокировать", en: "Unblock")

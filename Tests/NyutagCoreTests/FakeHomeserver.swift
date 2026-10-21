@@ -31,6 +31,8 @@ final class FakeHomeserver: @unchecked Sendable {
     /// Удалённые аккаунты и жалобы на события.
     private(set) var deactivated: Set<String> = []
     private(set) var erased = false
+    /// Имена устройств из `PUT /devices/{id}`.
+    private var deviceNames: [String: String] = [:]
     private(set) var reports: [(user: String, roomID: String, eventID: String, reason: String, score: Int)] = []
     /// Ключи кросс-подписи: пользователь → usage → объект.
     private var crossSigning: [String: [String: JSONValue]] = [:]
@@ -131,6 +133,26 @@ final class FakeHomeserver: @unchecked Sendable {
                 return (200, ["user_id": .string(who.user), "device_id": .string(who.device)])
             case ("POST", ["logout"]):
                 tokens[token] = nil
+                return (200, [:])
+            case ("GET", ["devices"]):
+                let list = Set(tokens.values.filter { $0.user == who.user }.map(\.device)).sorted().map { device -> JSONValue in
+                    var item: [String: JSONValue] = ["device_id": .string(device)]
+                    if let name = deviceNames[device] { item["display_name"] = .string(name) }
+                    return .object(item)
+                }
+                return (200, ["devices": .array(list)])
+            case ("PUT", let p) where p.count == 2 && p[0] == "devices":
+                guard tokens.values.contains(where: { $0.user == who.user && $0.device == p[1] }) else {
+                    return (404, ["errcode": "M_NOT_FOUND", "error": "нет устройства"])
+                }
+                deviceNames[p[1]] = body?["display_name"]?.string
+                return (200, [:])
+            case ("DELETE", let p) where p.count == 2 && p[0] == "devices":
+                guard let password = passwords[who.user], body?["auth", "password"]?.string == password,
+                      body?["auth", "session"]?.string == "uia-device" else {
+                    return (401, ["flows": [["stages": ["m.login.password"]]], "params": [:], "session": "uia-device"])
+                }
+                for (key, value) in tokens where value.user == who.user && value.device == p[1] { tokens[key] = nil }
                 return (200, [:])
             case ("POST", ["account", "deactivate"]):
                 // Подтверждение паролем, как у настоящего сервера.

@@ -200,7 +200,7 @@ struct ChatListView: View {
                     return
                 }
                 guard env["NYUTAG_UI_INVITE"] != nil || env["NYUTAG_UI_ABOUT"] != nil || env["NYUTAG_UI_DONATE"] != nil
-                        || env["NYUTAG_UI_AVATAR"] != nil else { return }
+                        || env["NYUTAG_UI_AVATAR"] != nil || env["NYUTAG_UI_DEVICES"] != nil else { return }
                 while session.lines.isEmpty { try? await Task.sleep(for: .milliseconds(300)) }
                 menu = true
             }
@@ -628,6 +628,7 @@ struct MeMenu: View {
     @State private var choosingWallpaper = false
     @State private var donating = false
     @State private var editingProfile = false
+    @State private var showingDevices = false
     let onSaved: () -> Void
 
     var body: some View {
@@ -697,6 +698,10 @@ struct MeMenu: View {
                     Text(words(.buryatLettersHint))
                 }
                 Section(words(.advanced)) {
+                    Button { showingDevices = true } label: {
+                        Label(words(.devices), systemImage: "iphone.and.ipad").foregroundStyle(Theme.ink)
+                    }
+                    .accessibilityIdentifier("menu-devices")
                     Button(words(.signOut)) { askSignOut = true }
                         .foregroundStyle(Theme.ink)
                         .accessibilityIdentifier("sign-out")
@@ -718,6 +723,7 @@ struct MeMenu: View {
                 ToolbarItem(placement: .confirmationAction) { Button(words(.done)) { dismiss() } }
             }
             .navigationDestination(isPresented: $editingProfile) { ProfileEditView() }
+            .navigationDestination(isPresented: $showingDevices) { DevicesView() }
             .sheet(isPresented: $inviting) { InviteView() }
             .sheet(isPresented: $choosingWallpaper) { WallpaperPicker() }
             .sheet(isPresented: $donating) { DonateView() }
@@ -727,6 +733,7 @@ struct MeMenu: View {
                 if ProcessInfo.processInfo.environment["NYUTAG_UI_INVITE"] != nil { inviting = true }
                 if ProcessInfo.processInfo.environment["NYUTAG_UI_DELETE_ACCOUNT"] != nil { deletingAccount = true }
                 if ProcessInfo.processInfo.environment["NYUTAG_UI_DONATE"] != nil { donating = true }
+                if ProcessInfo.processInfo.environment["NYUTAG_UI_DEVICES"] != nil { showingDevices = true }
                 if ProcessInfo.processInfo.environment["NYUTAG_UI_ABOUT"] != nil { editingProfile = true }
                 if ProcessInfo.processInfo.environment["NYUTAG_UI_AVATAR"] != nil { editingProfile = true }
             }
