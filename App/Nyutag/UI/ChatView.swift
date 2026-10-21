@@ -848,6 +848,11 @@ struct ChatView: View {
             Self.stickerForScreenshots = true
             Task {
                 var sticker = await session.myStickers().stickers.first
+                // NYUTAG_UI_STICKER=soyombo:имя — стикер встроенного набора.
+                if step.hasPrefix("soyombo:"), let item = SoyomboSticker.all.first(where: { $0.shortcode == step.dropFirst(8) }) {
+                    sticker = await session.soyomboSticker(item)
+                    print("ui-check: соёмбо \(item.shortcode): \(sticker.map { $0.mxc.description } ?? "не загрузился")")
+                }
                 if step == "add", let png = StickerMaker.drawn() {
                     sticker = await session.addSticker(png: png, name: "proverka")
                     print("ui-check: стикер \(sticker == nil ? "не добавился" : "добавлен: " + sticker!.shortcode)")

@@ -53,6 +53,7 @@ struct StickerPicker: View {
     @State private var photoItem: PhotosPickerItem?
     @State private var adding = false
     @State private var failed = false
+    @State private var sendingSoyombo: String?
 
     private let columns = [GridItem(.adaptive(minimum: 76), spacing: 10)]
 
@@ -60,6 +61,7 @@ struct StickerPicker: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
+                    soyombo
                     section(title: mine?.name ?? words(.stickerMine), stickers: mine?.stickers ?? [], own: true)
                     ForEach(packs, id: \.name) { pack in
                         section(title: pack.name, stickers: pack.stickers, own: false)
@@ -133,6 +135,41 @@ struct StickerPicker: View {
                     }
                 }
             }
+        }
+    }
+
+    /// Встроенный набор: картинки рисуются на месте, на сервер уходят при первой отправке.
+    @ViewBuilder private var soyombo: some View {
+        Text(words(.stickerSoyombo)).font(.headline).foregroundStyle(Theme.ink)
+        LazyVGrid(columns: columns, spacing: 10) {
+            ForEach(SoyomboSticker.all) { item in
+                Button { pick(item) } label: {
+                    ZStack {
+                        Image(uiImage: Self.soyomboImages[item.shortcode] ?? UIImage()).resizable().scaledToFit().frame(width: 76, height: 76)
+                        if sendingSoyombo == item.shortcode { ProgressView() }
+                    }
+                    .padding(4)
+                    .background(Theme.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .disabled(sendingSoyombo != nil)
+                .accessibilityLabel(item.body)
+                .accessibilityIdentifier("sticker-soyombo-\(item.shortcode)")
+            }
+        }
+    }
+
+    private static let soyomboImages: [String: UIImage] = Dictionary(uniqueKeysWithValues: SoyomboSticker.all.map {
+        ($0.shortcode, $0.image(side: 228))
+    })
+
+    private func pick(_ item: SoyomboSticker) {
+        sendingSoyombo = item.shortcode
+        Task {
+            defer { sendingSoyombo = nil }
+            guard let sticker = await session.soyomboSticker(item) else { failed = true; return }
+            onPick(sticker)
+            dismiss()
         }
     }
 

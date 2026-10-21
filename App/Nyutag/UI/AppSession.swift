@@ -602,6 +602,23 @@ final class AppSession {
         return await addSticker(Sticker(shortcode: name, mxc: mxc, mimetype: "image/png", width: pixels?.width, height: pixels?.height))
     }
 
+    /// Стикер встроенного набора с соёмбо: при первой отправке картинка загружается, адрес запоминается для учётки.
+    func soyomboSticker(_ item: SoyomboSticker) async -> Sticker? {
+        guard let account, let me else { return nil }
+        let key = "nyutag.soyombo.\(SoyomboSticker.version).\(me)"
+        var known = UserDefaults.standard.dictionary(forKey: key) as? [String: String] ?? [:]
+        let side = 512
+        if let mxc = known[item.shortcode].flatMap(MXC.init) {
+            return Sticker(shortcode: item.shortcode, mxc: mxc, body: item.body, mimetype: "image/png", width: side, height: side)
+        }
+        guard let png = await Task.detached(priority: .userInitiated, operation: { item.png }).value,
+              let mxc = try? await account.client.uploadMedia(png, contentType: "image/png", filename: item.shortcode + ".png") else { return nil }
+        try? await media?.store(png, for: mxc)
+        known[item.shortcode] = mxc.description
+        UserDefaults.standard.set(known, forKey: key)
+        return Sticker(shortcode: item.shortcode, mxc: mxc, body: item.body, mimetype: "image/png", width: side, height: side)
+    }
+
     /// Чужой стикер из ленты в свой набор: тот же адрес, без повторной загрузки.
     func addSticker(_ sticker: Sticker) async -> Sticker? {
         guard let account, let me else { return nil }

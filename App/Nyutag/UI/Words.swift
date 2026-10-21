@@ -200,6 +200,7 @@ extension Phrase {
     static let searchChats = Phrase(bxr: "Хөөрэлдөөн соо хайха", ru: "Поиск по чатам", en: "Search chats")
     static let searchMessages = Phrase(bxr: "Мэдээсэлнүүд", ru: "Сообщения", en: "Messages")
     static let searchNothing = Phrase(bxr: "Юумэ олдобогүй", ru: "Ничего не нашлось", en: "Nothing found")
+    static let stickerSoyombo = Phrase(bxr: "Соёмбо", ru: "Соёмбо", en: "Soyombo")
     static let stickerFailed = Phrase(bxr: "Наалта нэмэгдэбэгүй", ru: "Стикер не добавился", en: "Couldn't add the sticker")
     static let poll = Phrase(bxr: "Һанал асуулга", ru: "Опрос", en: "Poll")
     static let call = Phrase(bxr: "Дуудалга", ru: "Звонок", en: "Call")
