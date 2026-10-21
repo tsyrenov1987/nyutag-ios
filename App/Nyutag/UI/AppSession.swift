@@ -100,13 +100,13 @@ final class AppSession {
     func signIn(identifier: String, password: String, displayName: String? = nil) async throws(SignInFailure) {
         guard let keeper else { throw .broken }
         let typed = identifier.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard await TunnelHub.shared.waitUntilUp() else { throw .noNetwork }
+        guard await DoorHub.shared.waitUntilUp() else { throw .noNetwork }
         do {
             var user = typed
             if Self.needsResolve(typed) {
-                user = try await NyutagService(client: TunnelHub.shared.makeClient()).resolve(identifier: typed, password: password)
+                user = try await NyutagService(client: DoorHub.shared.makeClient()).resolve(identifier: typed, password: password)
             }
-            let account = try await keeper.signIn(homeserver: TunnelHub.coreURL, user: user, password: password,
+            let account = try await keeper.signIn(homeserver: DoorHub.coreURL, user: user, password: password,
                                                   deviceName: "Нютаг iPhone")
             if let displayName {
                 try? await account.client.setDisplayName(userID: account.session.userID, displayName)
@@ -141,7 +141,7 @@ final class AppSession {
     /// Удалить аккаунт на сервере навсегда (App Store 5.1.1(v)) и стереть всё местное. Сервер просит пароль.
     func deleteAccount(password: String) async throws(SignInFailure) {
         guard let account, let keeper else { throw .broken }
-        guard await TunnelHub.shared.waitUntilUp() else { throw .noNetwork }
+        guard await DoorHub.shared.waitUntilUp() else { throw .noNetwork }
         do {
             try await account.client.deactivate(userID: account.session.userID, password: password)
         } catch {
@@ -158,7 +158,7 @@ final class AppSession {
     /// Где открыт аккаунт: своё устройство первым.
     func devices() async throws(SignInFailure) -> [AccountDevice] {
         guard let account else { throw .broken }
-        guard await TunnelHub.shared.waitUntilUp() else { throw .noNetwork }
+        guard await DoorHub.shared.waitUntilUp() else { throw .noNetwork }
         do {
             return AccountDevice.sorted(try await account.client.devices(), current: account.session.deviceID)
         } catch {
@@ -180,7 +180,7 @@ final class AppSession {
     /// Выйти на другом устройстве. Своё сюда не попадает: для него обычный выход.
     func signOutDevice(_ deviceID: String, password: String) async throws(SignInFailure) {
         guard let account, deviceID != account.session.deviceID else { throw .broken }
-        guard await TunnelHub.shared.waitUntilUp() else { throw .noNetwork }
+        guard await DoorHub.shared.waitUntilUp() else { throw .noNetwork }
         do {
             try await account.client.deleteDevice(deviceID, userID: account.session.userID, password: password)
         } catch {
@@ -1491,7 +1491,7 @@ final class AppSession {
         if error.status == 429 || error.errcode == "M_LIMIT_EXCEEDED" { return .tooOften }
         if error.errcode == "M_FORBIDDEN" || error.errcode == "M_NOT_FOUND" || error.status == 403 { return .wrongPassword }
         if case .network = error.kind { return .noNetwork }
-        // Закрытый путь (туннель упал между проверкой и запросом) URLSession отдаёт как отмену.
+        // Закрытую дверь (заперли между проверкой и запросом) URLSession отдаёт как отмену.
         if case .cancelled = error.kind { return .noNetwork }
         return .broken
     }

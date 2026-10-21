@@ -99,13 +99,13 @@ struct PasswordResetView: View {
         return max(0, Int((wait - now.timeIntervalSince(sentAt)).rounded(.up)))
     }
 
-    private func service() -> NyutagService { NyutagService(client: TunnelHub.shared.makeClient()) }
+    private func service() -> NyutagService { NyutagService(client: DoorHub.shared.makeClient()) }
 
     private func send() async {
         busy = true
         defer { busy = false }
         failure = nil
-        guard await TunnelHub.shared.waitUntilUp() else { failure = words(.noNetwork); return }
+        guard await DoorHub.shared.waitUntilUp() else { failure = words(.noNetwork); return }
         do {
             verification = try await service().startPasswordReset(address: email.trimmingCharacters(in: .whitespaces))
             sentAt = .now

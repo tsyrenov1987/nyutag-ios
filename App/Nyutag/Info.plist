@@ -43,16 +43,5 @@
 	<string>Микрофон нужен для звонков: голос уходит собеседнику зашифрованным.</string>
 	<key>NyutagAppGroup</key>
 	<string>$(NYUTAG_APP_GROUP)</string>
-	<key>NSAppTransportSecurity</key>
-	<dict>
-		<key>NSExceptionDomains</key>
-		<dict>
-			<key>core.nyutag.chat</key>
-			<dict>
-				<key>NSExceptionAllowsInsecureHTTPLoads</key>
-				<true/>
-			</dict>
-		</dict>
-	</dict>
 </dict>
 </plist>

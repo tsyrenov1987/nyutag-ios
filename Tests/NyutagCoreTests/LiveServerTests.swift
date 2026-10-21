@@ -1,5 +1,6 @@
 // Живой тест против ядра nyutag.chat. Запускается только при заданных переменных окружения
-// (`tools/test-env.sh`): NYUTAG_TEST_HS (адрес Tuwunel), NYUTAG_TEST_USER, NYUTAG_TEST_PASSWORD.
+// (`tools/test-env.sh`): NYUTAG_TEST_HS (адрес Tuwunel), NYUTAG_TEST_USER, NYUTAG_TEST_PASSWORD; для релея звонков
+// — дверь NYUTAG_TEST_DOOR и ключ NYUTAG_TEST_DOOR_KEY (как у приложения, без SSH).
 
 import Foundation
 @testable import NyutagCore
@@ -10,6 +11,15 @@ enum LiveEnv {
     static let user = ProcessInfo.processInfo.environment["NYUTAG_TEST_USER"]
     static let password = ProcessInfo.processInfo.environment["NYUTAG_TEST_PASSWORD"]
     static let api = ProcessInfo.processInfo.environment["NYUTAG_TEST_API"].flatMap(URL.init(string:))
+    static let door = ProcessInfo.processInfo.environment["NYUTAG_TEST_DOOR"].flatMap(URL.init(string:))
+        .flatMap { Door(url: $0, name: "test") }
+    static let doorKey = ProcessInfo.processInfo.environment["NYUTAG_TEST_DOOR_KEY"]
+    static var doorAvailable: Bool { door != nil && doorKey != nil }
+    /// Клиент к ядру через дверь, как в приложении.
+    static func doorClient(accessToken: String?) -> MatrixClient {
+        MatrixClient(homeserver: URL(string: "https://core.nyutag.chat")!, accessToken: accessToken,
+                     doorKey: doorKey, door: door, doorWait: .zero)
+    }
     static var available: Bool { homeserver != nil && user != nil && password != nil }
 }
 
@@ -152,6 +162,7 @@ enum LiveEnv {
         print("live nyutag: invite=\(config.requiresInvite) email=\(config.emailAvailable) phone=\(config.phoneAvailable)")
         let catalogue = try await service.catalogue()
         #expect(catalogue["paths"]?.array?.isEmpty == false)
+        #expect(catalogue["doors"]?.array?.isEmpty == false, "двери-сайты для Нютага 2")
         _ = try await service.announcements()
         do {
             let check = try await service.checkInvite("НЕТТАКОГО")

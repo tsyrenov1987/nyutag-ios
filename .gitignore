@@ -6,7 +6,7 @@ DerivedData/
 xcuserdata/
 build/
 
-# Секреты: путь кильватера с ключом клиента лежит только локально (образец рядом: *.example)
+# Секреты: ключ двери и адреса дверей лежат только локально (образец рядом: *.example)
 App/Catalogue/nyutag-catalogue.txt
 tools/test-env.local.sh
 
@@ -14,6 +14,3 @@ tools/test-env.local.sh
 .DS_Store
 *.ipa
 *.dSYM.zip
-
-# Бинарное ядро туннеля: кладётся tools/fetch-farvater-core.sh, в git не хранится
-Frameworks/

@@ -1,6 +1,6 @@
 // Нютаг. HTTP-слой клиент-серверного API Matrix поверх URLSession.
-// Транспорт (SOCKS кильватера, доверие своему CA) задаётся описанием пути `Route` и делегатом `CertificateTrust`;
-// без них (тесты на Маке) клиент ходит напрямую и доверяет системе.
+// К ядру клиент ходит через дверь (`Door`): обычный HTTPS-адрес, который подставляется вместо `homeserver`,
+// плюс заголовок с ключом. Без ключа (тесты на Маке по SSH-пробросу) клиент ходит на `homeserver` напрямую.
 
 import Foundation
 
@@ -49,20 +49,19 @@ public struct EmptyResponse: Decodable, Sendable {}
 public actor MatrixClient {
     public static let apiVersion = "v3"
 
+    /// Имя ядра: хранится в сессии и в токенах, а запросы при дверях идут на адрес двери.
     public nonisolated let homeserver: URL
     public private(set) var accessToken: String?
-    /// Сеанс изменяемый и изолирован актором: смена пути (`setRoute`) подменяет его целиком. URLSession
-    /// неизменяема после создания (прокси и конфигурацию не поменять), а пересоздавать весь клиент нельзя:
-    /// у него токен, а выше по стеку на него ссылаются синхронизация, медиа и крипто. Поэтому живёт один
-    /// актор, а сеанс под ним меняется; запрос читает `session` внутри актора заново на каждой попытке.
-    private(set) var session: URLSession
+    let session: URLSession
     nonisolated let userAgent: String
-    /// База без пути: на неё накладывается `Route` при каждой смене (протоколы-заглушки тестов и таймауты сохраняются).
-    private let baseConfiguration: URLSessionConfiguration
-    /// Один делегат на все сеансы клиента: пин своего CA действует и на JSON-запросы, и на медиа (оба идут через
-    /// `session`), и после смены пути.
-    private let delegate: URLSessionDelegate?
-    public private(set) var route: Route
+    /// Ключ двери; `nil` — клиент без дверей, ходит на `homeserver` (тесты на Маке).
+    private let doorKey: String?
+    /// Текущая дверь. При дверях без неё запрос ждёт её не дольше `doorWait` (приложение только запустилось,
+    /// гонка ещё идёт), потом падает ошибкой сети; на `homeserver` напрямую он не уходит — снаружи ядро закрыто.
+    public private(set) var door: Door?
+    private let doorWait: Duration
+    /// Жалоба на дверь: запрос к ней не дошёл или узел ответил 502–504. Получает тот, кто выбирает двери.
+    private var doorTrouble: (@Sendable (Door) -> Void)?
 
     /// Повторы при 429: не больше этого числа, и не дольше суммарно `maxRetryWait`.
     var maxRateLimitRetries = 4
@@ -71,29 +70,39 @@ public actor MatrixClient {
     public init(homeserver: URL,
                 accessToken: String? = nil,
                 configuration: URLSessionConfiguration = MatrixClient.defaultConfiguration(),
-                delegate: URLSessionDelegate? = nil,
-                route: Route = .direct,
-                userAgent: String = "Nyutag") {
+                userAgent: String = "Nyutag",
+                doorKey: String? = nil,
+                door: Door? = nil,
+                doorWait: Duration = .seconds(20)) {
         self.homeserver = homeserver
         self.accessToken = accessToken
         self.userAgent = userAgent
-        self.delegate = delegate
-        self.route = route
-        baseConfiguration = configuration
-        session = URLSession(configuration: route.apply(to: configuration), delegate: delegate, delegateQueue: nil)
+        self.doorKey = doorKey
+        self.door = door
+        self.doorWait = doorWait
+        session = URLSession(configuration: configuration)
     }
 
-    /// Туннель перезапустился на другом порту: переключаем путь без пересоздания клиента. Запросы, уже идущие по
-    /// старому сеансу, дописываются на нём (`finishTasksAndInvalidate`), новые идут по новому. Одинаковый путь не трогаем.
-    /// Исключение — уход с закрытого пути: запросы на нём не падают, а ждут связи (`waitsForConnectivity`) до
-    /// таймаута ресурса, поэтому их снимаем сразу, и вызывающий повторяет запрос уже по туннелю.
-    public func setRoute(_ newRoute: Route) {
-        guard newRoute != route else { return }
-        let old = session
-        let leavingSealed = route == .sealed
-        route = newRoute
-        session = URLSession(configuration: newRoute.apply(to: baseConfiguration), delegate: delegate, delegateQueue: nil)
-        if leavingSealed { old.invalidateAndCancel() } else { old.finishTasksAndInvalidate() }
+    /// Гонка выбрала другую дверь (или ни одной: `nil`). Запросы в полёте дописываются на старой, новые идут
+    /// на новую; ждущие двери берут её на следующем шаге ожидания.
+    public func setDoor(_ newDoor: Door?) {
+        door = newDoor
+    }
+
+    public func setDoorTrouble(_ handler: (@Sendable (Door) -> Void)?) {
+        doorTrouble = handler
+    }
+
+    /// Клиент переключается на каждую дверь из потока, пока сам жив. Поток не удерживает клиента: после выхода
+    /// из учётки клиент освобождается, и подписка кончается на следующей двери.
+    @discardableResult
+    public nonisolated func follow(_ doors: AsyncStream<Door?>) -> Task<Void, Never> {
+        Task { [weak self] in
+            for await door in doors {
+                guard let self else { return }
+                await self.setDoor(door)
+            }
+        }
     }
 
     public static func defaultConfiguration() -> URLSessionConfiguration {
@@ -153,8 +162,8 @@ public actor MatrixClient {
                      body: JSONValue? = nil,
                      authenticated: Bool = true,
                      timeout: Duration? = nil) async throws(MatrixError) -> Data {
-        var request = try makeRequest(method, absolutePath, query: query, repeatedQuery: repeatedQuery,
-                                      authenticated: authenticated, timeout: timeout)
+        var request = try await makeRequest(method, absolutePath, query: query, repeatedQuery: repeatedQuery,
+                                            authenticated: authenticated, timeout: timeout)
         if let body {
             do {
                 request.httpBody = try body.data()
@@ -171,16 +180,16 @@ public actor MatrixClient {
                        query: [String: String] = [:],
                        body: Data,
                        contentType: String) async throws(MatrixError) -> Data {
-        var request = try makeRequest(.post, absolutePath, query: query, authenticated: true, timeout: .seconds(300))
+        var request = try await makeRequest(.post, absolutePath, query: query, authenticated: true, timeout: .seconds(300))
         request.httpBody = body
         request.setValue(contentType, forHTTPHeaderField: "Content-Type")
         return try await perform(request)
     }
 
-    /// WebSocket по тому же пути и с тем же доверием, что и запросы (туннель, свой CA), с токеном доступа.
+    /// WebSocket через ту же дверь и с тем же ключом, что и запросы, с токеном доступа.
     /// Нужен релею звонков: nginx ядра пускает к нему только с действующим токеном.
-    public func webSocket(_ absolutePath: String, query: [String: String] = [:]) throws(MatrixError) -> URLSessionWebSocketTask {
-        var request = try makeRequest(.get, absolutePath, query: query, authenticated: true, timeout: nil)
+    public func webSocket(_ absolutePath: String, query: [String: String] = [:]) async throws(MatrixError) -> URLSessionWebSocketTask {
+        var request = try await makeRequest(.get, absolutePath, query: query, authenticated: true, timeout: nil)
         request.timeoutInterval = 15
         request.url = request.url.flatMap { Self.socketURL($0) }
         return session.webSocketTask(with: request)
@@ -194,11 +203,24 @@ public actor MatrixClient {
 
     // MARK: Внутреннее
 
+    /// Основа адреса: дверь при дверях, иначе `homeserver`. Двери нет — ждём её, пока идёт гонка.
+    private func base() async throws(MatrixError) -> URL {
+        guard doorKey != nil else { return homeserver }
+        if let door { return door.url }
+        let deadline = ContinuousClock.now + doorWait
+        while door == nil, ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(250))
+            if Task.isCancelled { throw MatrixError(.cancelled) }
+        }
+        guard let door else { throw MatrixError(.network("нет пути к ядру")) }
+        return door.url
+    }
+
     /// `repeatedQuery`: ключ, повторённый для каждого значения (`?via=a&via=b`), идёт после обычных параметров.
     private func makeRequest(_ method: Method, _ absolutePath: String, query: [String: String],
                              repeatedQuery: [String: [String]] = [:],
-                             authenticated: Bool, timeout: Duration?) throws(MatrixError) -> URLRequest {
-        guard var components = URLComponents(url: homeserver, resolvingAgainstBaseURL: false) else {
+                             authenticated: Bool, timeout: Duration?) async throws(MatrixError) -> URLRequest {
+        guard var components = URLComponents(url: try await base(), resolvingAgainstBaseURL: false) else {
             throw MatrixError(.network("плохой адрес сервера"))
         }
         components.percentEncodedPath = Self.encodePath(absolutePath)
@@ -209,6 +231,7 @@ public actor MatrixClient {
         var request = URLRequest(url: url)
         request.httpMethod = method.rawValue
         request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+        if let doorKey { request.setValue(doorKey, forHTTPHeaderField: DoorCatalogue.headerName) }
         if let timeout {
             request.timeoutInterval = TimeInterval(timeout.components.seconds) + 5
         }
@@ -238,10 +261,12 @@ public actor MatrixClient {
             } catch let error as URLError where error.code == .cancelled {
                 throw MatrixError(.cancelled)
             } catch {
+                if let urlError = error as? URLError, Self.isDoorTrouble(urlError) { complain(about: request) }
                 throw MatrixError(.network(error.localizedDescription))
             }
             guard let http = response as? HTTPURLResponse else { throw MatrixError(.network("не HTTP-ответ")) }
             if (200..<300).contains(http.statusCode) { return data }
+            if (502...504).contains(http.statusCode) { complain(about: request) }
 
             let error = Self.parseError(status: http.statusCode, data: data, headers: http.allHeaderFields)
             if http.statusCode == 429, attempt < maxRateLimitRetries {
@@ -255,6 +280,23 @@ public actor MatrixClient {
             }
             throw error
         }
+    }
+
+    /// Беда двери, а не всей сети: без интернета вообще или при снятом запросе другая дверь не поможет.
+    static func isDoorTrouble(_ error: URLError) -> Bool {
+        switch error.code {
+        case .cancelled, .notConnectedToInternet, .dataNotAllowed, .internationalRoamingOff, .callIsActive,
+             .userCancelledAuthentication, .userAuthenticationRequired:
+            return false
+        default:
+            return true
+        }
+    }
+
+    /// Жалуемся только на ту дверь, к которой шёл запрос: на сменившуюся за время полёта жаловаться поздно.
+    private func complain(about request: URLRequest) {
+        guard let door, let host = request.url?.host(), host == door.url.host() else { return }
+        doorTrouble?(door)
     }
 
     static func parseError(status: Int, data: Data, headers: [AnyHashable: Any]) -> MatrixError {

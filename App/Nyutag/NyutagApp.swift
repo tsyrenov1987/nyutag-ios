@@ -6,8 +6,9 @@ struct NyutagApp: App {
     @UIApplicationDelegateAdaptor(AppDoorman.self) private var doorman
 
     init() {
-        // Ядро туннеля поднимается один раз на процесс; клиенты берут путь у TunnelHub.
-        Task { await TunnelHub.shared.begin() }
+        // Гонка дверей стартует один раз на процесс и не ждёт главного потока (он занят первым экраном);
+        // клиенты берут дверь у DoorHub.
+        Task.detached { await DoorHub.shared.begin() }
         #if DEBUG
         SelfCheck.runIfAsked()
         #endif
@@ -18,8 +19,8 @@ struct NyutagApp: App {
             ContentView()
         }
         .onChange(of: scenePhase) { _, phase in
-            // После сна iOS могла забрать порт ядра: проверяем до того, как клиенты начнут переподключаться.
-            if phase == .active { Task { await TunnelHub.shared.appBecameActive() } }
+            // За время сна дверь могли запереть: проверяем до того, как клиенты начнут переподключаться.
+            if phase == .active { Task { await DoorHub.shared.appBecameActive() } }
         }
     }
 }

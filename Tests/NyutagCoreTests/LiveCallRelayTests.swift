@@ -1,27 +1,21 @@
-// Живой релей звонков: тот же путь, что у приложения (SOCKS → nginx ядра с проверкой токена → релей на rtc).
-// Нужны стенд `tools/test-env.sh` и SOCKS до ядра: `ssh -N -D 11080 nyutag-core` (на ядре core.nyutag.chat —
-// это 127.0.0.1), затем NYUTAG_TEST_SOCKS=11080.
+// Живой релей звонков: тот же путь, что у приложения (дверь → nginx ядра с проверкой токена → релей на rtc).
+// Нужен стенд `tools/test-env.sh` с дверью (NYUTAG_TEST_DOOR, NYUTAG_TEST_DOOR_KEY); SSH не нужен.
 
 import Foundation
 @testable import NyutagCore
 import Testing
 
-@Suite(.enabled(if: LiveEnv.available && ProcessInfo.processInfo.environment["NYUTAG_TEST_SOCKS"] != nil,
-                "нет стенда или NYUTAG_TEST_SOCKS"))
+@Suite(.enabled(if: LiveEnv.available && LiveEnv.doorAvailable, "нет стенда или двери"))
 struct LiveCallRelayTests {
     @Test func twoLinksMeetInSlot() async throws {
         let login = MatrixClient(homeserver: LiveEnv.homeserver!)
         let session = try await login.login(user: LiveEnv.user!, password: LiveEnv.password!,
                                             deviceDisplayName: "Нютаг тест релея (Мак)")
         defer { Task { try? await login.logout() } }
-        let port = UInt16(ProcessInfo.processInfo.environment["NYUTAG_TEST_SOCKS"]!)!
-        let route = Route.socks5(try #require(SocksProxy(port: port, user: "probe", password: "probe")))
-        let core = MatrixClient(homeserver: URL(string: "https://core.nyutag.chat:6167")!,
-                                accessToken: session.accessToken, delegate: CertificateTrust.nyutagCore(), route: route)
+        let core = LiveEnv.doorClient(accessToken: session.accessToken)
 
         // Без токена nginx не пускает к релею.
-        let stranger = MatrixClient(homeserver: URL(string: "https://core.nyutag.chat:6167")!, accessToken: "nope",
-                                    delegate: CertificateTrust.nyutagCore(), route: route)
+        let stranger = LiveEnv.doorClient(accessToken: "nope")
         let slot = CallID.make()
         let refused = try #require(await RelayLink.open(client: stranger, slot: slot))
         #expect(await next(refused.inbound) == nil)

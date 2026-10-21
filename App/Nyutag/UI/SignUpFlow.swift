@@ -28,10 +28,10 @@ final class SignUpFlow {
 
     var needsInvite: Bool { configuration?.requiresInvite ?? false }
 
-    private func service() -> NyutagService { NyutagService(client: TunnelHub.shared.makeClient()) }
+    private func service() -> NyutagService { NyutagService(client: DoorHub.shared.makeClient()) }
 
     func prepare() async {
-        guard configuration == nil, await TunnelHub.shared.waitUntilUp() else { return }
+        guard configuration == nil, await DoorHub.shared.waitUntilUp() else { return }
         configuration = try? await service().configuration()
     }
 
@@ -57,8 +57,8 @@ final class SignUpFlow {
         nickCheck = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(450))
             guard !Task.isCancelled, let self else { return }
-            let client = TunnelHub.shared.makeClient()
-            guard await TunnelHub.shared.waitUntilUp() else { return }
+            let client = DoorHub.shared.makeClient()
+            guard await DoorHub.shared.waitUntilUp() else { return }
             if (try? await client.isUsernameAvailable(candidate)) == true {
                 if !Task.isCancelled { nickState = .free }
                 return
@@ -81,7 +81,7 @@ final class SignUpFlow {
 
     /// Номер свободен, письмо с кодом ушло на почту.
     func sendCode(phone typedPhone: String, email: String, invite: String) async throws(Failure) {
-        guard await TunnelHub.shared.waitUntilUp() else { throw .noNetwork }
+        guard await DoorHub.shared.waitUntilUp() else { throw .noNetwork }
         let service = service()
         do {
             let trimmed = typedPhone.trimmingCharacters(in: .whitespaces)

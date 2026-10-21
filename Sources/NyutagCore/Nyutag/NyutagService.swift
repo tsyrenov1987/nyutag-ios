@@ -1,5 +1,5 @@
 // Нютаг. Сервис `/_nyutag/v1` на ядре: приглашения, регистрация, вход по телефону или почте, сброс пароля,
-// поиск друзей по номерам, обращения разработчика, состав входов туннеля.
+// поиск друзей по номерам, обращения разработчика, состав дверей к ядру.
 // В бою он за тем же адресом, что и Tuwunel (nginx разводит пути); на тестовом стенде отдельный порт.
 
 import Foundation
@@ -90,7 +90,7 @@ public struct NyutagService: Sendable {
         try await call(.get, "announce")["announcements"]?.array ?? []
     }
 
-    /// Состав входов туннеля `{"version", "paths", "retired"}`.
+    /// Состав дверей к ядру `{"version", "paths", "retired", "doors"}`.
     public func catalogue() async throws(MatrixError) -> JSONValue {
         try await call(.get, "catalogue")
     }

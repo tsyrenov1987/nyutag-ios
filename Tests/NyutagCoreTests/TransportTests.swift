@@ -1,136 +1,25 @@
-// Транспорт: путь через SOCKS туннеля, пин своего CA, смена пути без пересоздания клиента.
-//
-// Фикстуры в Fixtures/*.der (DER, только сертификаты, ключей нет). Перегенерация: `Fixtures/make-trust-fixtures.sh`
-// (системный openssl; листья 397 дней, проверка идёт на фиксированную дату). Состав:
-//   test-ca.der            наш тестовый корень;
-//   other-ca.der           чужой корень;
-//   leaf-good.der          лист core.test.nyutag от нашего корня;
-//   leaf-foreign-root.der  лист core.test.nyutag от чужого корня;
-//   leaf-other-host.der    лист elsewhere.test.nyutag от нашего корня.
-// public-chain-0..2.der — реальная цепочка example.com (лист, промежуточный, транзитный CA; корень берётся из
-// системного хранилища), снятая 2026-10-20 командой
-//   openssl s_client -connect example.com:443 -servername example.com -showcerts
-// Она нужна, чтобы проверить `SetAnchorCertificatesOnly`: только на цепочке, которой доверяет система, видно,
-// что наш пин системным корням не верит. Лист живёт месяцы, поэтому проверка идёт на дату снятия (`verifyDate`).
+// Транспорт: клиент с дверью. Адрес запроса — дверь, имя ядра остаётся в сессии; ключ двери в заголовке;
+// смена двери без пересоздания клиента; ожидание двери; жалоба на дверь, которая не отвечает.
 
 import Foundation
-import Network
-import Security
 import Testing
 @testable import NyutagCore
 
-private func fixture(_ name: String) throws -> Data {
-    let url = try #require(Bundle.module.url(forResource: name, withExtension: "der", subdirectory: "Fixtures"))
-    return try Data(contentsOf: url)
-}
-
-private func certificate(_ name: String) throws -> SecCertificate {
-    try #require(SecCertificateCreateWithData(nil, try fixture(name) as CFData))
-}
-
-private func trust(chain: [SecCertificate]) throws -> SecTrust {
-    var trust: SecTrust?
-    #expect(SecTrustCreateWithCertificates(chain as CFArray, SecPolicyCreateBasicX509(), &trust) == errSecSuccess)
-    return try #require(trust)
-}
-
-private let captureDate = ISO8601DateFormatter().date(from: "2026-10-21T12:00:00Z")!
-
-@Suite("Транспорт: путь")
-struct RouteTests {
-    @Test("SOCKS: в конфигурации ровно один прокси, порт и логин на месте, откат на прямое запрещён")
-    func socksConfiguration() throws {
-        let proxy = try #require(SocksProxy(port: 41234, user: "u-test", password: "p-test"))
-        let configuration = Route.socks5(proxy).apply(to: MatrixClient.defaultConfiguration())
-        #expect(configuration.proxyConfigurations.count == 1)
-        let socks = try #require(configuration.proxyConfigurations.first)
-        #expect(socks.allowFailover == false)
-        #expect(socks.debugDescription.contains("41234"))
-        // Исходная конфигурация не тронута, таймауты базы сохранены.
-        #expect(configuration.timeoutIntervalForRequest == 60)
-    }
-
-    @Test("Прямой путь снимает прокси")
-    func directConfiguration() throws {
-        let proxy = try #require(SocksProxy(port: 41234, user: "u", password: "p"))
-        let base = Route.socks5(proxy).apply(to: MatrixClient.defaultConfiguration())
-        #expect(Route.direct.apply(to: base).proxyConfigurations.isEmpty)
-        #expect(Route.direct.apply(to: MatrixClient.defaultConfiguration()).proxyConfigurations.isEmpty)
-    }
-
-    @Test("Порт 0 и пустой адрес не принимаются, пароль не печатается")
-    func proxyValidation() throws {
-        #expect(SocksProxy(port: 0, user: "u", password: "p") == nil)
-        #expect(SocksProxy(host: "", port: 1, user: "u", password: "p") == nil)
-        let proxy = try #require(SocksProxy(port: 5, user: "u", password: "секрет"))
-        #expect(!proxy.description.contains("секрет"))
-    }
-}
-
-@Suite("Транспорт: пин CA")
-struct PinTests {
-    private func pin() throws -> CertificateTrust {
-        CertificateTrust(anchorDER: [try fixture("test-ca")], hosts: ["core.test.nyutag"])
-    }
-
-    @Test("Наш CA и верное имя: доверие")
-    func ownChainTrusted() throws {
-        let t = try trust(chain: [certificate("leaf-good")])
-        #expect(try pin().evaluate(t, host: "core.test.nyutag", verifyDate: captureDate))
-    }
-
-    @Test("Чужой корень: отказ")
-    func foreignRootRejected() throws {
-        let t = try trust(chain: [certificate("leaf-foreign-root")])
-        #expect(try !pin().evaluate(t, host: "core.test.nyutag", verifyDate: captureDate))
-    }
-
-    @Test("Верная цепочка, но другое имя хоста: отказ")
-    func wrongHostRejected() throws {
-        let good = try trust(chain: [certificate("leaf-good")])
-        #expect(try !pin().evaluate(good, host: "elsewhere.test.nyutag", verifyDate: captureDate))
-        let other = try trust(chain: [certificate("leaf-other-host")])
-        #expect(try !pin().evaluate(other, host: "core.test.nyutag", verifyDate: captureDate))
-    }
-
-    @Test("Цепочка, которой верит система, но не наш CA: отказ (якоря только свои)")
-    func systemTrustedChainRejected() throws {
-        let chain = try (0...2).map { try certificate("public-chain-\($0)") }
-
-        // Контроль: система на дату снятия этой цепочке верит, иначе проверка ничего бы не доказывала.
-        let control = try trust(chain: chain)
-        #expect(SecTrustSetPolicies(control, SecPolicyCreateSSL(true, "example.com" as CFString)) == errSecSuccess)
-        #expect(SecTrustSetVerifyDate(control, captureDate as CFDate) == errSecSuccess)
-        var error: CFError?
-        #expect(SecTrustEvaluateWithError(control, &error), "системное доверие к public-chain: \(String(describing: error))")
-
-        let t = try trust(chain: chain)
-        #expect(try !pin().evaluate(t, host: "example.com", verifyDate: captureDate))
-    }
-
-    @Test("Без якорей доверия нет")
-    func noAnchors() throws {
-        let t = try trust(chain: [certificate("leaf-good")])
-        #expect(!CertificateTrust(anchorDER: [], hosts: []).evaluate(t, host: "core.test.nyutag", verifyDate: captureDate))
-    }
-
-    @Test("Встроенный CA ядра раскодируется и закреплён за core.nyutag.chat")
-    func builtInAnchor() {
-        let trust = CertificateTrust.nyutagCore()
-        #expect(trust.anchors.count == 1)
-        #expect(trust.hosts == ["core.nyutag.chat"])
-    }
-}
-
-/// Заглушка сети: отвечает 200 и пишет, сколько запросов дошло.
+/// Заглушка сети: отвечает заданным статусом и запоминает последний запрос.
 private final class StubProtocol: URLProtocol, @unchecked Sendable {
-    nonisolated(unsafe) static var hits = 0
     private static let lock = NSLock()
+    nonisolated(unsafe) private static var _last: URLRequest?
+    nonisolated(unsafe) private static var _status = 200
+    nonisolated(unsafe) private static var _hits = 0
+    static var last: URLRequest? { lock.withLock { _last } }
+    static var hits: Int { lock.withLock { _hits } }
+    static func answer(_ status: Int) { lock.withLock { _status = status } }
+
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
-        Self.lock.withLock { Self.hits += 1 }
-        let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+        let status = Self.lock.withLock { Self._last = request; Self._hits += 1; return Self._status }
+        let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: Data("{}".utf8))
         client?.urlProtocolDidFinishLoading(self)
@@ -138,53 +27,127 @@ private final class StubProtocol: URLProtocol, @unchecked Sendable {
     override func stopLoading() {}
 }
 
-@Suite("Транспорт: смена пути", .serialized)
-struct RouteSwitchTests {
-    private func makeClient(route: Route = .direct) -> MatrixClient {
-        let configuration = MatrixClient.defaultConfiguration()
-        configuration.protocolClasses = [StubProtocol.self]
-        return MatrixClient(homeserver: URL(string: "https://core.test.nyutag:6167")!, accessToken: "tok",
-                            configuration: configuration, route: route)
-    }
+private let core = URL(string: "https://core.test.nyutag")!
+private let doorA = Door(line: "https://a.test.nyutag:6167#a")!
+private let doorB = Door(line: "https://b.test.nyutag#b")!
 
-    @Test("setRoute подменяет сеанс внутри того же клиента, база (заглушка) сохраняется")
-    func switchKeepsClient() async throws {
-        let client = makeClient()
-        #expect(await client.route == .direct)
-        #expect(await client.session.configuration.proxyConfigurations.isEmpty)
+private func makeClient(doorKey: String? = "k-test", door: Door? = nil, doorWait: Duration = .seconds(20)) -> MatrixClient {
+    let configuration = MatrixClient.defaultConfiguration()
+    configuration.protocolClasses = [StubProtocol.self]
+    return MatrixClient(homeserver: core, accessToken: "tok", configuration: configuration,
+                        doorKey: doorKey, door: door, doorWait: doorWait)
+}
 
-        let first = try #require(SocksProxy(port: 30001, user: "a", password: "b"))
-        await client.setRoute(.socks5(first))
-        #expect(await client.session.configuration.proxyConfigurations.count == 1)
-        #expect(await client.session.configuration.proxyConfigurations.first?.debugDescription.contains("30001") == true)
+@Suite("Транспорт: дверь", .serialized)
+struct DoorTransportTests {
+    init() { StubProtocol.answer(200) }
 
-        let second = try #require(SocksProxy(port: 30002, user: "c", password: "d"))
-        await client.setRoute(.socks5(second))
-        #expect(await client.session.configuration.proxyConfigurations.first?.debugDescription.contains("30002") == true)
-        #expect(await client.route == .socks5(second))
-
-        let before = StubProtocol.hits
+    @Test("Запрос идёт на дверь с ключом в заголовке, имя ядра в адрес не попадает")
+    func requestGoesThroughDoor() async throws {
+        let client = makeClient(door: doorA)
         let _: EmptyResponse = try await client.raw(.get, "/_nyutag/v1/ping")
-        #expect(StubProtocol.hits == before + 1, "после смены пути запросы идут и заглушка базы не потеряна")
-
-        await client.setRoute(.direct)
-        #expect(await client.session.configuration.proxyConfigurations.isEmpty)
+        let request = try #require(StubProtocol.last)
+        #expect(request.url?.host() == "a.test.nyutag")
+        #expect(request.url?.port == 6167)
+        #expect(request.url?.path() == "/_nyutag/v1/ping")
+        #expect(request.value(forHTTPHeaderField: DoorCatalogue.headerName) == "k-test")
+        #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer tok")
+        #expect(client.homeserver == core, "имя ядра для сессии не меняется")
     }
 
-    @Test("Тот же путь: сеанс не пересоздаётся")
-    func sameRouteNoop() async throws {
-        let proxy = try #require(SocksProxy(port: 30003, user: "a", password: "b"))
-        let client = makeClient(route: .socks5(proxy))
-        let before = await client.session
-        await client.setRoute(.socks5(proxy))
-        #expect(await client.session === before)
-    }
-
-    @Test("Клиент без пути работает как раньше")
+    @Test("Без ключа клиент ходит на homeserver и заголовка двери не ставит")
     func plainClient() async throws {
-        let configuration = MatrixClient.defaultConfiguration()
-        configuration.protocolClasses = [StubProtocol.self]
-        let client = MatrixClient(homeserver: URL(string: "https://x.test")!, accessToken: "t", configuration: configuration)
+        let client = makeClient(doorKey: nil)
         let _: EmptyResponse = try await client.raw(.get, "/ping")
+        let request = try #require(StubProtocol.last)
+        #expect(request.url?.host() == "core.test.nyutag")
+        #expect(request.value(forHTTPHeaderField: DoorCatalogue.headerName) == nil)
     }
+
+    @Test("setDoor меняет адрес внутри того же клиента, сеанс не пересоздаётся")
+    func switchKeepsClient() async throws {
+        let client = makeClient(door: doorA)
+        let session = await client.session
+        await client.setDoor(doorB)
+        #expect(await client.door == doorB)
+        let _: EmptyResponse = try await client.raw(.get, "/ping")
+        #expect(StubProtocol.last?.url?.host() == "b.test.nyutag")
+        #expect(StubProtocol.last?.url?.port == nil)
+        #expect(await client.session === session)
+    }
+
+    @Test("Нет двери: запрос ждёт, setDoor его отпускает")
+    func waitsForDoor() async throws {
+        let client = makeClient()
+        let clock = ContinuousClock(), started = clock.now
+        let pending = Task { () throws -> Void in let _: EmptyResponse = try await client.raw(.get, "/ping") }
+        try await Task.sleep(for: .milliseconds(400))
+        await client.setDoor(doorA)
+        try await pending.value
+        #expect(clock.now - started >= .milliseconds(400))
+        #expect(StubProtocol.last?.url?.host() == "a.test.nyutag")
+    }
+
+    @Test("Нет двери и ждать нельзя: ошибка сети сразу, к ядру напрямую не ходим")
+    func noDoorNoWait() async {
+        let before = StubProtocol.hits
+        let client = makeClient(doorWait: .zero)
+        await #expect(throws: MatrixError(.network("нет пути к ядру"))) {
+            let _: EmptyResponse = try await client.raw(.get, "/ping")
+        }
+        #expect(StubProtocol.hits == before)
+    }
+
+    @Test("Ожидание истекло: ошибка сети")
+    func doorWaitExpires() async {
+        let client = makeClient(doorWait: .milliseconds(300))
+        await #expect(throws: MatrixError(.network("нет пути к ядру"))) {
+            let _: EmptyResponse = try await client.raw(.get, "/ping")
+        }
+    }
+
+    @Test("502 от двери: жалоба на неё; на сменившуюся за время полёта дверь жалобы нет")
+    func complainsOnBadGateway() async throws {
+        let client = makeClient(door: doorA)
+        let complaints = Complaints()
+        await client.setDoorTrouble { complaints.add($0) }
+        StubProtocol.answer(502)
+        await #expect(throws: MatrixError.self) { let _: EmptyResponse = try await client.raw(.get, "/ping") }
+        #expect(complaints.all == [doorA])
+        StubProtocol.answer(200)
+        let _: EmptyResponse = try await client.raw(.get, "/ping")
+        #expect(complaints.all == [doorA], "удачный ответ жалоб не добавляет")
+    }
+
+    @Test("Беда двери или всей сети")
+    func doorTroubleTable() {
+        #expect(MatrixClient.isDoorTrouble(URLError(.timedOut)))
+        #expect(MatrixClient.isDoorTrouble(URLError(.cannotConnectToHost)))
+        #expect(MatrixClient.isDoorTrouble(URLError(.secureConnectionFailed)))
+        #expect(MatrixClient.isDoorTrouble(URLError(.networkConnectionLost)))
+        #expect(!MatrixClient.isDoorTrouble(URLError(.cancelled)))
+        #expect(!MatrixClient.isDoorTrouble(URLError(.notConnectedToInternet)))
+        #expect(!MatrixClient.isDoorTrouble(URLError(.dataNotAllowed)))
+    }
+
+    @Test("follow: клиент берёт двери из потока")
+    func followsStream() async throws {
+        let client = makeClient()
+        let (stream, continuation) = AsyncStream<Door?>.makeStream()
+        client.follow(stream)
+        continuation.yield(doorB)
+        for _ in 0..<40 where await client.door == nil { try await Task.sleep(for: .milliseconds(25)) }
+        #expect(await client.door == doorB)
+        continuation.yield(nil)
+        for _ in 0..<40 where await client.door != nil { try await Task.sleep(for: .milliseconds(25)) }
+        #expect(await client.door == nil)
+        continuation.finish()
+    }
+}
+
+private final class Complaints: @unchecked Sendable {
+    private let lock = NSLock()
+    private var doors: [Door] = []
+    func add(_ door: Door) { lock.withLock { doors.append(door) } }
+    var all: [Door] { lock.withLock { doors } }
 }

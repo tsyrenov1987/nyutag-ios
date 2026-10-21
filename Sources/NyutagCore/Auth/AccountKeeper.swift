@@ -13,7 +13,7 @@ public struct SignedInAccount: Sendable {
 public struct AccountKeeper: Sendable {
     public let vault: SessionVault
     public let shelf: SharedShelf
-    /// Клиент под адрес сервера и токен: путь (туннель или прямой) и пин CA задаёт вызывающий.
+    /// Клиент под адрес сервера и токен: дверь к ядру (или прямой путь) задаёт вызывающий.
     let makeClient: @Sendable (_ homeserver: URL, _ accessToken: String?) -> MatrixClient
 
     public init(vault: SessionVault, shelf: SharedShelf,

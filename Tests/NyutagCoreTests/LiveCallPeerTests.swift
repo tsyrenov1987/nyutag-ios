@@ -1,6 +1,6 @@
 // Собеседник для проверки звонка на iPhone: Мак входит в E2EE-учётку и звонит основной тестовой (или ждёт её
 // звонка), вместо микрофона — тон 440 Гц. Сигналы идут через ядро как у приложения, кадры — через релей
-// (SOCKS до ядра, см. LiveCallRelayTests).
+// (дверь к ядру, см. LiveCallRelayTests).
 //   NYUTAG_CALL_PEER=answer — ждать звонка с телефона и принять его;
 //   NYUTAG_CALL_PEER=dial   — позвонить на телефон самому;
 //   NYUTAG_CALL_PEER=once   — без звонка: послать фото «один просмотр» и ждать, пока телефон его откроет.
@@ -16,7 +16,7 @@ import Foundation
 import Testing
 
 @Suite(.enabled(if: ProcessInfo.processInfo.environment["NYUTAG_CALL_PEER"] != nil && LiveE2EEEnv.available
-                    && ProcessInfo.processInfo.environment["NYUTAG_TEST_SOCKS"] != nil, "нет NYUTAG_CALL_PEER"))
+                    && LiveEnv.doorAvailable, "нет NYUTAG_CALL_PEER или двери"))
 struct LiveCallPeerTests {
     @Test func peer() async throws {
         let env = ProcessInfo.processInfo.environment
@@ -64,10 +64,7 @@ struct LiveCallPeerTests {
             return
         }
 
-        let port = UInt16(ProcessInfo.processInfo.environment["NYUTAG_TEST_SOCKS"]!)!
-        let route = Route.socks5(try #require(SocksProxy(port: port, user: "probe", password: "probe")))
-        let core = MatrixClient(homeserver: URL(string: "https://core.nyutag.chat:6167")!,
-                                accessToken: session.accessToken, delegate: CertificateTrust.nyutagCore(), route: route)
+        let core = LiveEnv.doorClient(accessToken: session.accessToken)
         var callEnv = CallEnvironment(
             me: session.userID, deviceID: session.deviceID,
             post: { signal, room in

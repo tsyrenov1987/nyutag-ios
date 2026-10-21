@@ -93,7 +93,7 @@ struct DevicesView: View {
                                                                           locale: words.lang?.locale ?? Locale(identifier: "ru")))))
                         .font(.caption).foregroundStyle(Theme.quiet)
                 }
-                // Через туннель сервер видит только 127.0.0.1 — такой адрес ничего не говорит, не показываем.
+                // Через дверь сервер видит адрес входа, а не телефона — такой адрес ничего не говорит, не показываем.
                 Text([device.deviceID, device.lastSeenIP.flatMap { $0 == "127.0.0.1" ? nil : $0 }].compactMap { $0 }.joined(separator: " · "))
                     .font(.caption2.monospaced()).foregroundStyle(Theme.quiet)
             }

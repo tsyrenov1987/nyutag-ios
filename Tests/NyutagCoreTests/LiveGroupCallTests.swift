@@ -1,7 +1,7 @@
 // Групповой звонок вживую: Мак входит двумя тестовыми учётками (третьей и четвёртой), третий участник —
 // симулятор или телефон с E2EE-учёткой. Основную учётку (телефон владельца) не трогаем: ей не звонит.
 // Комната «Проверка групповых звонков» — шифрованная, недостающих участников приглашаем; E2EE-учётка входит
-// в неё с Мака и выходит. Сигналы через ядро, кадры через релей (SOCKS).
+// в неё с Мака и выходит. Сигналы через ядро, кадры через релей (дверь к ядру).
 //   NYUTAG_CALL_GROUP=1         — включить;
 //   NYUTAG_TEST_THIRD_USER/_PASSWORD, NYUTAG_TEST_FOURTH_USER/_PASSWORD — учётки Мака;
 //   NYUTAG_CALL_SECONDS         — сколько говорить (по умолчанию 20).
@@ -15,7 +15,7 @@ import Testing
 @Suite(.enabled(if: ProcessInfo.processInfo.environment["NYUTAG_CALL_GROUP"] != nil && LiveE2EEEnv.available
                     && LiveEnv.homeserver != nil && ProcessInfo.processInfo.environment["NYUTAG_TEST_THIRD_USER"] != nil
                     && ProcessInfo.processInfo.environment["NYUTAG_TEST_FOURTH_USER"] != nil
-                    && ProcessInfo.processInfo.environment["NYUTAG_TEST_SOCKS"] != nil, "нет NYUTAG_CALL_GROUP"))
+                    && LiveEnv.doorAvailable, "нет NYUTAG_CALL_GROUP"))
 struct LiveGroupCallTests {
     static let env = ProcessInfo.processInfo.environment
 
@@ -160,10 +160,7 @@ private final class Party: @unchecked Sendable {
         try await machine.publishKeys(serverCount: nil)
         await engine.addObserver(machine)
         _ = try await engine.syncOnce()
-        let port = UInt16(LiveGroupCallTests.env["NYUTAG_TEST_SOCKS"]!)!
-        let route = Route.socks5(try #require(SocksProxy(port: port, user: "probe", password: "probe")))
-        let core = MatrixClient(homeserver: URL(string: "https://core.nyutag.chat:6167")!,
-                                accessToken: session.accessToken, delegate: CertificateTrust.nyutagCore(), route: route)
+        let core = LiveEnv.doorClient(accessToken: session.accessToken)
         let client = client, store = store, machine = machine
         center = CallCenter(CallEnvironment(
             me: session.userID, deviceID: session.deviceID,

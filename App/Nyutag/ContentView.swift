@@ -57,7 +57,7 @@ struct ContentView: View {
             if let room = env["NYUTAG_UI_MAKE_ROOM"] { Task { await session.ensurePrivateRoom(named: room) } }
         }
         guard session.phase == .signedOut, let user = env["NYUTAG_UI_USER"], let password = env["NYUTAG_UI_PASSWORD"] else { return }
-        // Туннель поднимается параллельно: первые попытки могут не дойти до ядра.
+        // Гонка дверей идёт параллельно: первые попытки могут не дойти до ядра.
         for attempt in 1...6 {
             do throws(AppSession.SignInFailure) {
                 try await session.signIn(identifier: user, password: password)

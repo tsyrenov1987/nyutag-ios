@@ -3,14 +3,14 @@
 Мессенджер для бурятского сообщества: сервер `nyutag.chat` (протокол Matrix), вход по приглашению, интерфейс на бурятском и русском.
 
 Клиент написан с нуля на Swift. В проекте нет сторонних библиотек и пакетов: только системные фреймворки Apple
-(Foundation, SwiftUI, CryptoKit, CommonCrypto, SQLite из состава ОС, Network, AVFoundation, CallKit, PushKit)
-и наш собственный транспортный модуль `FarvaterCore` (Go, репозиторий [farvater-core](https://github.com/tsyrenov1987/farvater-core)).
+(Foundation, SwiftUI, CryptoKit, CommonCrypto, SQLite из состава ОС, Network, AVFoundation, CallKit, PushKit).
+К ядру клиент ходит обычным HTTPS через «двери» — несколько адресов с сертификатами Let's Encrypt (`Net/Doors.swift`).
 
 ## Состав
 
 | Модуль | Что делает |
 | --- | --- |
-| `NyutagCore` | HTTP-слой клиент-серверного API, вход, `/sync`, хранилище SQLite, события комнат, доверие своему CA |
+| `NyutagCore` | HTTP-слой клиент-серверного API, вход, `/sync`, хранилище SQLite, события комнат, двери к ядру |
 | `NyutagCrypto` | Сквозное шифрование: собственная реализация Olm и Megolm на CryptoKit и CommonCrypto |
 | `App` | Приложение, расширение уведомлений (появятся следующими) |
 

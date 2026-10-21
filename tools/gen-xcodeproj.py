@@ -68,15 +68,6 @@ APP_INFO = plist(
     + "\t<key>NSCameraUsageDescription</key>\n\t<string>Камера нужна для видеозвонков: картинка уходит собеседнику зашифрованной.</string>\n"
     + "\t<key>NSMicrophoneUsageDescription</key>\n\t<string>Микрофон нужен для звонков: голос уходит собеседнику зашифрованным.</string>\n"
     + "\t<key>NyutagAppGroup</key>\n\t<string>$(NYUTAG_APP_GROUP)</string>\n"
-    # Ядро подписано нашим CA, которого нет в системных корнях. Без исключения ATS после делегата
-    # повторно проверяет цепочку по системе и рвёт TLS (-9802, MissingIntermediate). Исключение снимает
-    # только эту системную проверку для одного имени; доверие решает CertificateTrust (только наш якорь).
-    # Имя резолвят лишь выходы туннеля, а клиент ходит к нему только по https.
-    + "\t<key>NSAppTransportSecurity</key>\n\t<dict>\n"
-    "\t\t<key>NSExceptionDomains</key>\n\t\t<dict>\n"
-    "\t\t\t<key>core.nyutag.chat</key>\n\t\t\t<dict>\n"
-    "\t\t\t\t<key>NSExceptionAllowsInsecureHTTPLoads</key>\n\t\t\t\t<true/>\n"
-    "\t\t\t</dict>\n\t\t</dict>\n\t</dict>\n"
 )
 
 NSE_INFO = plist(
@@ -133,16 +124,12 @@ fileref("accounts_swift", "AppAccounts.swift", "sourcecode.swift")
 fileref("selfcheck_swift", "SelfCheck.swift", "sourcecode.swift")
 fileref("pushdoor_swift", "PushDoor.swift", "sourcecode.swift")
 fileref("ringer_swift", "CallRinger.swift", "sourcecode.swift")
-fileref("tunnel_bridge", "CoreBridge.swift", "sourcecode.swift")
-fileref("tunnel_net", "NetworkWatch.swift", "sourcecode.swift")
-fileref("tunnel_hub", "TunnelHub.swift", "sourcecode.swift")
+fileref("doors_net", "NetworkWatch.swift", "sourcecode.swift")
+fileref("doors_hub", "DoorHub.swift", "sourcecode.swift")
 # Экраны: все .swift из App/Nyutag/UI, новый файл попадает в проект повторным запуском генератора.
 UI_FILES = sorted(n for n in os.listdir(os.path.join(ROOT, "App", "Nyutag", "UI")) if n.endswith(".swift"))
 for name in UI_FILES:
     fileref("ui:" + name, name, "sourcecode.swift")
-# FarvaterCore.xcframework не в git (tools/fetch-farvater-core.sh кладёт его в Frameworks/). Внутри статический
-# архив, поэтому только линковка: встраивать (Embed & Sign) статический фреймворк в бандл нельзя.
-fileref("farvater", "Frameworks/FarvaterCore.xcframework", "wrapper.xcframework")
 fileref("assets", "Assets.xcassets", "folder.assetcatalog")
 # Иконка в формате Icon Composer (слои юрты и соёмбо на синем); каталог ассетов иконки не держит.
 fileref("appicon", "AppIcon.icon", "folder.iconcomposer.icon")
@@ -187,11 +174,9 @@ b_swift_accounts = bf("accounts_swift", F["accounts_swift"], "AppAccounts.swift"
 b_swift_selfcheck = bf("selfcheck_swift", F["selfcheck_swift"], "SelfCheck.swift", "Sources")
 b_swift_pushdoor = bf("pushdoor_swift", F["pushdoor_swift"], "PushDoor.swift", "Sources")
 b_swift_ringer = bf("ringer_swift", F["ringer_swift"], "CallRinger.swift", "Sources")
-b_tunnel = [bf("tunnel_bridge", F["tunnel_bridge"], "CoreBridge.swift", "Sources"),
-            bf("tunnel_net", F["tunnel_net"], "NetworkWatch.swift", "Sources"),
-            bf("tunnel_hub", F["tunnel_hub"], "TunnelHub.swift", "Sources")]
+b_doors = [bf("doors_net", F["doors_net"], "NetworkWatch.swift", "Sources"),
+           bf("doors_hub", F["doors_hub"], "DoorHub.swift", "Sources")]
 b_ui = [bf("ui:" + n, F["ui:" + n], n, "Sources") for n in UI_FILES]
-b_farvater = bf("farvater", F["farvater"], "FarvaterCore.xcframework", "Frameworks")
 b_assets = bf("assets", F["assets"], "Assets.xcassets", "Resources")
 b_appicon = bf("appicon", F["appicon"], "AppIcon.icon", "Resources")
 b_res = bf("resources", F["resources"], "Catalogue", "Resources")
@@ -215,8 +200,8 @@ def phase(name, isa, files, extra=()):
                [("files", lst(files)), ("runOnlyForDeploymentPostprocessing", "0")])
 
 
-ph_app_src = phase("Sources:app", "PBXSourcesBuildPhase", [b_swift_app, b_swift_content, b_swift_accounts, b_swift_selfcheck, b_swift_pushdoor, b_swift_ringer] + b_tunnel + b_ui)
-ph_app_fw = phase("Frameworks:app", "PBXFrameworksBuildPhase", [b_pkg_app, b_farvater])
+ph_app_src = phase("Sources:app", "PBXSourcesBuildPhase", [b_swift_app, b_swift_content, b_swift_accounts, b_swift_selfcheck, b_swift_pushdoor, b_swift_ringer] + b_doors + b_ui)
+ph_app_fw = phase("Frameworks:app", "PBXFrameworksBuildPhase", [b_pkg_app])
 ph_app_res = phase("Resources:app", "PBXResourcesBuildPhase", [b_assets, b_appicon, b_res, b_cal_app, b_infoplist_strings])
 ph_embed = phase("Embed Foundation Extensions", "PBXCopyFilesBuildPhase", [b_embed, b_embed_widget],
                  [("dstPath", '""'), ("dstSubfolderSpec", "13")])
@@ -238,14 +223,14 @@ def group(key, comment, children, path=None, name=None):
     return add("grp:" + key, comment, "PBXGroup", f)
 
 
-g_tunnel = group("tunnel", "Tunnel", [F["tunnel_bridge"], F["tunnel_net"], F["tunnel_hub"]], "Tunnel")
+g_doors = group("doors", "Doors", [F["doors_net"], F["doors_hub"]], "Doors")
 g_ui = group("ui", "UI", [F["ui:" + n] for n in UI_FILES], "UI")
-g_nyutag = group("nyutag", "Nyutag", [F["app_swift"], F["content_swift"], F["accounts_swift"], F["selfcheck_swift"], F["pushdoor_swift"], F["ringer_swift"], g_tunnel, g_ui, F["assets"], F["appicon"], F["app_plist"], F["infoplist_strings"], F["app_ent"]], "Nyutag")
+g_nyutag = group("nyutag", "Nyutag", [F["app_swift"], F["content_swift"], F["accounts_swift"], F["selfcheck_swift"], F["pushdoor_swift"], F["ringer_swift"], g_doors, g_ui, F["assets"], F["appicon"], F["app_plist"], F["infoplist_strings"], F["app_ent"]], "Nyutag")
 g_nse = group("nse", "NyutagNSE", [F["nse_swift"], F["nse_plist"], F["nse_ent"]], "NyutagNSE")
 g_widget = group("widget", "NyutagWidget", [F["widget_swift"], F["widget_plist"]], "NyutagWidget")
 g_apps = group("apps", "App", [g_nyutag, g_nse, g_widget, F["resources"], F["calendar"]], "App")
 g_products = group("products", "Products", [APP_PROD, NSE_PROD, WIDGET_PROD], None, "Products")
-g_main = group("main", "Main", [g_apps, F["farvater"], g_products])
+g_main = group("main", "Main", [g_apps, g_products])
 
 PROJ_COMMON = {
     "ALWAYS_SEARCH_USER_PATHS": "NO", "CLANG_ENABLE_MODULES": "YES", "CLANG_ENABLE_OBJC_ARC": "YES",
@@ -263,8 +248,6 @@ PROJ_RELEASE = dict(PROJ_COMMON, DEBUG_INFORMATION_FORMAT="dwarf-with-dsym", SWI
 APP_S = {
     "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon", "ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME": "AccentColor",
     "CODE_SIGN_ENTITLEMENTS": "App/Nyutag/Nyutag.entitlements", "ENABLE_PREVIEWS": "YES",
-    # в FarvaterCore.xcframework симулятор только arm64
-    "EXCLUDED_ARCHS[sdk=iphonesimulator*]": "x86_64",
     "GENERATE_INFOPLIST_FILE": "YES", "INFOPLIST_FILE": "App/Nyutag/Info.plist",
     "INFOPLIST_KEY_CFBundleDisplayName": "Нютаг", "INFOPLIST_KEY_UIApplicationSceneManifest_Generation": "YES",
     "INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents": "YES", "INFOPLIST_KEY_UILaunchScreen_Generation": "YES",

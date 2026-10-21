@@ -1,7 +1,7 @@
 // Нютаг. Расширение уведомлений: текст пуша собираем на устройстве. Сессия и база общие с приложением (связка
-// и контейнер группы). Туннеля в расширении нет: событие берём из общей базы или из шифротекста, который шлюз
-// вложил в пуш; только если нет ни того ни другого — пробуем ядро напрямую с пином нашего CA.
-// Не вышло — оставляем подпись шлюза или «Новое сообщение».
+// и контейнер группы). Своей гонки дверей в расширении нет: событие берём из общей базы или из шифротекста,
+// который шлюз вложил в пуш; только если нет ни того ни другого — идём к ядру через последнюю удачную дверь
+// приложения (`DoorMemory`). Не вышло — оставляем подпись шлюза или «Новое сообщение».
 
 import Foundation
 import NyutagCore
@@ -32,12 +32,15 @@ final class NotificationService: UNNotificationServiceExtension {
         guard let shelf = SharedShelf(appGroup: SharedShelf.appGroup),
               let session = try? SessionVault.shared.load(),
               let store = try? shelf.openStore(for: session.userID) else { return nil }
-        // Порт ядра снаружи закрыт: без пути не ждём связи и укладываемся в отведённые расширению секунды.
+        // Укладываемся в отведённые расширению секунды: не ждём связи и двери. Двери в памяти нет (приложение
+        // ещё ни разу не нашло её) — к ядру не идём вовсе: снаружи оно закрыто, запрос упал бы по таймауту.
         let configuration = MatrixClient.defaultConfiguration()
         configuration.waitsForConnectivity = false
         configuration.timeoutIntervalForRequest = 8
+        let remembered = DoorMemory.recall()
         let client = MatrixClient(homeserver: session.homeserver, accessToken: session.accessToken,
-                                  configuration: configuration, delegate: CertificateTrust.nyutagCore())
+                                  configuration: configuration, doorKey: remembered?.key ?? "", door: remembered?.door,
+                                  doorWait: .zero)
         return try? await PushReader(client: client, store: store, session: session)
             .preview(roomID: roomID, eventID: eventID, carried: carried)
     }
