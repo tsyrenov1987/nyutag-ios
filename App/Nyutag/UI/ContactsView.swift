@@ -57,6 +57,7 @@ struct ContactsView: View {
     /// Сверка номеров с сервером не чаще раза в десять минут: у сервера суточный предел.
     @State private var lookedUpAt: Date?
     @State private var matches: [String: String] = [:]
+    @State private var inviting = false
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -72,6 +73,15 @@ struct ContactsView: View {
                 if !query.isEmpty, shownPeople.isEmpty, shownFound.isEmpty, shownInvite.isEmpty, searched == query {
                     Text(words(.nobodyFound)).foregroundStyle(Theme.quiet).frame(maxWidth: .infinity)
                         .listRowBackground(Color.clear)
+                    if isPhone {
+                        Section {
+                            Button { inviting = true } label: {
+                                Label(words(.phoneNotInNyutag), systemImage: "person.badge.plus").foregroundStyle(Theme.sky)
+                            }
+                            .accessibilityIdentifier("contacts-invite-phone")
+                        }
+                        .listRowBackground(Theme.card)
+                    }
                 }
             }
             .scrollContentBackground(.hidden)
@@ -81,6 +91,7 @@ struct ContactsView: View {
             .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(for: String.self) { roomID in ChatView(roomID: roomID) }
             .alert(words(.cantOpenChat), isPresented: $failed) { Button(words(.done)) {} }
+            .sheet(isPresented: $inviting) { InviteView() }
             .task { await reload() }
             .refreshable { lookedUpAt = nil; await reload() }
             .onChange(of: session.revision) { Task { await reload() } }
@@ -155,6 +166,10 @@ struct ContactsView: View {
     private var shownFound: [Person] {
         let shown = Set(shownPeople.map(\.userID))
         return found.filter { !shown.contains($0.userID) }
+    }
+
+    private var isPhone: Bool {
+        query.count(where: \.isNumber) >= 10 && People.phoneKey(query) != nil
     }
 
     private var shownInvite: [BookEntry] {

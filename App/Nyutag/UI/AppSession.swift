@@ -567,6 +567,17 @@ final class AppSession {
         return try? await account.client.profile(userID: userID)
     }
 
+    /// Указан ли свой номер (сам номер сервер не отдаёт); nil — не удалось узнать.
+    func hasPhone() async -> Bool? {
+        guard let account else { return nil }
+        return try? await NyutagService(client: account.client).hasPhone()
+    }
+
+    func setPhone(_ phone: String) async -> Bool {
+        guard let account else { return false }
+        return (try? await NyutagService(client: account.client).setPhone(phone)) != nil
+    }
+
     /// Имя и «о себе»: отправляем только то, что изменилось.
     func saveProfile(name: String, about: ProfileAbout, was old: Profile) async -> Bool {
         guard let account, let me else { return false }
@@ -649,6 +660,14 @@ final class AppSession {
     func searchPeople(_ term: String) async -> [Person] {
         guard let account, let me else { return [] }
         var found = (try? await account.client.searchUsers(term)) ?? []
+        // Набран номер: сервер скажет, чей он. Номер виден только тому, кто его уже знает.
+        if term.count(where: \.isNumber) >= 10, People.phoneKey(term) != nil,
+           let userID = try? await NyutagService(client: account.client).lookup(phones: [term]).values.first,
+           userID != me {
+            let name = await profile(of: userID)?.displayName.flatMap { $0.isEmpty ? nil : $0 } ?? ChatDigest.localpart(userID)
+            found.removeAll { $0.userID == userID }
+            found.insert(Person(userID: userID, name: name, phone: term), at: 0)
+        }
         if let server = me.split(separator: ":", maxSplits: 1).last,
            let exact = try? await account.client.person(nick: term, server: String(server)),
            !found.contains(where: { $0.userID == exact.userID }) {

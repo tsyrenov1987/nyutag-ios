@@ -391,6 +391,17 @@ extension Phrase {
     static let profileEastYearNone = Phrase(bxr: "Заагдаагүй", ru: "Не указан", en: "Not set")
     static let profileSaveFailed = Phrase(bxr: "Хадагалжа шадабагүйбди. Дахин оролдогты.",
                                           ru: "Не удалось сохранить. Попробуйте ещё раз.", en: "Could not save. Try again.")
+    static let myPhone = Phrase(bxr: "Минии дугаар", ru: "Мой номер", en: "My phone number")
+    static let myPhonePlaceholder = Phrase(bxr: "+7 900 000-00-00", ru: "+7 900 000-00-00", en: "+1 555 000 0000")
+    static let myPhoneChange = Phrase(bxr: "Шэнэ дугаар", ru: "Новый номер", en: "New number")
+    static let myPhoneHint = Phrase(bxr: "Дугаартайш танилнууд Нютагта шамайе олохо. Бусадта дугаар харагдахагүй.",
+                                    ru: "Знакомые, у которых есть ваш номер, найдут вас в Нютаге. Другим номер не виден.",
+                                    en: "People who have your number will find you in Nyutag. Nobody else sees it.")
+    static let myPhoneSet = Phrase(bxr: "Дугаар заагдаа. Һэлгэхэ гэбэл шэнэ дугаар оруулагты.",
+                                   ru: "Номер указан. Чтобы сменить, введите новый.",
+                                   en: "Your number is set. Enter a new one to change it.")
+    static let phoneNotInNyutag = Phrase(bxr: "Энэ дугаар Нютагта үгы. Уряал эльгээхэ", ru: "Этого номера нет в Нютаге. Пригласить",
+                                         en: "This number isn't on Nyutag. Invite")
     static let wallpaper = Phrase(bxr: "Хөөрэлдөөнэй дэбисхэр", ru: "Обои чатов", en: "Chat wallpaper")
     static let wallpaperForChat = Phrase(bxr: "Энэ хөөрэлдөөнэй дэбисхэр", ru: "Обои этого чата", en: "Wallpaper for this chat")
     static let wallpaperAsEverywhere = Phrase(bxr: "Бусадтал адли", ru: "Как во всех", en: "Same as all")

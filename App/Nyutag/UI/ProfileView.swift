@@ -12,6 +12,9 @@ struct ProfileEditView: View {
     @State private var about = ProfileAbout()
     @State private var busy = false
     @State private var failed = false
+    /// Свой номер: по нему находят те, у кого он в книжке. nil — ещё не знаем, указан ли.
+    @State private var hasPhone: Bool?
+    @State private var phone = ""
 
     var body: some View {
         Form {
@@ -30,6 +33,16 @@ struct ProfileEditView: View {
             }
             Section(words(.profileUg)) {
                 TextField(words(.profileUgPlaceholder), text: $about.ug)
+            }
+            Section {
+                TextField(words(hasPhone == true ? .myPhoneChange : .myPhonePlaceholder), text: $phone)
+                    .keyboardType(.phonePad)
+                    .textContentType(.telephoneNumber)
+                    .accessibilityIdentifier("profile-phone")
+            } header: {
+                Text(words(.myPhone))
+            } footer: {
+                Text(words(hasPhone == true ? .myPhoneSet : .myPhoneHint))
             }
             Section {
                 NavigationLink {
@@ -63,6 +76,7 @@ struct ProfileEditView: View {
         old = profile
         name = profile.displayName ?? ChatDigest.localpart(me)
         about = ProfileAbout(profile: profile)
+        hasPhone = await session.hasPhone()
         #if DEBUG
         if let text = ProcessInfo.processInfo.environment["NYUTAG_UI_ABOUT"] {
             about.about = text
@@ -77,6 +91,16 @@ struct ProfileEditView: View {
         busy = true
         defer { busy = false }
         failed = !(await session.saveProfile(name: name, about: about, was: old))
+        let number = phone.trimmingCharacters(in: .whitespaces)
+        if !failed, !number.isEmpty {
+            let saved = People.phoneKey(number) == nil ? false : await session.setPhone(number)
+            if !saved {
+                failed = true
+            } else {
+                hasPhone = true
+                phone = ""
+            }
+        }
         #if DEBUG
         print("ui-check: профиль \(failed ? "не сохранён" : "сохранён")")
         #endif
