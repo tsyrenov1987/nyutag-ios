@@ -308,7 +308,7 @@ struct ChatListView: View {
     /// Снимки экранов: открыть чат по части названия из SIMCTL_CHILD_NYUTAG_UI_OPEN_CHAT.
     private func openForScreenshots() {
         guard path.isEmpty, let wanted = ProcessInfo.processInfo.environment["NYUTAG_UI_OPEN_CHAT"],
-              let line = session.lines.first(where: { $0.title.localizedCaseInsensitiveContains(wanted) }) else { return }
+              let line = session.lines.first(where: { ($0.title.isEmpty ? words(.emptyChat) : $0.title).localizedCaseInsensitiveContains(wanted) }) else { return }
         path = [line.id]
         print("ui-check: открыт чат, событий в списке \(session.lines.count)")
     }
