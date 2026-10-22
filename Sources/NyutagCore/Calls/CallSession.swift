@@ -13,6 +13,8 @@ import Synchronization
 public enum CallPhase: Sendable, Equatable {
     /// Мы звоним, собеседник ещё не ответил.
     case calling
+    /// Мы звоним, у собеседника звенит (пришло его «у меня звонит»): идут гудки.
+    case alerting
     /// Звонят нам.
     case ringing
     /// Ответ есть, сводим связь через релей.
@@ -32,6 +34,8 @@ public struct CallEnvironment: Sendable {
     public var deviceID: String
     /// Отправить сигнал в комнату (шифром, если комната шифрованная и сигнал не ring).
     public var post: @Sendable (CallSignal, String) async throws -> Void
+    /// Сообщение устройствам человека (to-device): «у меня звонит». Второй аргумент — кому.
+    public var notify: @Sendable (CallSignal, String) async -> Void = { _, _ in }
     public var openTransport: @Sendable (String) async -> (any CallTransport)?
     public var makeVoice: @Sendable () -> any VoiceIO
     /// Камера. `nil` — у устройства камеры нет: видео только принимаем.
@@ -151,9 +155,14 @@ public actor CallSession {
     // MARK: Нам звонят
 
     /// Будильник звенит до `until`; не ответили — пропущенный, без сигнала в комнату.
+    /// Звонящему сразу уходит «у меня звонит»: у него вместо «Звоним…» пойдут гудки.
     func ring(until: Date) {
         let left = max(until.timeIntervalSinceNow, 1)
         arm(after: .milliseconds(Int(left * 1000)), .noAnswer, notify: false)
+        guard !group else { return }
+        let signal = CallSignal.ringing(callID: callID, roomID: roomID, deviceID: env.deviceID)
+        let notify = env.notify, caller = peer
+        Task { await notify(signal, caller) }
     }
 
     public func accept() async {
@@ -209,6 +218,9 @@ public actor CallSession {
         switch message.signal {
         case .ring:
             break
+        case .ringing:
+            guard isCaller, phase == .calling, message.sender == peer else { return }
+            set(.alerting)
         case .offer(_, let key, _):
             guard !isCaller, !mine, message.sender == peer, theirKey == nil else { return }
             theirKey = key
@@ -219,7 +231,7 @@ public actor CallSession {
                 if !isCaller, device != env.deviceID, phase == .ringing { await finish(.elsewhere, notify: false) }
                 return
             }
-            guard isCaller, phase == .calling, message.sender == peer,
+            guard isCaller, phase == .calling || phase == .alerting, message.sender == peer,
                   let secret = try? keys.secret(with: key, callID: callID, isCaller: true) else { return }
             set(.connecting)
             arm(after: env.connectTimeout, .lost, notify: true)
@@ -258,7 +270,7 @@ public actor CallSession {
             guard !mine, message.sender == peer else { return }
             if case .live = phase { return }
             await finish(reason, notify: false)
-        case .ring, .offer, .answer:
+        case .ring, .offer, .answer, .ringing:
             break
         }
     }

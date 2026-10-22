@@ -5,6 +5,8 @@
 // Групповой звонок (только в шифрованной комнате): будильник с `group`, дальше каждый вошедший шлёт
 // `chat.nyutag.call.join` со слотом релея, своим ключом кадров и меткой, ушедший — `chat.nyutag.call.leave`.
 // Ключ кадров защищён шифром комнаты: его читают только участники комнаты.
+// `chat.nyutag.call.ringing` — не событие комнаты, а сообщение устройству (to-device): «у меня звонит». Звонящий по нему
+// переходит от «Звоним…» к гудкам. В ленту и пуши оно не попадает, старые версии его просто не знают.
 
 import Foundation
 
@@ -15,6 +17,7 @@ public enum CallEventType {
     public static let end = "chat.nyutag.call.end"
     public static let join = "chat.nyutag.call.join"
     public static let leave = "chat.nyutag.call.leave"
+    public static let ringing = "chat.nyutag.call.ringing"
 
     static let all: Set<String> = [ring, offer, answer, end, join, leave]
 }
@@ -38,11 +41,13 @@ public enum CallSignal: Sendable, Equatable {
     /// Вошёл в групповой звонок: кадры с меткой `tag` открываются ключом `key`.
     case join(callID: String, slot: String, key: Data, tag: UInt32, deviceID: String)
     case leave(callID: String, deviceID: String)
+    /// Будильник звенит на устройстве `deviceID` того, кому звонят. Идёт сообщением устройству, комнату несёт в себе.
+    case ringing(callID: String, roomID: String, deviceID: String)
 
     public var callID: String {
         switch self {
         case .ring(let id, _, _, _), .offer(let id, _, _), .answer(let id, _, _), .end(let id, _), .join(let id, _, _, _, _),
-             .leave(let id, _): id
+             .leave(let id, _), .ringing(let id, _, _): id
         }
     }
 
@@ -54,6 +59,7 @@ public enum CallSignal: Sendable, Equatable {
         case .end: CallEventType.end
         case .join: CallEventType.join
         case .leave: CallEventType.leave
+        case .ringing: CallEventType.ringing
         }
     }
 
@@ -86,6 +92,9 @@ public enum CallSignal: Sendable, Equatable {
                     "tag": .int(Int(tag)), "device_id": .string(device), "version": .int(Self.version)]
         case .leave(let id, let device):
             return ["call_id": .string(id), "device_id": .string(device), "version": .int(Self.version)]
+        case .ringing(let id, let room, let device):
+            return ["call_id": .string(id), "room_id": .string(room), "device_id": .string(device),
+                    "version": .int(Self.version)]
         }
     }
 
@@ -117,6 +126,10 @@ public enum CallSignal: Sendable, Equatable {
         case CallEventType.leave:
             guard let device = content["device_id"]?.string else { return nil }
             self = .leave(callID: id, deviceID: device)
+        case CallEventType.ringing:
+            guard let room = content["room_id"]?.string, room.hasPrefix("!"),
+                  let device = content["device_id"]?.string else { return nil }
+            self = .ringing(callID: id, roomID: room, deviceID: device)
         default:
             return nil
         }
@@ -145,6 +158,14 @@ public struct CallMessage: Sendable, Equatable {
         guard CallEventType.all.contains(event.type), let sender = event.sender,
               let signal = CallSignal(type: event.type, content: event.content) else { return nil }
         self.init(signal: signal, roomID: roomID, sender: sender, eventID: event.eventID, timestamp: event.originServerTS)
+    }
+
+    /// Из сообщения устройству: только «у меня звонит», комната — из содержимого.
+    public init?(toDevice event: Event) {
+        guard event.type == CallEventType.ringing, let sender = event.sender,
+              let signal = CallSignal(type: event.type, content: event.content),
+              case .ringing(_, let roomID, _) = signal else { return nil }
+        self.init(signal: signal, roomID: roomID, sender: sender)
     }
 
     /// Будильник ещё звонит: старые из первой синхронизации или пришедшие с опозданием не поднимают экран.

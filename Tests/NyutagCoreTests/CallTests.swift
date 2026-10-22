@@ -13,7 +13,7 @@ import Testing
                        .end(callID: id, reason: .declined),
                        .ring(callID: id, video: false, lifetime: .seconds(45), group: true),
                        .join(callID: id, slot: CallID.make(), key: key, tag: 77, deviceID: "DEV"),
-                       .leave(callID: id, deviceID: "DEV")] {
+                       .leave(callID: id, deviceID: "DEV"), .ringing(callID: id, roomID: "!r:nyutag.chat", deviceID: "DEV")] {
             #expect(CallSignal(type: signal.eventType, content: signal.content) == signal)
         }
         #expect(CallSignal.ring(callID: id, video: false, lifetime: .seconds(45)).wantsRoomEncryption == false)

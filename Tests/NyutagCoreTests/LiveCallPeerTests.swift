@@ -58,7 +58,7 @@ struct LiveCallPeerTests {
         let roomID = try await sharedRoom(with: phone, store: store, client: client, me: session.userID)
         let phoneDevices = try await machine.devices(for: [phone])
         print("call peer: устройства телефона: \(phoneDevices.map(\.deviceID).joined(separator: ", "))")
-        print("call peer: комната с телефоном \(roomID.prefix(8))…, шифр \(try await store.room(roomID)?.isEncrypted == true)")
+        print("call peer: комната с телефоном \(roomID), шифр \(try await store.room(roomID)?.isEncrypted == true)")
         if ProcessInfo.processInfo.environment["NYUTAG_CALL_PEER"] == "once" {
             try await sendViewOnce(client, machine, roomID: roomID)
             return
@@ -76,7 +76,14 @@ struct LiveCallPeerTests {
             },
             openTransport: { slot in await RelayLink.open(client: core, slot: slot) },
             makeVoice: { ToneVoice() })
+        callEnv.notify = { signal, user in
+            let sent = (try? await client.sendToDevice(type: signal.eventType, messages: [user: ["*": signal.content]])) != nil
+            print("call peer: \(signal.eventType) устройствам \(sent ? "ушёл" : "не ушёл")")
+        }
         if video { callEnv.makeCamera = { PatternCamera() } }
+        // NYUTAG_CALL_ANSWER_AFTER — сколько секунд звенеть, прежде чем принять: послушать гудки у звонящего.
+        let answerAfter = ProcessInfo.processInfo.environment["NYUTAG_CALL_ANSWER_AFTER"].flatMap(Double.init) ?? 0
+        var acceptAt: Date?
         let center = CallCenter(callEnv)
 
         var call: CallSession?
@@ -93,6 +100,11 @@ struct LiveCallPeerTests {
         while Date() < deadline {
             let update = try await engine.syncOnce(timeout: .seconds(1))
             let fresh = Int(Date().timeIntervalSince1970 * 1000) - 120_000
+            for event in update.response.toDevice {
+                guard let message = CallMessage(toDevice: event) else { continue }
+                print("call peer: сигнал \(event.type) с устройства телефона")
+                await center.absorb(message)
+            }
             for (room, joined) in update.response.joined {
                 for event in joined.timeline.events where (event.originServerTS ?? 0) > fresh {
                     var clear = event
@@ -111,11 +123,15 @@ struct LiveCallPeerTests {
             }
             if call == nil, await center.active() != nil, let session = await incoming.next() {
                 call = session
-                print("call peer: входящий\(session.video ? " видео" : ""), принимаю")
+                print("call peer: входящий\(session.video ? " видео" : ""), приму через \(answerAfter) с")
                 if video { await session.setCamera(true) }
-                await session.accept()
+                acceptAt = Date().addingTimeInterval(answerAfter)
             }
             guard let call else { continue }
+            if let at = acceptAt, Date() >= at {
+                acceptAt = nil
+                await call.accept()
+            }
             let phase = await call.phase
             if phase != lastPhase {
                 print("call peer: фаза \(phase)")

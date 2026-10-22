@@ -34,6 +34,43 @@ import Testing
         #expect(line.relay.openLinks == 0)
     }
 
+    @Test func callerHearsRingbackOnceCalleeRings() async throws {
+        let line = Line()
+        let alice = line.center(Self.alice, "A1"), bob = line.center(Self.bob, "B1")
+        let call = try #require(await alice.dial(roomID: Self.room, peer: Self.bob))
+        let incoming = try #require(await first(bob.incoming))
+        // У Боба зазвенело: у Алисы вместо «Звоним…» гудки.
+        try await until { await call.phase == .alerting }
+        #expect(line.posted.contains { if case .ringing(call.callID, Self.room, "B1") = $0 { true } else { false } })
+        // Из гудков звонок соединяется как обычно.
+        await incoming.accept()
+        try await waitLive(call)
+        await call.hangUp()
+    }
+
+    @Test func callingWithoutRingingStaysCalling() async throws {
+        let line = Line()
+        let alice = line.center(Self.alice, "A1")
+        let call = try #require(await alice.dial(roomID: Self.room, peer: Self.bob))
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(await call.phase == .calling)
+        await call.hangUp()
+    }
+
+    @Test func ringWithSkewedClockStillRings() async throws {
+        let line = Line()
+        let bob = line.center(Self.bob, "B1")
+        // Часы звонящего отстают на 40 с: по ним будильнику осталось звенеть 5 с из 45.
+        let ring = CallSignal.ring(callID: CallID.make(), video: false, lifetime: .seconds(45))
+        let now = Date()
+        await bob.absorb(CallMessage(signal: ring, roomID: Self.room, sender: Self.alice,
+                                     timestamp: Int(now.timeIntervalSince1970 * 1000) - 40_000), now: now)
+        let incoming = try #require(await first(bob.incoming))
+        try await Task.sleep(for: .seconds(6))
+        #expect(await incoming.phase == .ringing)
+        await incoming.hangUp()
+    }
+
     @Test func videoCallShowsBothSides() async throws {
         let line = Line()
         line.cameras = true
@@ -298,6 +335,10 @@ final class Line: @unchecked Sendable {
             post: { [weak self] signal, room in await self?.deliver(signal, room: room, from: user) },
             openTransport: { slot in relay.join(slot) },
             makeVoice: { ToneVoice() })
+        env.notify = { [weak self] signal, _ in
+            guard case .ringing(_, let room, _) = signal else { return }
+            await self?.deliver(signal, room: room, from: user)
+        }
         env.ringTimeout = ringTimeout
         env.retryDelay = .milliseconds(50)
         env.silenceLimit = silenceLimit

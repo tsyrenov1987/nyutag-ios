@@ -47,6 +47,9 @@ final class CallDesk {
     /// Кто сейчас в групповом звонке, кроме нас.
     private(set) var members: [String] = []
     @ObservationIgnored private var memberWatch: Task<Void, Never>?
+    /// Трубку положили мы: коротких гудков не надо.
+    @ObservationIgnored private var hungUpHere = false
+    @ObservationIgnored private var lateRingback: Task<Void, Never>?
 
     func attach(_ center: CallCenter) {
         self.center = center
@@ -71,7 +74,7 @@ final class CallDesk {
     /// Свернуть можно идущий звонок; входящий ещё ждёт ответа на весь экран.
     var canFold: Bool {
         switch phase {
-        case .calling, .connecting, .live: true
+        case .calling, .alerting, .connecting, .live: true
         default: false
         }
     }
@@ -119,6 +122,7 @@ final class CallDesk {
 
     func hangUp() async {
         guard let current else { return }
+        hungUpHere = true
         CallRinger.shared.end(current.callID)
     }
 
@@ -135,6 +139,7 @@ final class CallDesk {
 
     func performHangUp(_ callID: String) async {
         guard let current, current.callID == callID else { return }
+        hungUpHere = true
         await current.hangUp()
     }
 
@@ -161,6 +166,7 @@ final class CallDesk {
         remoteFeed.clear()
         localFeed.clear()
         members = []
+        hungUpHere = false
         if session.group { watchMembers(session) }
         watchVideo(session)
         #if DEBUG
@@ -169,17 +175,25 @@ final class CallDesk {
         CallRinger.shared.track(session)
         follower?.cancel()
         follower = Task { [weak self] in
+            var beeping = false
             for await phase in session.phases {
+                let before = self?.phase
                 self?.phase = phase
                 // Видеозвонок по громкой: телефон держат перед собой.
                 if case .live = phase, session.video { self?.speaker = true }
-                CallRinger.shared.follow(phase, of: session)
+                beeping = self?.sound(phase, after: before, of: session) ?? false
+                if beeping {
+                    // Короткие гудки идут через сессию звука CallKit: о конце сообщаем системе, когда отзвучат.
+                    Task { try? await Task.sleep(for: .seconds(1.8)); CallRinger.shared.follow(phase, of: session) }
+                } else {
+                    CallRinger.shared.follow(phase, of: session)
+                }
                 #if DEBUG
                 print("ui-check: звонок \(session.callID.prefix(6)): \(phase)")
                 #endif
             }
             // Итог висит на экране недолго, потом экран уходит.
-            try? await Task.sleep(for: .seconds(1.5))
+            try? await Task.sleep(for: .seconds(beeping ? 2 : 1.5))
             guard let self, self.current === session else { return }
             #if DEBUG
             if let stats = await session.stats {
@@ -195,6 +209,41 @@ final class CallDesk {
             self.videoWatch?.cancel()
             self.memberWatch?.cancel()
         }
+    }
+
+    /// Гудки звонящего. Длинные — пока у собеседника звенит; если его телефон не ответил «звоню» (старая версия),
+    /// всё равно через 5 с. Короткие — когда звонок оборвался не по нашей кнопке; тогда возвращает true.
+    private func sound(_ phase: CallPhase, after before: CallPhase?, of session: CallSession) -> Bool {
+        guard !session.group else { return false }
+        let tones = CallTones.shared
+        switch phase {
+        case .calling:
+            lateRingback?.cancel()
+            lateRingback = Task { [weak self] in
+                try? await Task.sleep(for: .seconds(5))
+                guard !Task.isCancelled, self?.current === session, self?.phase == .calling else { return }
+                tones.ringback()
+            }
+        case .alerting:
+            lateRingback?.cancel()
+            tones.ringback()
+        case .ringing, .connecting, .live:
+            lateRingback?.cancel()
+            tones.stop()
+        case .ended(let reason):
+            lateRingback?.cancel()
+            let wasOurs = switch before {
+            case .calling, .alerting, .connecting, .live: true
+            default: false
+            }
+            guard wasOurs, !hungUpHere, reason != .elsewhere else {
+                tones.stop()
+                return false
+            }
+            tones.ended()
+            return true
+        }
+        return false
     }
 
     /// Участники группового звонка: кто пришёл и кто ушёл, раз в секунду.
@@ -371,7 +420,7 @@ struct CallView: View {
 
     private static func isTalking(_ phase: CallPhase) -> Bool {
         switch phase {
-        case .calling, .connecting, .live: true
+        case .calling, .alerting, .connecting, .live: true
         default: false
         }
     }
@@ -456,6 +505,7 @@ struct CallStatus: View {
     var body: some View {
         switch phase {
         case .calling: Text(words(.callCalling))
+        case .alerting: Text(words(.callAlerting))
         case .ringing: Text(words(.callIncoming))
         case .connecting: Text(words(.callConnecting))
         case .live(let since):
@@ -601,6 +651,7 @@ private struct RoundButton: View {
 extension Phrase {
     static let callAction = Phrase(bxr: "Залгаха", ru: "Позвонить", en: "Call")
     static let callCalling = Phrase(bxr: "Залгажа байна…", ru: "Звоним…", en: "Calling…")
+    static let callAlerting = Phrase(bxr: "Залгажа байна…", ru: "Идут гудки…", en: "Ringing…")
     static let callIncoming = Phrase(bxr: "Танда залгажа байна", ru: "Входящий звонок", en: "Incoming call")
     static let callConnecting = Phrase(bxr: "Холбожо байна…", ru: "Соединяем…", en: "Connecting…")
     static let callEnded = Phrase(bxr: "Хөөрэлдөөн дууһаба", ru: "Звонок завершён", en: "Call ended")

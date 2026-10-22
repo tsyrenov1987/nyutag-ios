@@ -311,9 +311,12 @@ extension CallRinger: CXProviderDelegate {
         #if DEBUG
         print("ui-check: CallKit включил звук")
         #endif
+        Task { @MainActor in CallTones.shared.audioActivated() }
     }
 
-    nonisolated func provider(_ provider: CXProvider, didDeactivate audioSession: AVAudioSession) {}
+    nonisolated func provider(_ provider: CXProvider, didDeactivate audioSession: AVAudioSession) {
+        Task { @MainActor in CallTones.shared.audioDeactivated() }
+    }
 }
 
 extension CallRinger: PKPushRegistryDelegate {

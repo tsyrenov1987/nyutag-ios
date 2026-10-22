@@ -1348,6 +1348,15 @@ final class AppSession {
                     #endif
                 })
             })
+        // «У меня звонит» — открытым сообщением всем устройствам звонящего: в нём только номер звонка и комната.
+        env.notify = { signal, user in
+            let sent = (try? await client.sendToDevice(type: signal.eventType, messages: [user: ["*": signal.content]])) != nil
+            #if DEBUG
+            print("ui-check: сигнал \(signal.eventType) \(sent ? "ушёл" : "не ушёл")")
+            #else
+            _ = sent
+            #endif
+        }
         env.makeCamera = {
             #if DEBUG
             if ProcessInfo.processInfo.environment["NYUTAG_UI_FAKE_CAMERA"] != nil { return StripeCamera() }
@@ -1395,6 +1404,13 @@ final class AppSession {
     /// всей истории первой синхронизации стоила бы дорого. Ключ сеанса нового устройства собеседника часто
     /// приходит синхронизацией позже самого сигнала: нераскрытые свежие события пробуем снова при следующих.
     private func absorbCalls(_ response: SyncResponse) async {
+        for event in response.toDevice {
+            guard let message = CallMessage(toDevice: event) else { continue }
+            #if DEBUG
+            print("ui-check: пришёл сигнал \(event.type) с устройства")
+            #endif
+            await calls.absorb(message)
+        }
         let open = opener()
         let fresh = Int(Date().timeIntervalSince1970 * 1000) - 120_000
         let waiting = lockedSignals.filter { ($0.event.originServerTS ?? 0) > fresh }
