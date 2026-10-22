@@ -16,9 +16,6 @@ Copyright (c) 2026 Nikolai Tsyrenov. All rights reserved.
 2. Распространять код или собранные из него программы, в том числе изменённые.
 3. Использовать название «Нютаг», «Nyutag», значок и другие элементы оформления приложения.
 
-Модуль FarvaterCore подключается отдельно и распространяется на своих условиях (Apache License 2.0,
-репозиторий github.com/tsyrenov1987/farvater-core).
-
 Код предоставляется «как есть», без каких-либо гарантий. Автор не отвечает за ущерб от его использования.
 
 Связаться с автором: через GitHub (github.com/tsyrenov1987).
@@ -40,9 +37,6 @@ Without the author's written permission you may not:
    or any other store or catalogue.
 2. Distribute the code or programs built from it, modified or not.
 3. Use the names "Nyutag" and "Нютаг", the app icon or other elements of the app's design.
-
-The FarvaterCore module is included separately and comes under its own terms (Apache License 2.0,
-github.com/tsyrenov1987/farvater-core).
 
 The code is provided "as is", without warranty of any kind. The author is not liable for any damage
 arising from its use.
