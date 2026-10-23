@@ -174,6 +174,12 @@ public extension MatrixClient {
         let _: EmptyResponse = try await request(.post, "rooms/\(roomID)/forget", body: [:])
     }
 
+    /// Комнаты, где мы сейчас `join`, по мнению сервера.
+    func joinedRooms() async throws(MatrixError) -> Set<String> {
+        let json: JSONValue = try await request(.get, "joined_rooms")
+        return Set((json["joined_rooms"]?.array ?? []).compactMap(\.string))
+    }
+
     func invite(roomID: String, userID: String, reason: String? = nil) async throws(MatrixError) {
         var body: [String: JSONValue] = ["user_id": .string(userID)]
         if let reason { body["reason"] = .string(reason) }
@@ -232,6 +238,24 @@ public extension SyncEngine {
         guard forget else { return }
         try await client.forget(roomID: roomID)
         do { try await store.deleteRoom(roomID) } catch { throw MatrixError(.decoding("хранилище: \(error)")) }
+    }
+
+    /// Комнату, которую на другом устройстве покинули и забыли, `/sync` больше не присылает вовсе, и здесь она
+    /// навсегда осталась бы `join`. Сверяемся со списком сервера; возвращает комнаты, помеченные покинутыми.
+    @discardableResult
+    func dropForgotten() async throws(MatrixError) -> [String] {
+        // Снимок до запроса: комната, в которую вошли, пока он шёл, в снимок не попадёт и не пострадает.
+        let local: [RoomRecord]
+        do { local = try await store.rooms(membership: .join) } catch { throw MatrixError(.decoding("хранилище: \(error)")) }
+        let joined = try await client.joinedRooms()
+        let gone = local.filter { !joined.contains($0.id) }
+        do {
+            for var record in gone {
+                record.membership = .leave
+                try await store.upsert(record)
+            }
+        } catch { throw MatrixError(.decoding("хранилище: \(error)")) }
+        return gone.map(\.id)
     }
 
     /// Докачивает страницу истории назад от сохранённого `prev_batch` комнаты и кладёт её в хранилище.

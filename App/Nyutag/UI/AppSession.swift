@@ -102,6 +102,7 @@ final class AppSession {
         await engine?.wake()
         await DoorHub.shared.appBecameActive()
         await engine?.wake()
+        await dropForgotten()
     }
 
     /// Вход по имени, телефону или почте. Телефон и почту сервер Нютага переводит в Matrix ID.
@@ -506,18 +507,21 @@ final class AppSession {
                       transactionID: String = TransactionID.make()) async -> String? {
         guard let account else { return nil }
         let encrypted = (try? await account.store.room(roomID))?.isEncrypted ?? false
-        if encrypted {
-            guard let machine else { return nil }
-            do {
+        do {
+            if encrypted {
+                guard let machine else { return nil }
                 return try await machine.sendEncrypted(roomID: roomID, type: type, content: content, transactionID: transactionID)
-            } catch {
-                #if DEBUG
-                print("ui-check: шифрованная отправка \(type) не прошла: \(error)")
-                #endif
-                return nil
             }
+            return try await account.client.send(roomID: roomID, type: type, content: content, transactionID: transactionID)
+        } catch {
+            #if DEBUG
+            print("ui-check: отправка \(type) не прошла: \(error)")
+            #endif
+            var server = error as? MatrixError
+            if case .server(let inner)? = error as? E2EEError { server = inner }
+            if server?.errcode == "M_FORBIDDEN" { Task { await dropForgotten() } }
+            return nil
         }
-        return try? await account.client.send(roomID: roomID, type: type, content: content, transactionID: transactionID)
     }
 
     /// Файл или картинка в чат: в шифрованный — шифртекстом (ключ уедет внутри реплики), в открытый — как есть.
@@ -1270,6 +1274,17 @@ final class AppSession {
         }
         await engine.start()
         await refresh()
+        Task { await dropForgotten() }
+    }
+
+    /// Чаты, удалённые на другом устройстве, убираем из списка: /sync о них молчит.
+    func dropForgotten() async {
+        guard let engine, let gone = try? await engine.dropForgotten(), !gone.isEmpty else { return }
+        #if DEBUG
+        print("ui-check: покинуты на другом устройстве: \(gone.count)")
+        #endif
+        await refresh()
+        revision += 1
     }
 
     /// Пушер звонков: токен PushKit приходит сам по себе, раньше или позже входа. Вместе с ним — правило,

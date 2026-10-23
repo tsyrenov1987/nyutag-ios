@@ -102,4 +102,21 @@ struct PeopleTests {
         #expect(try await client.creators(roomID: "!space") == ["@bair:nyutag.chat", "@helper:nyutag.chat"])
         #expect(try await client.creators(roomID: "!old").isEmpty)
     }
+
+    @Test("чат, покинутый и забытый на другом устройстве, сверка по joined_rooms помечает покинутым")
+    func dropForgotten() async throws {
+        let server = FakeHomeserver()
+        server.setMembers(["@bair:nyutag.chat", "@dari:nyutag.chat"], roomID: "!kept")
+        let session = server.session(user: "@bair:nyutag.chat", device: "D")
+        let store = try Store.inMemory()
+        try await store.upsert(RoomRecord(id: "!kept", membership: .join))
+        try await store.upsert(RoomRecord(id: "!gone", membership: .join))
+        try await store.upsert(RoomRecord(id: "!asked", membership: .invite))
+        let engine = SyncEngine(client: server.client(for: session), store: store, session: session)
+        #expect(try await engine.dropForgotten() == ["!gone"])
+        #expect(try await store.room("!gone")?.membership == .leave)
+        #expect(try await store.room("!kept")?.membership == .join)
+        #expect(try await store.room("!asked")?.membership == .invite)
+    }
 }
+

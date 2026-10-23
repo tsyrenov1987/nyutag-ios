@@ -299,6 +299,10 @@ final class FakeHomeserver: @unchecked Sendable {
                               "content": ["room_version": .string(p[1].hasPrefix("!old") ? "11" : "12"),
                                           "additional_creators": ["@helper:nyutag.chat"]]])
 
+            case ("GET", ["joined_rooms"]):
+                let rooms = members.filter { $0.value.contains(who.user) }.keys.sorted()
+                return (200, ["joined_rooms": .array(rooms.map { .string($0) })])
+
             case ("GET", let p) where p.count == 3 && p[0] == "rooms" && p[2] == "joined_members":
                 var joined: [String: JSONValue] = [:]
                 for user in members[p[1]] ?? [] {

@@ -140,6 +140,8 @@ struct ChatView: View {
         .alert(words(.videoTooBig), isPresented: $videoTooBig) { Button(words(.done)) {} }
         .alert(words(.voiceNoMic), isPresented: $noMic) { Button(words(.done)) {} }
         .onDisappear { recorder.cancel() }
+        // Чат был в списке и пропал — его покинули на другом устройстве: писать туда уже нельзя.
+        .onChange(of: line == nil) { gone, nowGone in if !gone && nowGone { dismiss() } }
         .alert(words(.autoDeleteError), isPresented: $ruleFailed) { Button(words(.done)) {} }
         .alert(words(.schedulePast), isPresented: $schedulePast) { Button(words(.done)) {} }
         .sheet(isPresented: Binding { scheduling != nil } set: { if !$0 { scheduling = nil } }) { schedulePicker }
