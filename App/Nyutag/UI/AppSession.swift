@@ -1419,6 +1419,7 @@ final class AppSession {
         if let room = ProcessInfo.processInfo.environment["NYUTAG_UI_CALL_ROOM"] {
             Task { [weak self] in
                 try? await Task.sleep(for: .seconds(10))
+                print("ui-check: звонок из хука, вид \(String(describing: await self?.callKind(room)))")
                 await self?.startCall(in: room, video: ProcessInfo.processInfo.environment["NYUTAG_UI_CALL_VIDEO"] != nil)
             }
         }
