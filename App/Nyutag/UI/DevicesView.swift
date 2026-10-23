@@ -80,8 +80,10 @@ struct DevicesView: View {
 
     private func row(_ device: AccountDevice) -> some View {
         let mine = device.deviceID == session.deviceID
+        // Телефоны узнаём по имени, которое ставят наши приложения («Нютаг Android», «Нютаг iPhone»).
+        let handheld = mine || ["Android", "iPhone", "iPad"].contains { device.displayName?.localizedCaseInsensitiveContains($0) == true }
         return HStack(spacing: 14) {
-            Image(systemName: mine ? "iphone.gen3" : "laptopcomputer.and.iphone")
+            Image(systemName: handheld ? "iphone.gen3" : "laptopcomputer")
                 .font(.title3).foregroundStyle(mine ? Theme.sky : Theme.quiet).frame(width: 30)
             VStack(alignment: .leading, spacing: 3) {
                 Text(device.displayName?.isEmpty == false ? device.displayName! : words(.unnamedDevice))

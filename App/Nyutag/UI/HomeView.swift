@@ -200,7 +200,7 @@ struct ChatListView: View {
                     return
                 }
                 guard env["NYUTAG_UI_INVITE"] != nil || env["NYUTAG_UI_ABOUT"] != nil || env["NYUTAG_UI_DONATE"] != nil
-                        || env["NYUTAG_UI_AVATAR"] != nil || env["NYUTAG_UI_DEVICES"] != nil else { return }
+                        || env["NYUTAG_UI_AVATAR"] != nil || env["NYUTAG_UI_DEVICES"] != nil || env["NYUTAG_UI_ME"] != nil else { return }
                 while session.lines.isEmpty { try? await Task.sleep(for: .milliseconds(300)) }
                 menu = true
             }
@@ -629,6 +629,8 @@ struct MeMenu: View {
     @State private var donating = false
     @State private var editingProfile = false
     @State private var showingDevices = false
+    /// Имя из профиля; пока не загрузилось (или не задано) — логин.
+    @State private var myName: String?
     let onSaved: () -> Void
 
     var body: some View {
@@ -639,16 +641,20 @@ struct MeMenu: View {
                         ProfileEditView()
                     } label: {
                         HStack(spacing: 14) {
-                            Pillow(seed: session.me ?? "", title: ChatDigest.localpart(session.me ?? ""), size: 64,
+                            Pillow(seed: session.me ?? "", title: myName ?? ChatDigest.localpart(session.me ?? ""), size: 64,
                                    avatar: session.myAvatarURL)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(ChatDigest.localpart(session.me ?? "")).font(.title3.bold())
+                                Text(myName ?? ChatDigest.localpart(session.me ?? "")).font(.title3.bold())
                                 Text(session.me ?? "").font(.footnote).foregroundStyle(Theme.quiet)
                             }
                         }
                         .padding(.vertical, 6)
                     }
                     .accessibilityIdentifier("menu-profile")
+                    .task {
+                        guard let me = session.me, let name = await session.profile(of: me)?.displayName else { return }
+                        myName = name.trimmingCharacters(in: .whitespaces).isEmpty ? nil : name
+                    }
                 }
                 Section {
                     Button {
