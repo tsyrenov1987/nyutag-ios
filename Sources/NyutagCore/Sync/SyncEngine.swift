@@ -34,6 +34,8 @@ public actor SyncEngine {
     public var longPollTimeout: Duration = .seconds(30)
     /// Задержка после сетевой ошибки: 1, 2, 4 … до 60 с.
     private var backoff: Duration = .seconds(1)
+    /// Цикл ждёт ответа сервера или паузы после ошибки, а не применяет ответ: перезапускать его безопасно.
+    private var waiting = false
 
     public init(client: MatrixClient, store: Store, session: Session) {
         self.client = client
@@ -82,6 +84,16 @@ public actor SyncEngine {
         continuations.removeAll()
     }
 
+    /// Разбудить цикл: после сна приложения длинный запрос мог повиснуть на мёртвом соединении, а пауза после
+    /// ошибки — дойти до минуты. Входящий звонок ждёт offer из следующей синхронизации, поэтому по VoIP-пушу и
+    /// при возврате на экран начинаем запрос заново. Ответ, который уже применяется, не трогаем.
+    public func wake() {
+        backoff = .seconds(1)
+        guard let task, waiting else { return }
+        task.cancel()
+        self.task = Task { await loop() }
+    }
+
     /// Один проход /sync, без цикла (для NSE и тестов).
     @discardableResult
     public func syncOnce(timeout: Duration = .zero) async throws(MatrixError) -> SyncUpdate {
@@ -95,7 +107,15 @@ public actor SyncEngine {
     private func loop() async {
         while !Task.isCancelled {
             do {
-                try await syncOnce(timeout: longPollTimeout)
+                waiting = true
+                let since = try? await store.syncToken
+                let response = try await client.sync(since: since,
+                                                     filter: since == nil ? SyncFilter.initial() : SyncFilter.incremental(),
+                                                     timeout: longPollTimeout)
+                // Цикл перезапустили, пока шёл ответ: этот же ответ получит новый цикл.
+                if Task.isCancelled { return }
+                waiting = false
+                try await apply(response, isInitial: since == nil)
                 backoff = .seconds(1)
                 state = .running
             } catch {
@@ -106,7 +126,10 @@ public actor SyncEngine {
                     return
                 }
                 state = .waitingForNetwork(String(describing: error.kind))
+                waiting = true
                 try? await Task.sleep(for: backoff)
+                if Task.isCancelled { return }
+                waiting = false
                 backoff = min(backoff * 2, .seconds(60))
             }
         }

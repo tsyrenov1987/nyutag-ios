@@ -73,6 +73,7 @@ final class AppDoorman: NSObject, UIApplicationDelegate, UNUserNotificationCente
                 Task {
                     await AppSession.shared.launch()
                     await AppSession.shared.calls.absorb(ring)
+                    await AppSession.shared.wakeSync()
                 }
             }
             ringer.start()

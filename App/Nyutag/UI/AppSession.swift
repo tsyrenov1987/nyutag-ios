@@ -95,6 +95,15 @@ final class AppSession {
         await start(account, password: nil)
     }
 
+    /// Приложение проснулось (VoIP-пуш, возврат на экран): синхронизация не должна досыпать паузу или висеть
+    /// на соединении, умершем во сне, — входящему звонку нужен offer прямо сейчас. Дверь проверяем следом:
+    /// если её сменят, будим ещё раз.
+    func wakeSync() async {
+        await engine?.wake()
+        await DoorHub.shared.appBecameActive()
+        await engine?.wake()
+    }
+
     /// Вход по имени, телефону или почте. Телефон и почту сервер Нютага переводит в Matrix ID.
     /// `displayName` — имя нового участника сразу после регистрации: ставим его в профиль до первого /sync.
     func signIn(identifier: String, password: String, displayName: String? = nil) async throws(SignInFailure) {

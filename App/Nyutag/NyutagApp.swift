@@ -19,8 +19,8 @@ struct NyutagApp: App {
             ContentView()
         }
         .onChange(of: scenePhase) { _, phase in
-            // За время сна дверь могли запереть: проверяем до того, как клиенты начнут переподключаться.
-            if phase == .active { Task { await DoorHub.shared.appBecameActive() } }
+            // За время сна дверь могли запереть, а синхронизация — повиснуть: будим её и проверяем дверь.
+            if phase == .active { Task { await AppSession.shared.wakeSync() } }
         }
     }
 }
