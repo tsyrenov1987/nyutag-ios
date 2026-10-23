@@ -61,7 +61,20 @@ public enum ChatDigest {
         // Идём от новых к старым: удаления и правки встречаются раньше реплик, к которым относятся.
         var removed: Set<String> = []
         var edits: [String: Event] = [:]
+        // Непрочитанное считаем сами: сервер не отличает шифрованные сигналы звонка от реплик и считает их тоже.
+        // Видимые чужие реплики после своей отметки прочтения или своей реплики.
+        let readID = try await store.receipt(roomID: record.id, userID: me)
+        var readTS: Int?
+        if let readID { readTS = try await store.event(readID)?.originServerTS }
+        var counted = 0
+        var reachedRead = record.notificationCount == 0
         for event in try await store.events(in: record.id, limit: lookback).reversed() {
+            // Дошли до создания комнаты — вся история перед глазами, счёт точный.
+            if event.type == EventType.create { reachedRead = true }
+            if !reachedRead, event.eventID == readID || readTS.map({ (event.originServerTS ?? 0) <= $0 }) == true {
+                reachedRead = true
+            }
+            if lastEvent != nil, reachedRead { break }
             if event.type == EventType.redaction {
                 if let target = event.content["redacts"]?.string ?? event.unsigned?["redacts"]?.string { removed.insert(target) }
                 continue
@@ -94,10 +107,14 @@ public enum ChatDigest {
             if kind == .other || kind == .signal { continue }
             // Своё старое приглашение в чате, куда уже вошли, — не реплика.
             if kind == .invite, record.membership != .invite { continue }
-            last = kind
-            lastEvent = shown
-            break
+            if lastEvent == nil {
+                last = kind
+                lastEvent = shown
+            }
+            if shown.sender == me { reachedRead = true }
+            if !reachedRead { counted += 1 }
         }
+        let unread = reachedRead ? min(counted, record.notificationCount) : record.notificationCount
 
         let title: String
         if let roomName = record.name, !roomName.isEmpty {
@@ -133,7 +150,7 @@ public enum ChatDigest {
                         isDirect: record.isDirect, isEncrypted: record.isEncrypted, isSpace: record.isSpace,
                         last: last, lastSenderName: sender.map(name(of:)), lastIsMine: sender == me, delivery: delivery,
                         lastTS: lastEvent?.originServerTS ?? record.latestTS,
-                        unread: record.notificationCount, mentions: record.highlightCount)
+                        unread: unread, mentions: record.highlightCount)
     }
 
     /// Прочитано, если кто-то из участников отметил прочтение этой реплики или более поздней.

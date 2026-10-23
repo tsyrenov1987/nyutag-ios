@@ -110,6 +110,38 @@ struct ChatDigestTests {
         #expect(try await ChatDigest.lines(store: store, me: me).first?.last == .text("перезвоню"))
     }
 
+    @Test("непрочитанное без сигналов звонка: отметка прочтения, своя реплика, создание комнаты")
+    func unreadSkipsCallSignals() async throws {
+        let store = try Store.inMemory()
+        var room = RoomRecord(id: "!dm", membership: .join)
+        room.notificationCount = 2
+        try await store.upsert(room)
+        for event in [member(me, "!dm"), member(arjuna, "!dm")] { try await store.setState(event) }
+        let rings = (0..<2).map { i in
+            Event(eventID: "$r\(i)", type: "chat.nyutag.ring", sender: arjuna, originServerTS: 200 + i,
+                  content: ["slot": .string("s\(i)")], roomID: "!dm")
+        }
+        try await store.append([text("$1", "!dm", from: arjuna, ts: 100, "привет")] + rings)
+        try await store.setReceipt(roomID: "!dm", userID: me, eventID: "$1", ts: 150)
+        #expect(try await ChatDigest.lines(store: store, me: me).first?.unread == 0)
+
+        try await store.append([text("$2", "!dm", from: arjuna, ts: 300, "ты где?")])
+        #expect(try await ChatDigest.lines(store: store, me: me).first?.unread == 1)
+
+        try await store.append([text("$3", "!dm", from: me, ts: 310, "тут")])
+        #expect(try await ChatDigest.lines(store: store, me: me).first?.unread == 0)
+
+        var fresh = RoomRecord(id: "!new", membership: .join)
+        fresh.notificationCount = 1
+        try await store.upsert(fresh)
+        for event in [member(me, "!new"), member(arjuna, "!new")] { try await store.setState(event) }
+        try await store.append([
+            Event(eventID: "$c", type: EventType.create, sender: arjuna, originServerTS: 50, stateKey: "", content: [:], roomID: "!new"),
+            Event(eventID: "$r", type: "chat.nyutag.ring", sender: arjuna, originServerTS: 60, content: ["slot": .string("x")], roomID: "!new"),
+        ])
+        #expect(try await ChatDigest.lines(store: store, me: me).first { $0.id == "!new" }?.unread == 0)
+    }
+
     @Test("своя реплика: одна галочка, после отметки прочтения собеседником — две")
     func deliveryTicks() async throws {
         let store = try Store.inMemory()

@@ -720,6 +720,14 @@ final class AppSession {
     }
 
     /// Отметка прочтения: публичная, чтобы у собеседника загорелись две галочки.
+    /// Последнее событие комнаты в базе, если оно не своё (вместе с сигналами звонка): отметка прочтения
+    /// на нём снимает счётчик сервера целиком.
+    func lastForeignEvent(_ roomID: String) async -> String? {
+        guard let account, let last = (try? await account.store.events(in: roomID, limit: 1))?.last,
+              last.sender != account.session.userID else { return nil }
+        return last.eventID
+    }
+
     func markRead(_ roomID: String, upTo eventID: String) async {
         try? await account?.client.setReadMarkers(roomID: roomID, fullyRead: eventID, read: eventID)
     }

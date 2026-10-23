@@ -578,9 +578,10 @@ struct ChatView: View {
         // Создание чата видно — раньше ничего нет.
         if case .notice(.created) = items.first?.body { hasOlder = false }
         outbox.removeAll { pending in pending.eventID.map { id in items.contains { $0.id == id } } ?? false }
-        if let last = items.last(where: { !$0.isMine && !$0.isNotice }), last.id != lastMarked {
-            lastMarked = last.id
-            await session.markRead(roomID, upTo: last.id)
+        let shown = items.last(where: { !$0.isMine && !$0.isNotice })?.id
+        if shown != nil, let last = await session.lastForeignEvent(roomID) ?? shown, last != lastMarked {
+            lastMarked = last
+            await session.markRead(roomID, upTo: last)
         }
     }
 
