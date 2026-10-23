@@ -588,6 +588,9 @@ extension Phrase {
     static let communityJoinToWrite = Phrase(bxr: "Бэшэхэ, гэшүүдые харахын тула оршондо орогты.",
                                              ru: "Чтобы писать и видеть участников, вступите в сообщество.",
                                              en: "Join the community to write and see its members.")
+    static let communityNoGroupsAdmin = Phrase(bxr: "«Бэшэхэ» гэжэ дарахада, ниитэ хөөрэлдөөн бии болохо.",
+                                               ru: "Нажмите «Написать» — появится общий чат для всех участников.",
+                                               en: "Tap “Message” to start a general chat for all members.")
     static let communityWrite = Phrase(bxr: "Бэшэхэ", ru: "Написать", en: "Message")
     static let communityGeneralChat = Phrase(bxr: "Ниитэ хөөрэлдөөн", ru: "Общий чат", en: "General chat")
     static let communityPeople = Phrase(bxr: "Гэшүүд · {1}", ru: "Участники · {1}", en: "Members · {1}")

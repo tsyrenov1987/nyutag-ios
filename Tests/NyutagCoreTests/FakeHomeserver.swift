@@ -292,6 +292,13 @@ final class FakeHomeserver: @unchecked Sendable {
                 }
                 return (200, ["chunk": .array(chunk)])
 
+            case ("GET", let p) where p.count == 4 && p[0] == "rooms" && p[2] == "state" && p[3] == "m.room.create":
+                // Как у Tuwunel: создатель — первый по алфавиту участник, у «!old…» версия 11, у остальных 12.
+                guard query["format"] == "event", let creator = members[p[1]]?.sorted().first else { return (404, [:]) }
+                return (200, ["type": "m.room.create", "sender": .string(creator),
+                              "content": ["room_version": .string(p[1].hasPrefix("!old") ? "11" : "12"),
+                                          "additional_creators": ["@helper:nyutag.chat"]]])
+
             case ("GET", let p) where p.count == 3 && p[0] == "rooms" && p[2] == "joined_members":
                 var joined: [String: JSONValue] = [:]
                 for user in members[p[1]] ?? [] {

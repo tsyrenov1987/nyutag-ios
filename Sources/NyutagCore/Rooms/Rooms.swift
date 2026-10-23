@@ -102,6 +102,16 @@ public extension MatrixClient {
         try await request(.get, "rooms/\(roomID)/state/\(type)/\(stateKey)")
     }
 
+    /// Создатели комнаты: с версии 12 у них неограниченные права, а в `power_levels` их нет — это автор
+    /// `m.room.create` и `additional_creators`. В комнатах до 12-й права создателя записаны в `power_levels`: пусто.
+    func creators(roomID: String) async throws(MatrixError) -> Set<String> {
+        let event: JSONValue = try await request(.get, "rooms/\(roomID)/state/m.room.create/", query: ["format": "event"])
+        let version = event["content"]?["room_version"]?.string ?? "1"
+        if let number = Int(version), number < 12 { return [] }
+        let extra = (event["content"]?["additional_creators"]?.array ?? []).compactMap(\.string)
+        return Set(([event["sender"]?.string].compactMap(\.self)) + extra)
+    }
+
     // MARK: Членство
 
     struct CreateRoom: Sendable {

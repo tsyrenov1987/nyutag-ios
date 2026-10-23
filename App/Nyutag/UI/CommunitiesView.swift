@@ -214,7 +214,7 @@ struct CommunityView: View {
                 if let groups, groups.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(words(.communityNoGroups)).foregroundStyle(Theme.ink)
-                        Text(words(.communityNoGroupsHint)).font(.footnote).foregroundStyle(Theme.quiet)
+                        Text(words(joined && canAdd ? .communityNoGroupsAdmin : .communityNoGroupsHint)).font(.footnote).foregroundStyle(Theme.quiet)
                     }
                 } else if groups == nil {
                     ProgressView().frame(maxWidth: .infinity)

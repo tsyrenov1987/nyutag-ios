@@ -1042,14 +1042,16 @@ final class AppSession {
         let power = try? await account.client.state(roomID: spaceID, type: "m.room.power_levels")
         let mine = power?["users"]?[me]?.int ?? power?["users_default"]?.int ?? 0
         let needed = power?["events"]?["m.space.child"]?.int ?? power?["state_default"]?.int ?? 50
-        return (groups, power != nil && mine >= needed)
+        // Создатель комнаты 12-й версии может всё, хотя в power_levels его нет.
+        let creator = (try? await account.client.creators(roomID: spaceID))?.contains(me) ?? false
+        return (groups, creator || (power != nil && mine >= needed))
     }
 
     /// Участники сообщества (вместе с собой) и кто из них админ. Видно только вступившим; `nil` — не вышло.
     func communityPeople(_ spaceID: String) async -> (people: [Person], admins: Set<String>)? {
         guard let account, let people = try? await account.client.joinedMembers(roomID: spaceID) else { return nil }
         let power = try? await account.client.state(roomID: spaceID, type: "m.room.power_levels")
-        var admins: Set<String> = []
+        var admins = (try? await account.client.creators(roomID: spaceID)) ?? []
         if case .object(let users)? = power?["users"] {
             for (user, level) in users where (level.int ?? 0) >= 100 { admins.insert(user) }
         }
