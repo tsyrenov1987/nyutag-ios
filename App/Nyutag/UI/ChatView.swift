@@ -1002,7 +1002,7 @@ struct ChatView: View {
     private static var draftedForScreenshots = false
 
     /// NYUTAG_UI_ATTACH: `photo` — нарисованный снимок 1600×1200 (`once` — он же исчезающим), `file` — небольшой
-    /// текстовый файл, `video` — нарисованный ролик на 2 секунды через тот же путь, что и из галереи.
+    /// текстовый файл, `png` — круг на прозрачном фоне, `video` — нарисованный ролик на 2 секунды через тот же путь, что и из галереи.
     private func attachForScreenshots(_ kind: String) {
         guard !Self.attachedForScreenshots else { return }
         Self.attachedForScreenshots = true
@@ -1013,6 +1013,18 @@ struct ChatView: View {
                 guard let url = await OutgoingFile.drawnVideo() else { print("ui-check: ролик не нарисовался"); return }
                 await attachVideo(at: url)
             }
+            return
+        }
+        if kind == "png" {
+            let side = CGSize(width: 800, height: 800)
+            let format = UIGraphicsImageRendererFormat()
+            format.scale = 1
+            format.opaque = false
+            let png = UIGraphicsImageRenderer(size: side, format: format).pngData { _ in
+                UIColor.systemRed.setFill()
+                UIBezierPath(ovalIn: CGRect(x: 100, y: 100, width: 600, height: 600)).fill()
+            }
+            if let file = OutgoingFile.photo(png, name: "proverka-png") { queue(file) }
             return
         }
         if kind == "file" {

@@ -32,7 +32,10 @@ extension OutgoingFile {
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1
         format.opaque = true
-        let drawn = UIGraphicsImageRenderer(size: target, format: format).image { _ in
+        let drawn = UIGraphicsImageRenderer(size: target, format: format).image { context in
+            // Прозрачное (стикер, скриншот PNG) ложится на белый, а не на чёрный.
+            UIColor.white.setFill()
+            context.fill(CGRect(origin: .zero, size: target))
             image.draw(in: CGRect(origin: .zero, size: target))
         }
         guard let jpeg = drawn.jpegData(compressionQuality: 0.82) else { return nil }
@@ -164,7 +167,9 @@ enum ImageMemory {
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1
         format.opaque = true
-        let square = UIGraphicsImageRenderer(size: CGSize(width: side, height: side), format: format).image { _ in
+        let square = UIGraphicsImageRenderer(size: CGSize(width: side, height: side), format: format).image { context in
+            UIColor.white.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: side, height: side))
             image.draw(in: CGRect(x: (side - drawn.width) / 2, y: (side - drawn.height) / 2,
                                   width: drawn.width, height: drawn.height))
         }
