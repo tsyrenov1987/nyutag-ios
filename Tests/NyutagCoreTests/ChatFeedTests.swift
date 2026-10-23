@@ -142,6 +142,26 @@ struct ChatFeedTests {
         #expect(answer.reply == .init(eventID: "$s", senderName: "Арюна", preview: .text("тайна")))
     }
 
+    @Test("цитата в ответе показывает текст после правки")
+    func replyQuotesEditedText() async throws {
+        let store = try await prepared()
+        try await store.append([
+            text("$1", from: arjuna, ts: 100, "сайн"),
+            Event(eventID: "$e", type: EventType.message, sender: arjuna, originServerTS: 101,
+                  content: Relations.edit(of: "$1", text: "сайн байна"), roomID: room),
+            text("$a", from: me, ts: 110, "ответ", extra: [
+                "m.relates_to": ["m.in_reply_to": ["event_id": "$1"]],
+            ]),
+        ])
+        let items = try await ChatFeed.items(roomID: room, store: store, me: me)
+        #expect(items.first { $0.id == "$a" }?.reply?.preview == .text("сайн байна"))
+
+        // Удалённый ответ цитату не несёт.
+        try await store.append([Event(eventID: "$x", type: EventType.redaction, sender: me, originServerTS: 120,
+                                      content: ["redacts": "$a"], roomID: room)])
+        #expect(try await ChatFeed.items(roomID: room, store: store, me: me).first { $0.id == "$a" }?.reply == nil)
+    }
+
     @Test("служебные плашки: создание, вход, приглашение, смена имени, исключение, шифрование")
     func notices() async throws {
         let store = try await prepared()

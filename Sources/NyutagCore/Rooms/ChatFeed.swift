@@ -164,10 +164,15 @@ public enum ChatFeed {
                 continue
             }
             var reply: FeedItem.Quote?
-            if case .notice = body {} else if let target = event.content["m.relates_to"]?["m.in_reply_to"]?["event_id"]?.string {
+            if case .notice = body {} else if body != .deleted, let target = event.content["m.relates_to"]?["m.in_reply_to"]?["event_id"]?.string {
                 var quoted = byID[target]
                 if quoted == nil, let stored = try await store.event(target) {
                     quoted = stored.type == EventType.encrypted ? (await decrypt(stored, roomID) ?? stored) : stored
+                }
+                // Цитата показывает текст после правки.
+                if let old = quoted, let fresh = edits[target], old.type != EventType.encrypted {
+                    quoted = Event(eventID: old.eventID, type: old.type, sender: old.sender, originServerTS: old.originServerTS,
+                                   stateKey: old.stateKey, content: fresh, unsigned: old.unsigned, roomID: old.roomID)
                 }
                 if let quoted, let author = quoted.sender {
                     let kind: PushPreview.Kind = quoted.type == EventType.encrypted ? .locked : PushReader.kind(of: quoted, me: me)
