@@ -82,4 +82,14 @@ struct PeopleTests {
         #expect(try await People.partner(roomID: "!c", store: store, me: me) == nil)
         #expect(try await People.partner(roomID: "!d", store: store, me: me) == "@dulma:nyutag.chat")
     }
+
+    @Test("участники сообщества по алфавиту, вместе с собой")
+    func joinedMembers() async throws {
+        let server = FakeHomeserver()
+        server.setMembers(["@dulma:nyutag.chat", "@bair:nyutag.chat", "@ayur:nyutag.chat"], roomID: "!space")
+        let client = server.client(for: server.session(user: "@ayur:nyutag.chat", device: "D"))
+        let people = try await client.joinedMembers(roomID: "!space")
+        #expect(people.map(\.userID) == ["@ayur:nyutag.chat", "@bair:nyutag.chat", "@dulma:nyutag.chat"])
+        #expect(people.first?.name == "Ayur")
+    }
 }

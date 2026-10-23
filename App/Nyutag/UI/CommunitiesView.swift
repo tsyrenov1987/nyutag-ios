@@ -174,6 +174,10 @@ struct CommunityView: View {
     @State private var leaving = false
     @State private var naming = false
     @State private var groupName = ""
+    @State private var people: [Person]?
+    @State private var admins: Set<String> = []
+    @State private var allPeople = false
+    @State private var showing: String?
 
     private var joined: Bool { session.communities.contains { $0.id == community.id } }
 
@@ -203,7 +207,10 @@ struct CommunityView: View {
             if problem {
                 Section { Text(words(.communityFailed)).foregroundStyle(Theme.quiet) }
             }
-            Section(words(.communityGroups)) {
+            if !joined, !requested {
+                Section { Text(words(.communityJoinToWrite)).font(.footnote).foregroundStyle(Theme.quiet) }
+            }
+            Section {
                 if let groups, groups.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(words(.communityNoGroups)).foregroundStyle(Theme.ink)
@@ -222,6 +229,10 @@ struct CommunityView: View {
                                 Text(words(.communityMembers, String(group.numJoinedMembers)))
                                     .font(.caption).foregroundStyle(Theme.quiet)
                             }
+                            Spacer(minLength: 4)
+                            if joined {
+                                Image(systemName: "bubble.left.and.bubble.right").foregroundStyle(Theme.sky)
+                            }
                         }
                     }
                     .disabled(!joined || busy)
@@ -230,6 +241,22 @@ struct CommunityView: View {
                     Button(words(.communityGroupNew), systemImage: "plus.bubble") { groupName = ""; naming = true }
                         .accessibilityIdentifier("community-group-new")
                 }
+            } header: {
+                Text(words(.communityGroups))
+            } footer: {
+                if joined, let groups, !groups.isEmpty { Text(words(.communityGroupsHint)) }
+            }
+            if joined, let people, !people.isEmpty {
+                Section(words(.communityPeople, String(people.count))) {
+                    ForEach(allPeople ? people : Array(people.prefix(8))) { person in
+                        Button { showing = person.userID } label: {
+                            PersonRow(person: person, note: admins.contains(person.userID) ? words(.communityAdmin) : nil)
+                        }
+                    }
+                    if people.count > 8, !allPeople {
+                        Button(words(.communityShowAll)) { allPeople = true }
+                    }
+                }
             }
         }
         .scrollContentBackground(.hidden)
@@ -237,6 +264,9 @@ struct CommunityView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task(id: joined) { await loadGroups() }
         .refreshable { await loadGroups() }
+        .sheet(isPresented: Binding { showing != nil } set: { if !$0 { showing = nil } }) {
+            if let showing { PersonCard(userID: showing) }
+        }
         .confirmationDialog(words(.communityLeaveAsk), isPresented: $leaving, titleVisibility: .visible) {
             Button(words(.communityLeave), role: .destructive) {
                 Task {
@@ -255,11 +285,17 @@ struct CommunityView: View {
 
     @ViewBuilder private var actions: some View {
         if joined {
+            Button { Task { await write() } } label: {
+                Label(words(.communityWrite), systemImage: "square.and.pencil").frame(minWidth: 200)
+            }
+            .buttonStyle(.borderedProminent).tint(Theme.sky).controlSize(.large)
+            .disabled(busy || (groups?.isEmpty == true && !canAdd))
+            .accessibilityIdentifier("community-write")
             HStack(spacing: 12) {
                 ShareLink(item: words(.communityInviteText, community.name)) {
-                    Label(words(.communityInvite), systemImage: "person.badge.plus").foregroundStyle(.white)
+                    Label(words(.communityInvite), systemImage: "person.badge.plus")
                 }
-                .buttonStyle(.borderedProminent).tint(Theme.sky)
+                .buttonStyle(.bordered).tint(Theme.sky)
                 Button(words(.communityLeave), systemImage: "rectangle.portrait.and.arrow.right") { leaving = true }
                     .buttonStyle(.bordered).tint(Theme.quiet)
                     .accessibilityIdentifier("community-leave")
@@ -280,6 +316,26 @@ struct CommunityView: View {
         let found = await session.communityGroups(community.id)
         groups = found?.groups ?? groups ?? []
         canAdd = found?.canAdd ?? false
+        guard joined, let found = await session.communityPeople(community.id) else { return }
+        people = found.people
+        admins = found.admins
+    }
+
+    /// Открывает общий чат — группу, где больше всего людей; если групп ещё нет, админ её создаёт.
+    private func write() async {
+        if let general = groups?.max(by: { $0.numJoinedMembers < $1.numJoinedMembers }) {
+            open(general.roomID)
+            return
+        }
+        guard canAdd else { return }
+        busy = true
+        defer { busy = false }
+        guard let roomID = await session.createGroup(named: words(.communityGeneralChat), in: community.id) else {
+            problem = true
+            return
+        }
+        await loadGroups()
+        path.append(.chat(roomID))
     }
 
     private func join() async {
@@ -373,7 +429,8 @@ struct NewCommunityView: View {
         busy = true
         defer { busy = false }
         let title = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let id = await session.createCommunity(name: title, about: about, open: open) else { problem = true; return }
+        guard let id = await session.createCommunity(name: title, about: about, open: open,
+                                                   chatName: words(.communityGeneralChat)) else { problem = true; return }
         var community = Community(PublicRoom(roomID: id, name: title, topic: about, numJoinedMembers: 1,
                                              joinRule: open ? "public" : "knock", roomType: "m.space"))
         if about.isEmpty { community.topic = nil }

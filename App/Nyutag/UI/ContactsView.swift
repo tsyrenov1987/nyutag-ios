@@ -231,6 +231,8 @@ struct ContactsView: View {
 struct PersonRow: View {
     let person: Person
     var busy = false
+    /// Пометка справа, например «админ».
+    var note: String? = nil
 
     var body: some View {
         HStack(spacing: 12) {
@@ -240,6 +242,7 @@ struct PersonRow: View {
                 Text("@" + ChatDigest.localpart(person.userID)).font(.footnote).foregroundStyle(Theme.quiet).lineLimit(1)
             }
             Spacer(minLength: 4)
+            if let note { Text(note).font(.caption).foregroundStyle(Theme.quiet) }
             if busy { ProgressView() }
         }
         .contentShape(Rectangle())

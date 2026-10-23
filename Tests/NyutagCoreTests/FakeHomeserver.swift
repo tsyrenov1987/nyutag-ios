@@ -292,6 +292,14 @@ final class FakeHomeserver: @unchecked Sendable {
                 }
                 return (200, ["chunk": .array(chunk)])
 
+            case ("GET", let p) where p.count == 3 && p[0] == "rooms" && p[2] == "joined_members":
+                var joined: [String: JSONValue] = [:]
+                for user in members[p[1]] ?? [] {
+                    let name = String(user.dropFirst().prefix { $0 != ":" }).capitalized
+                    joined[user] = ["display_name": .string(name)]
+                }
+                return (200, ["joined": .object(joined)])
+
             case ("PUT", let p) where p.count == 5 && p[0] == "rooms" && p[2] == "send":
                 nextEvent += 1
                 let eventID = "$e\(nextEvent)"

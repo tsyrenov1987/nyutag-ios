@@ -1045,6 +1045,17 @@ final class AppSession {
         return (groups, power != nil && mine >= needed)
     }
 
+    /// Участники сообщества (вместе с собой) и кто из них админ. Видно только вступившим; `nil` — не вышло.
+    func communityPeople(_ spaceID: String) async -> (people: [Person], admins: Set<String>)? {
+        guard let account, let people = try? await account.client.joinedMembers(roomID: spaceID) else { return nil }
+        let power = try? await account.client.state(roomID: spaceID, type: "m.room.power_levels")
+        var admins: Set<String> = []
+        if case .object(let users)? = power?["users"] {
+            for (user, level) in users where (level.int ?? 0) >= 100 { admins.insert(user) }
+        }
+        return (people, admins)
+    }
+
     /// Открытое — вступаем сразу, закрытое (`knock`) — подаём заявку.
     func joinCommunity(_ room: PublicRoom) async -> CommunityJoin {
         guard let account else { return .failed }
@@ -1129,8 +1140,9 @@ final class AppSession {
         return true
     }
 
-    /// Новое сообщество: пространство в каталоге сервера; закрытое пускает по заявке.
-    func createCommunity(name: String, about: String, open: Bool) async -> String? {
+    /// Новое сообщество: пространство в каталоге сервера; закрытое пускает по заявке. Сразу с общим чатом
+    /// `chatName`: без группы вступившим негде писать.
+    func createCommunity(name: String, about: String, open: Bool, chatName: String) async -> String? {
         guard let account else { return nil }
         let about = about.trimmingCharacters(in: .whitespacesAndNewlines)
         let options = MatrixClient.CreateRoom(name: name, topic: about.isEmpty ? nil : about, preset: "public_chat",
@@ -1140,6 +1152,7 @@ final class AppSession {
         if !open {
             _ = try? await account.client.setState(roomID: spaceID, type: "m.room.join_rules", content: ["join_rule": "knock"])
         }
+        _ = await createGroup(named: chatName, in: spaceID)
         #if DEBUG
         print("ui-check: сообщество создано, \(open ? "открытое" : "закрытое")")
         #endif

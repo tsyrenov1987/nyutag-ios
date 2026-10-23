@@ -582,6 +582,17 @@ extension Phrase {
     static let communityNoGroupsHint = Phrase(bxr: "Удангүй админ нэмэхэ. Тэрэ зуура нүхэдөө уригты.",
                                               ru: "Скоро их добавит админ. А пока позовите друзей.",
                                               en: "The admin will add them soon. Meanwhile, invite friends.")
+    static let communityGroupsHint = Phrase(bxr: "Бүлэг бүри — оршоной хөөрэлдөөн. Нээгээд, доодо талада бэшэгты.",
+                                            ru: "Каждая группа — это чат сообщества. Откройте её и пишите внизу.",
+                                            en: "Each group is a community chat. Open one and type at the bottom.")
+    static let communityJoinToWrite = Phrase(bxr: "Бэшэхэ, гэшүүдые харахын тула оршондо орогты.",
+                                             ru: "Чтобы писать и видеть участников, вступите в сообщество.",
+                                             en: "Join the community to write and see its members.")
+    static let communityWrite = Phrase(bxr: "Бэшэхэ", ru: "Написать", en: "Message")
+    static let communityGeneralChat = Phrase(bxr: "Ниитэ хөөрэлдөөн", ru: "Общий чат", en: "General chat")
+    static let communityPeople = Phrase(bxr: "Гэшүүд · {1}", ru: "Участники · {1}", en: "Members · {1}")
+    static let communityShowAll = Phrase(bxr: "Бүгэдыень харуулха", ru: "Показать всех", en: "Show all")
+    static let communityAdmin = Phrase(bxr: "админ", ru: "админ", en: "admin")
     static let communityJoin = Phrase(bxr: "Оршондо орохо", ru: "Вступить", en: "Join")
     static let communityRequest = Phrase(bxr: "Гуйлта эльгээхэ", ru: "Подать заявку", en: "Request to join")
     static let communityRequested = Phrase(bxr: "Гуйлта эльгээгдэбэ. Админ зүбшөөхэдэ, оршон эндэ гараха.",

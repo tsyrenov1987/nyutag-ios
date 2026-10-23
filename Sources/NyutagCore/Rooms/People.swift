@@ -143,6 +143,18 @@ public enum People {
 }
 
 public extension MatrixClient {
+    /// GET /v3/rooms/{id}/joined_members: кто сейчас в комнате, с именами и аватарами (нужно быть в ней самому).
+    /// По имени, без себя не убираем: в сообществе себя тоже видно.
+    func joinedMembers(roomID: String) async throws(MatrixError) -> [Person] {
+        let json: JSONValue = try await request(.get, "rooms/\(roomID)/joined_members")
+        guard case .object(let joined)? = json["joined"] else { return [] }
+        return joined.map { userID, info in
+            let name = info["display_name"]?.string.flatMap { $0.isEmpty ? nil : $0 } ?? ChatDigest.localpart(userID)
+            return Person(userID: userID, name: name, avatarURL: info["avatar_url"]?.string)
+        }
+        .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
     /// POST /v3/user_directory/search: кого сервер покажет по имени или нику.
     func searchUsers(_ term: String, limit: Int = 20) async throws(MatrixError) -> [Person] {
         let json: JSONValue = try await request(.post, "user_directory/search",
