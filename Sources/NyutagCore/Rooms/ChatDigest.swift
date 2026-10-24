@@ -90,6 +90,8 @@ public enum ChatDigest {
                     shown = opened
                     kind = PushReader.kind(of: opened, me: me)
                 } else {
+                    // В открытой комнате шифром идут только сигналы звонка.
+                    if !record.isEncrypted { continue }
                     kind = .locked
                 }
             } else {

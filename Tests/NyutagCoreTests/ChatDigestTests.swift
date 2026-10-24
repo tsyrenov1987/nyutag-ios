@@ -164,7 +164,9 @@ struct ChatDigestTests {
     @Test("зашифрованное: без ключа — замок, с расшифровкой — текст; правка не становится последней")
     func encryptedAndEdits() async throws {
         let store = try Store.inMemory()
-        try await store.upsert(RoomRecord(id: "!e", membership: .join))
+        var record = RoomRecord(id: "!e", membership: .join)
+        record.isEncrypted = true
+        try await store.upsert(record)
         let sealed = Event(eventID: "$s", type: EventType.encrypted, sender: arjuna, originServerTS: 300,
                            content: ["algorithm": "m.megolm.v1.aes-sha2"], roomID: "!e")
         let edit = Event(eventID: "$x", type: EventType.message, sender: arjuna, originServerTS: 310,
@@ -179,6 +181,19 @@ struct ChatDigestTests {
         }
         #expect(lines.first?.last == .image)
         #expect(lines.first?.lastTS == 300)
+    }
+
+    @Test("в открытой группе нерасшифрованное — сигнал звонка: в списке его не видно")
+    func openRoomHidesSealed() async throws {
+        let store = try Store.inMemory()
+        try await store.upsert(RoomRecord(id: "!o", membership: .join))
+        try await store.append([
+            Event(eventID: "$1", type: EventType.message, sender: arjuna, originServerTS: 100,
+                  content: ["msgtype": "m.text", "body": "сайн"], roomID: "!o"),
+            Event(eventID: "$s", type: EventType.encrypted, sender: arjuna, originServerTS: 200,
+                  content: ["algorithm": "m.megolm.v1.aes-sha2"], roomID: "!o"),
+        ])
+        #expect(try await ChatDigest.lines(store: store, me: me).first?.last == .text("сайн"))
     }
 
     @Test("порядок: приглашения сверху, дальше свежие; покинутые скрыты; группа без имени — по участникам")

@@ -161,11 +161,12 @@ private final class Party: @unchecked Sendable {
         await engine.addObserver(machine)
         _ = try await engine.syncOnce()
         let core = LiveEnv.doorClient(accessToken: session.accessToken)
-        let client = client, store = store, machine = machine
+        let client = client, machine = machine
         center = CallCenter(CallEnvironment(
             me: session.userID, deviceID: session.deviceID,
+            // Как в приложении: всё, кроме будильника, шифром комнаты, даже открытой.
             post: { signal, room in
-                if signal.wantsRoomEncryption, try await store.room(room)?.isEncrypted == true {
+                if signal.wantsRoomEncryption {
                     _ = try await machine.sendEncrypted(roomID: room, type: signal.eventType, content: signal.content)
                 } else {
                     _ = try await client.send(roomID: room, type: signal.eventType, content: signal.content)

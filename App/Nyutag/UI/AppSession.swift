@@ -24,6 +24,8 @@ final class AppSession {
     private(set) var ignored: Set<String> = []
     /// Чаты без звука: правила уведомлений комнат из `m.push_rules`.
     private(set) var muted: Set<String> = []
+    /// Число на значке приложения, которое поставили сами.
+    @ObservationIgnored private var badge: Int?
     /// Сообщества (`m.space`), где мы участники: в список чатов не попадают, живут на своей вкладке.
     private(set) var communities: [ChatLine] = []
     /// Закреплённые чаты и папки.
@@ -97,6 +99,9 @@ final class AppSession {
     /// на соединении, умершем во сне, — входящему звонку нужен offer прямо сейчас. Дверь проверяем следом:
     /// если её сменят, будим ещё раз.
     func wakeSync() async {
+        // Пока спали, значок мог переставить пуш.
+        badge = nil
+        setBadge()
         await engine?.wake()
         await DoorHub.shared.appBecameActive()
         await engine?.wake()
@@ -210,6 +215,7 @@ final class AppSession {
         lines = []
         ignored = []
         muted = []
+        setBadge()
         layout = ChatLayout()
         savedRoom = nil
         autoJoined = []
@@ -1426,7 +1432,7 @@ final class AppSession {
         }
     }
 
-    /// Групповой — только в шифрованной комнате: ключи кадров идут шифром комнаты.
+    /// Групповой — в любой группе: ключи кадров идут шифром комнаты и в открытой (см. `postSignal`).
     func callKind(_ roomID: String) async -> CallKind {
         guard let account, let me else { return .none }
         let members = (try? await account.store.state(roomID, type: EventType.member)) ?? []
@@ -1434,8 +1440,7 @@ final class AppSession {
             $0.stateKey != me && ["join", "invite"].contains($0.content["membership"]?.string ?? "")
         }
         if others.count == 1 { return .direct }
-        let encrypted = (try? await account.store.room(roomID))?.isEncrypted ?? false
-        return others.count > 1 && encrypted ? .group : .none
+        return others.count > 1 ? .group : .none
     }
 
     /// Имя участника комнаты для экрана группового звонка.
@@ -1512,14 +1517,19 @@ final class AppSession {
         #endif
     }
 
-    /// Будильник идёт открытым всегда (по нему шлюз шлёт VoIP-пуш), остальное — как обычные события комнаты.
+    /// Будильник идёт открытым всегда (по нему шлюз шлёт VoIP-пуш), остальное — шифром комнаты,
+    /// даже если сама комната открыта: в `call.join` лежит ключ кадров, серверу его видеть нельзя.
     private func postSignal(_ signal: CallSignal, to roomID: String) async -> Bool {
         guard let account else { return false }
         if !signal.wantsRoomEncryption {
             return (try? await account.client.send(roomID: roomID, type: signal.eventType, content: signal.content,
                                                     transactionID: TransactionID.make())) != nil
         }
-        let sent = await post(signal.eventType, signal.content, to: roomID) != nil
+        var sent = false
+        if let machine {
+            sent = (try? await machine.sendEncrypted(roomID: roomID, type: signal.eventType, content: signal.content,
+                                                     transactionID: TransactionID.make())) != nil
+        }
         #if DEBUG
         print("ui-check: сигнал \(signal.eventType) \(sent ? "ушёл" : "не ушёл")")
         #endif
@@ -1589,6 +1599,15 @@ final class AppSession {
         machine = nil
     }
 
+    /// Значок ставит и пуш: в нём счёт сервера, а сервер считает непрочитанными и сигналы звонка, и прочитанное
+    /// на другом устройстве до следующего пуша. Поэтому при каждом пересчёте списка ставим свой счёт.
+    private func setBadge() {
+        let count = lines.filter { !muted.contains($0.id) }.reduce(0) { $0 + $1.unread }
+        guard count != badge else { return }
+        badge = count
+        UNUserNotificationCenter.current().setBadgeCount(count)
+    }
+
     private func refresh() async {
         guard let account, let me else { return }
         if let list = try? await IgnoredUsers.load(store: account.store), list != ignored { ignored = list }
@@ -1598,6 +1617,7 @@ final class AppSession {
             let spaces = fresh.filter { $0.isSpace && $0.membership == .join }
             if chats != lines { lines = chats }
             if spaces != communities { communities = spaces }
+            setBadge()
         }
         if layoutWrites == 0, let saved = try? await ChatLayout.load(store: account.store), layoutWrites == 0, saved != layout {
             layout = saved

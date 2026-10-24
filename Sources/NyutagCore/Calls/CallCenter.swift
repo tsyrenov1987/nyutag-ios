@@ -30,7 +30,7 @@ public actor CallCenter {
         return session
     }
 
-    /// Групповой звонок в шифрованной комнате (ключи кадров идут шифром комнаты). `nil` — уже идёт другой звонок.
+    /// Групповой звонок в группе (ключи кадров идут шифром комнаты, даже открытой). `nil` — уже идёт другой звонок.
     public func dialGroup(roomID: String) async -> CallSession? {
         guard await active() == nil else { return nil }
         let session = CallSession(callID: CallID.make(), roomID: roomID, peer: roomID, isCaller: true, video: false,

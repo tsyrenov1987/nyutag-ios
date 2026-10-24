@@ -92,11 +92,13 @@ public enum ChatFeed {
         }
         func name(of userID: String) -> String { names[userID] ?? ChatDigest.localpart(userID) }
 
+        // В открытой комнате шифром идут только сигналы звонка: нерасшифрованное там не реплика.
+        let sealedRoom = (try await store.room(roomID))?.isEncrypted != false
         var opened: [Event] = []
         for event in try await store.events(in: roomID, limit: limit) {
             if let sender = event.sender, ignored.contains(sender), event.type != EventType.member { continue }
-            if event.type == EventType.encrypted, !event.isRedacted, let clear = await decrypt(event, roomID) {
-                opened.append(clear)
+            if event.type == EventType.encrypted, !event.isRedacted {
+                if let clear = await decrypt(event, roomID) { opened.append(clear) } else if sealedRoom { opened.append(event) }
             } else {
                 opened.append(event)
             }

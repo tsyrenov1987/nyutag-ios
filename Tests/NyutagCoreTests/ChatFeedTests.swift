@@ -25,9 +25,11 @@ struct ChatFeedTests {
         return Event(eventID: id, type: EventType.message, sender: sender, originServerTS: ts, content: .object(content), roomID: room)
     }
 
-    func prepared() async throws -> Store {
+    func prepared(encrypted: Bool = true) async throws -> Store {
         let store = try Store.inMemory()
-        try await store.upsert(RoomRecord(id: room, membership: .join))
+        var record = RoomRecord(id: room, membership: .join)
+        record.isEncrypted = encrypted
+        try await store.upsert(record)
         for event in [member(me, name: "Я"), member(arjuna, name: "Арюна")] { try await store.setState(event) }
         return store
     }
@@ -140,6 +142,17 @@ struct ChatFeedTests {
         let answer = try #require(opened.first { $0.id == "$a" })
         #expect(answer.body == .text("ответ"))
         #expect(answer.reply == .init(eventID: "$s", senderName: "Арюна", preview: .text("тайна")))
+    }
+
+    @Test("в открытой группе нерасшифрованное — сигнал звонка: в ленту не попадает")
+    func openRoomHidesSealed() async throws {
+        let store = try await prepared(encrypted: false)
+        try await store.append([
+            text("$1", from: arjuna, ts: 100, "сайн"),
+            Event(eventID: "$s", type: EventType.encrypted, sender: arjuna, originServerTS: 110,
+                  content: ["algorithm": "m.megolm.v1.aes-sha2"], roomID: room),
+        ])
+        #expect(try await ChatFeed.items(roomID: room, store: store, me: me).map(\.id) == ["$1"])
     }
 
     @Test("нерасшифрованное до нашего входа — одной плашкой, после входа — как есть")

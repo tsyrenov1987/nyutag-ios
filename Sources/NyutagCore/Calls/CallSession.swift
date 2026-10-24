@@ -32,7 +32,7 @@ public enum CallPhase: Sendable, Equatable {
 public struct CallEnvironment: Sendable {
     public var me: String
     public var deviceID: String
-    /// Отправить сигнал в комнату (шифром, если комната шифрованная и сигнал не ring).
+    /// Отправить сигнал в комнату (шифром комнаты, если сигнал не ring).
     public var post: @Sendable (CallSignal, String) async throws -> Void
     /// Сообщение устройствам человека (to-device): «у меня звонит». Второй аргумент — кому.
     public var notify: @Sendable (CallSignal, String) async -> Void = { _, _ in }
