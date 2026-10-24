@@ -1246,6 +1246,24 @@ struct FeedRow: View {
     }
 }
 
+/// Ссылки и адреса в тексте реплики: подчёркнуты и открываются касанием.
+enum Linked {
+    private static let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
+
+    static func text(_ plain: String) -> AttributedString {
+        var out = AttributedString(plain)
+        guard let detector, plain.contains(where: { $0 == "." || $0 == ":" }) else { return out }
+        for match in detector.matches(in: plain, range: NSRange(plain.startIndex..., in: plain)) {
+            guard let url = match.url, let range = Range(match.range, in: plain),
+                  let from = AttributedString.Index(range.lowerBound, within: out),
+                  let to = AttributedString.Index(range.upperBound, within: out) else { continue }
+            out[from..<to].link = url
+            out[from..<to].underlineStyle = .single
+        }
+        return out
+    }
+}
+
 struct Bubble: View {
     @Environment(Words.self) private var words
     let item: FeedItem
@@ -1294,7 +1312,7 @@ struct Bubble: View {
     @ViewBuilder private var content: some View {
         switch item.body {
         case .text(let text):
-            Text(text).foregroundStyle(ink).textSelection(.disabled)
+            Text(Linked.text(text)).foregroundStyle(ink).tint(ink).textSelection(.disabled)
                 .font(Emoji.isOnlyEmoji(text) ? .system(size: 44) : nil)
         case .attachment(let kind, let caption):
             VStack(alignment: .leading, spacing: 6) {
@@ -1325,7 +1343,7 @@ struct Bubble: View {
                 } else {
                     Label(ChatRow.label(kind, words: words), systemImage: ChatRow.symbol(kind)).foregroundStyle(ink)
                 }
-                if let caption { Text(caption).foregroundStyle(ink) }
+                if let caption { Text(Linked.text(caption)).foregroundStyle(ink).tint(ink) }
             }
         case .locked:
             Label(words(.waitingKey), systemImage: "key").font(.callout.italic()).foregroundStyle(soft)
