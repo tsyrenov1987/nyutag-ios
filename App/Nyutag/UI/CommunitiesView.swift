@@ -114,6 +114,7 @@ struct CommunitiesView: View {
                 }
             }
         }
+        .task(id: session.pendingCommunity) { await openPending() }
         #if DEBUG
         .task {
             // SIMCTL_CHILD_NYUTAG_UI_COMMUNITY=имя — открыть сообщество из каталога для самопроверки.
@@ -124,6 +125,21 @@ struct CommunitiesView: View {
                 path = [.community(Community(room))]
             }
         }
+        #endif
+    }
+
+    /// Пришли по ссылке на сообщество: ждём каталог (там название и фото) и открываем карточку.
+    private func openPending() async {
+        guard let spaceID = session.pendingCommunity else { return }
+        for _ in 0..<40 where catalog == nil { try? await Task.sleep(for: .milliseconds(300)) }
+        guard session.pendingCommunity == spaceID else { return }
+        session.pendingCommunity = nil
+        let found = catalog?.first { $0.roomID == spaceID }.map(Community.init)
+            ?? session.communities.first { $0.id == spaceID }.map(Community.init)
+            ?? Community(PublicRoom(roomID: spaceID))
+        path = [.community(found)]
+        #if DEBUG
+        print("ui-check: сообщество по ссылке «\(found.name)»")
         #endif
     }
 
@@ -174,27 +190,38 @@ struct CommunityView: View {
     @State private var leaving = false
     @State private var naming = false
     @State private var groupName = ""
-    @State private var people: [Person]?
-    @State private var admins: Set<String> = []
+    @State private var facts: AppSession.RoomFacts?
     @State private var allPeople = false
-    @State private var showing: String?
+    @State private var target: Person?
+    @State private var managing = false
 
     private var joined: Bool { session.communities.contains { $0.id == community.id } }
+    private var me: String { session.me ?? "" }
+    private var name: String { facts.map(\.name).flatMap { $0.isEmpty ? nil : $0 } ?? community.name }
+    private var topic: String? { facts.map(\.topic) ?? community.topic }
+    private var photo: String? { facts?.avatarURL ?? community.avatarURL }
+    private var closed: Bool { facts?.isClosed ?? community.isClosed }
+    /// Участники: сначала владелец и админы, дальше по имени.
+    private var people: [Person]? {
+        guard let facts else { return nil }
+        return facts.roster.joined.sorted { facts.powers.level(of: $0.userID) > facts.powers.level(of: $1.userID) }
+    }
+    private var canManage: Bool { facts.map { RoomAdminView.canManage($0.powers, me) } ?? false }
 
     var body: some View {
         List {
             Section {
                 VStack(spacing: 10) {
-                    Pillow(seed: community.id, title: community.name.isEmpty ? "·" : community.name, size: 76,
-                           avatar: community.avatarURL)
-                    Text(community.name).font(.title2.bold()).foregroundStyle(Theme.ink).multilineTextAlignment(.center)
-                    if let topic = community.topic, !topic.isEmpty {
-                        Text(topic).font(.subheadline).foregroundStyle(Theme.quiet).multilineTextAlignment(.center)
-                    }
-                    let badge = [community.joinRule.map { _ in words(community.isClosed ? .communityClosed : .communityOpen) },
-                                 community.members.map { words(.communityMembers, String($0)) }].compactMap(\.self)
+                    Pillow(seed: community.id, title: name.isEmpty ? "·" : name, size: 96, avatar: photo)
+                    Text(name).font(.title2.bold()).foregroundStyle(Theme.ink).multilineTextAlignment(.center)
+                    let count = facts?.roster.joined.count ?? community.members
+                    let badge = [(facts != nil || community.joinRule != nil) ? words(closed ? .communityClosed : .communityOpen) : nil,
+                                 count.map { words(.communityMembers, String($0)) }].compactMap(\.self)
                     if !badge.isEmpty {
                         Text(badge.joined(separator: " · ")).font(.caption).foregroundStyle(Theme.quiet)
+                    }
+                    if let topic, !topic.isEmpty {
+                        Text(topic).font(.subheadline).foregroundStyle(Theme.ink).multilineTextAlignment(.center)
                     }
                     actions.padding(.top, 4)
                 }
@@ -249,8 +276,8 @@ struct CommunityView: View {
             if joined, let people, !people.isEmpty {
                 Section(words(.communityPeople, String(people.count))) {
                     ForEach(allPeople ? people : Array(people.prefix(8))) { person in
-                        Button { showing = person.userID } label: {
-                            PersonRow(person: person, note: admins.contains(person.userID) ? words(.communityAdmin) : nil)
+                        Button { target = person } label: {
+                            PersonRow(person: person, note: RoleNote.text(facts?.powers, person.userID, words))
                         }
                     }
                     if people.count > 8, !allPeople {
@@ -264,9 +291,8 @@ struct CommunityView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task(id: joined) { await loadGroups() }
         .refreshable { await loadGroups() }
-        .sheet(isPresented: Binding { showing != nil } set: { if !$0 { showing = nil } }) {
-            if let showing { PersonCard(userID: showing) }
-        }
+        .modifier(MemberActions(target: $target, roomID: community.id, powers: facts?.powers, community: true) { await loadGroups() })
+        .sheet(isPresented: $managing) { RoomAdminView(roomID: community.id, community: true) { await loadGroups() } }
         .confirmationDialog(words(.communityLeaveAsk), isPresented: $leaving, titleVisibility: .visible) {
             Button(words(.communityLeave), role: .destructive) {
                 Task {
@@ -291,13 +317,30 @@ struct CommunityView: View {
             .buttonStyle(.borderedProminent).tint(Theme.sky).controlSize(.large)
             .disabled(busy || (groups?.isEmpty == true && !canAdd))
             .accessibilityIdentifier("community-write")
-            HStack(spacing: 12) {
-                ShareLink(item: words(.communityInviteText, community.name)) {
-                    Label(words(.communityInvite), systemImage: "person.badge.plus")
+            HStack(spacing: 10) {
+                let link = CommunityLink.web(community.id)
+                ShareLink(item: link, message: Text(words(.communityInviteText, name, link.absoluteString))) {
+                    VStack(spacing: 6) {
+                        Image(systemName: "person.badge.plus").font(.title3).frame(height: 26)
+                        Text(words(.communityInvite)).font(.caption).lineLimit(1).minimumScaleFactor(0.8)
+                    }
+                    .foregroundStyle(Theme.sky)
+                    .frame(maxWidth: .infinity).padding(.vertical, 10)
+                    .background(Theme.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 }
-                .buttonStyle(.bordered).tint(Theme.sky)
-                Button(words(.communityLeave), systemImage: "rectangle.portrait.and.arrow.right") { leaving = true }
-                    .buttonStyle(.bordered).tint(Theme.quiet)
+                .buttonStyle(.plain)
+                if canManage {
+                    RoundAction(title: words(.manage), symbol: "gearshape") { managing = true }
+                        .overlay(alignment: .topTrailing) {
+                            if let waiting = facts?.roster.knocking.count, waiting > 0 {
+                                Text("\(waiting)").font(.caption2.bold()).foregroundStyle(Theme.onGold)
+                                    .padding(.horizontal, 6).frame(minHeight: 18).background(Theme.gold, in: Capsule())
+                                    .offset(x: -6, y: 4)
+                            }
+                        }
+                        .accessibilityIdentifier("community-manage")
+                }
+                RoundAction(title: words(.communityLeave), symbol: "rectangle.portrait.and.arrow.right", tint: Theme.quiet) { leaving = true }
                     .accessibilityIdentifier("community-leave")
             }
         } else if !requested {
@@ -316,9 +359,8 @@ struct CommunityView: View {
         let found = await session.communityGroups(community.id)
         groups = found?.groups ?? groups ?? []
         canAdd = found?.canAdd ?? false
-        guard joined, let found = await session.communityPeople(community.id) else { return }
-        people = found.people
-        admins = found.admins
+        guard joined, let fresh = await session.facts(community.id) else { return }
+        facts = fresh
     }
 
     /// Открывает общий чат — группу, где больше всего людей; если групп ещё нет, админ её создаёт.
@@ -330,7 +372,7 @@ struct CommunityView: View {
         guard canAdd else { return }
         busy = true
         defer { busy = false }
-        guard let roomID = await session.createGroup(named: community.name.isEmpty ? words(.communityGeneralChat) : community.name,
+        guard let roomID = await session.createGroup(named: name.isEmpty ? words(.communityGeneralChat) : name,
                                                              in: community.id) else {
             problem = true
             return

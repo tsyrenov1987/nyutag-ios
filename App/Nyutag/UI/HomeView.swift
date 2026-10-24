@@ -414,6 +414,11 @@ struct ChatRow: View {
             }
             VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    if !line.isDirect, line.id != session.savedRoom {
+                        Image(systemName: line.community == nil ? "person.2.fill" : "person.3.fill")
+                            .font(.caption).foregroundStyle(Theme.quiet)
+                            .accessibilityLabel(words(line.community == nil ? .groupBadge : .communityBadge))
+                    }
                     Text(line.title.isEmpty ? words(.emptyChat) : line.title)
                         .font(.headline).foregroundStyle(Theme.ink).lineLimit(1)
                     if line.isEncrypted {
@@ -435,6 +440,10 @@ struct ChatRow: View {
                             .font(.caption).monospacedDigit()
                             .foregroundStyle(line.unread > 0 ? Theme.gold : Theme.quiet)
                     }
+                }
+                if let community = line.community, community != line.title {
+                    Text(community).font(.caption.weight(.semibold)).foregroundStyle(Theme.sky).lineLimit(1)
+                        .padding(.top, -2)
                 }
                 HStack(alignment: .top, spacing: 6) {
                     Text(typing ?? preview)

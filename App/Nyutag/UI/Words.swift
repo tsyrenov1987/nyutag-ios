@@ -589,9 +589,9 @@ extension Phrase {
                                            ru: "Заявка отправлена. Когда админ одобрит, сообщество появится здесь.",
                                            en: "Request sent. Once an admin approves it, the community shows up here.")
     static let communityInvite = Phrase(bxr: "Уриха", ru: "Пригласить", en: "Invite")
-    static let communityInviteText = Phrase(bxr: "Нютаг соо «{1}» оршондо орогты: «Оршонууд» таб. Татажа абаха: https://nyutag.chat",
-                                            ru: "Вступайте в сообщество «{1}» в Нютаге: вкладка «Сообщества». Скачать: https://nyutag.chat",
-                                            en: "Join the community “{1}” on Nyutag: it's in the Communities tab. Get the app: https://nyutag.chat")
+    static let communityInviteText = Phrase(bxr: "Нютаг соо «{1}» оршондо орогты: {2}",
+                                            ru: "Вступайте в сообщество «{1}» в Нютаге: {2}",
+                                            en: "Join the community “{1}” on Nyutag: {2}")
     static let communityLeave = Phrase(bxr: "Гараха", ru: "Выйти", en: "Leave")
     static let communityLeaveAsk = Phrase(bxr: "Оршонһоо гараха гүт? Бүлэгүүд соо үлэхэт.",
                                           ru: "Выйти из сообщества? В его группах вы останетесь.",
@@ -629,4 +629,42 @@ extension Phrase {
     static let mute = Phrase(bxr: "Абяагүй", ru: "Без звука", en: "Mute")
     static let unmute = Phrase(bxr: "Абяатай", ru: "Со звуком", en: "Unmute")
     static let muted = Phrase(bxr: "Абяагүй чат", ru: "Чат без звука", en: "Muted")
+
+    // Управление группой и сообществом. Бурятские строки носитель ещё не проверял.
+    static let groupBadge = Phrase(bxr: "Бүлэг", ru: "Группа", en: "Group")
+    static let communityBadge = Phrase(bxr: "Оршоной бүлэг", ru: "Группа сообщества", en: "Community group")
+    static let roleOwner = Phrase(bxr: "эзэн", ru: "владелец", en: "owner")
+    static let roleModerator = Phrase(bxr: "модератор", ru: "модератор", en: "moderator")
+    static let manage = Phrase(bxr: "Удирдаха", ru: "Управление", en: "Manage")
+    static let roomPhotoChange = Phrase(bxr: "Зураг хубилгаха", ru: "Изменить фото", en: "Change photo")
+    static let roomPhotoRemove = Phrase(bxr: "Зураг усадхаха", ru: "Убрать фото", en: "Remove photo")
+    static let groupAbout = Phrase(bxr: "Тодорхойлго", ru: "Описание", en: "Description")
+    static let onlyAdminsWrite = Phrase(bxr: "Зүгөөр админууд бэшэнэ", ru: "Пишут только админы", en: "Only admins can post")
+    static let onlyAdminsWriteHint = Phrase(bxr: "Бусад гэшүүд уншажа, реакци табиха.",
+                                            ru: "Остальные участники читают и ставят реакции.",
+                                            en: "Other members can read and react.")
+    static let onlyAdminsComposer = Phrase(bxr: "Энэ бүлэгтэ зүгөөр админууд бэшэнэ",
+                                           ru: "В этой группе пишут только админы", en: "Only admins can post in this group")
+    static let makeAdmin = Phrase(bxr: "Админ болгохо", ru: "Назначить админом", en: "Make admin")
+    static let removeAdmin = Phrase(bxr: "Админһаа болюулха", ru: "Снять админа", en: "Remove admin")
+    static let removeFromGroup = Phrase(bxr: "Бүлэгһээ гаргаха", ru: "Удалить из группы", en: "Remove from group")
+    static let removeFromCommunity = Phrase(bxr: "Оршонһоо гаргаха", ru: "Удалить из сообщества", en: "Remove from community")
+    static let banMember = Phrase(bxr: "Хаагаад гаргаха", ru: "Заблокировать", en: "Ban")
+    static let banAsk = Phrase(bxr: "{1} хаагдаха гү? Дахин орожо шадахагүй.",
+                               ru: "Заблокировать {1}? Вернуться сам не сможет.",
+                               en: "Ban {1}? They won't be able to come back.")
+    static let bannedSection = Phrase(bxr: "Хаагдаһан", ru: "Заблокированные", en: "Banned")
+    static let unban = Phrase(bxr: "Хаалта болюулха", ru: "Разблокировать", en: "Unban")
+    static let requests = Phrase(bxr: "Гуйлтанууд · {1}", ru: "Заявки · {1}", en: "Requests · {1}")
+    static let requestsNone = Phrase(bxr: "Шэнэ гуйлта үгы", ru: "Новых заявок нет", en: "No new requests")
+    static let approve = Phrase(bxr: "Зүбшөөхэ", ru: "Одобрить", en: "Approve")
+    static let decline = Phrase(bxr: "Буруушааха", ru: "Отклонить", en: "Decline")
+    static let access = Phrase(bxr: "Оролго", ru: "Вход", en: "Access")
+    static let inviteLink = Phrase(bxr: "Уряалай холбоос", ru: "Ссылка-приглашение", en: "Invite link")
+    static let inviteLinkHint = Phrase(bxr: "Холбоос дарахада, Нютаг соо энэ оршон нээгдэхэ.",
+                                       ru: "По ссылке сообщество откроется в Нютаге.", en: "The link opens this community in Nyutag.")
+    static let copyLink = Phrase(bxr: "Холбоос хуулаха", ru: "Скопировать ссылку", en: "Copy link")
+    static let pinAction = Phrase(bxr: "Бэхилхэ", ru: "Закрепить", en: "Pin")
+    static let unpinAction = Phrase(bxr: "Бэхилгэ болюулха", ru: "Открепить", en: "Unpin")
+    static let pinnedMessage = Phrase(bxr: "Бэхилэгдэһэн бэшэг", ru: "Закреплённое сообщение", en: "Pinned message")
 }

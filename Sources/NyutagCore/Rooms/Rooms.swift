@@ -192,6 +192,16 @@ public extension MatrixClient {
         let _: EmptyResponse = try await request(.post, "rooms/\(roomID)/kick", body: .object(body))
     }
 
+    func ban(roomID: String, userID: String, reason: String? = nil) async throws(MatrixError) {
+        var body: [String: JSONValue] = ["user_id": .string(userID)]
+        if let reason { body["reason"] = .string(reason) }
+        let _: EmptyResponse = try await request(.post, "rooms/\(roomID)/ban", body: .object(body))
+    }
+
+    func unban(roomID: String, userID: String) async throws(MatrixError) {
+        let _: EmptyResponse = try await request(.post, "rooms/\(roomID)/unban", body: ["user_id": .string(userID)])
+    }
+
     /// Полный список участников (для отправки ключей Megolm нужны все устройства joined и invited).
     func members(roomID: String, notMembership: String? = "leave") async throws(MatrixError) -> [Event] {
         let query = notMembership.map { ["not_membership": $0] } ?? [:]

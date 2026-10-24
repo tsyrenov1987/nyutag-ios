@@ -32,6 +32,8 @@ final class AppSession {
     var pendingInvite: String?
     /// Вкладка, которую просит открыть ссылка (nyutag://calendar из виджета).
     var requestedTab: Int?
+    /// Открыть сообщество по ссылке, когда вкладка «Сообщества» появится.
+    var pendingCommunity: String?
     /// Комната «Избранного», если уже заведена.
     private(set) var savedRoom: String?
     private(set) var me: String?
@@ -1011,17 +1013,6 @@ final class AppSession {
         return (groups, creator || (power != nil && mine >= needed))
     }
 
-    /// Участники сообщества (вместе с собой) и кто из них админ. Видно только вступившим; `nil` — не вышло.
-    func communityPeople(_ spaceID: String) async -> (people: [Person], admins: Set<String>)? {
-        guard let account, let people = try? await account.client.joinedMembers(roomID: spaceID) else { return nil }
-        let power = try? await account.client.state(roomID: spaceID, type: "m.room.power_levels")
-        var admins = (try? await account.client.creators(roomID: spaceID)) ?? []
-        if case .object(let users)? = power?["users"] {
-            for (user, level) in users where (level.int ?? 0) >= 100 { admins.insert(user) }
-        }
-        return (people, admins)
-    }
-
     /// Открытое — вступаем сразу, закрытое (`knock`) — подаём заявку.
     func joinCommunity(_ room: PublicRoom) async -> CommunityJoin {
         guard let account else { return .failed }
@@ -1148,6 +1139,141 @@ final class AppSession {
         guard let account else { return false }
         if lines.contains(where: { $0.id == roomID && $0.membership == .join }) { return true }
         return (try? await account.client.join(roomID, via: server.map { [$0] } ?? [])) != nil
+    }
+
+    // MARK: Управление группой и сообществом
+
+    /// Всё, что нужно экрану управления: права, состав, оформление, правило входа, закреплённое.
+    struct RoomFacts: Equatable {
+        var powers: RoomPowers
+        var roster: Roster
+        var name = ""
+        var topic = ""
+        var avatarURL: String?
+        var joinRule = "invite"
+        var pinned: [String] = []
+
+        var isClosed: Bool { joinRule == "knock" }
+    }
+
+    /// Права и состав комнаты прямо с сервера (в базе может не быть заявок и блокировок). `nil` — не вышло.
+    func facts(_ roomID: String) async -> RoomFacts? {
+        guard let account, let powers = await powers(roomID) else { return nil }
+        guard let members = try? await account.client.members(roomID: roomID, notMembership: nil) else { return nil }
+        let client = account.client
+        func content(_ type: String) async -> JSONValue? { try? await client.state(roomID: roomID, type: type) }
+        var facts = RoomFacts(powers: powers, roster: Roster(members))
+        facts.name = await content(EventType.name)?["name"]?.string ?? ""
+        facts.topic = await content(EventType.topic)?["topic"]?.string ?? ""
+        facts.avatarURL = await content(EventType.avatar)?["url"]?.string.flatMap { $0.isEmpty ? nil : $0 }
+        facts.joinRule = await content("m.room.join_rules")?["join_rule"]?.string ?? "invite"
+        facts.pinned = PinnedEvents.ids(await content(PinnedEvents.type))
+        return facts
+    }
+
+    /// Уровни комнаты вместе с создателями; без события уровней — пустые (всё по умолчанию).
+    func powers(_ roomID: String) async -> RoomPowers? {
+        guard let account else { return nil }
+        guard let creators = try? await account.client.creators(roomID: roomID) else { return nil }
+        let levels = try? await account.client.state(roomID: roomID, type: EventType.powerLevels)
+        return RoomPowers(powerLevels: levels, creators: creators)
+    }
+
+    /// Права и закреплённое из своей базы: для чата, который пересобирается на каждом обновлении.
+    func localPowers(_ roomID: String) async -> (powers: RoomPowers, pinned: [String])? {
+        guard let account, let powers = try? await RoomPowers.local(roomID: roomID, store: account.store) else { return nil }
+        let pinned = PinnedEvents.ids(try? await account.store.state(roomID, type: PinnedEvents.type, stateKey: ""))
+        return (powers, pinned)
+    }
+
+    private func setRoomState(_ roomID: String, _ type: String, _ content: JSONValue) async -> Bool {
+        guard let account, (try? await account.client.setState(roomID: roomID, type: type, content: content)) != nil else { return false }
+        #if DEBUG
+        print("ui-check: управление: \(type) записано")
+        #endif
+        await refresh()
+        return true
+    }
+
+    func setRoomName(_ name: String, in roomID: String) async -> Bool {
+        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return false }
+        return await setRoomState(roomID, EventType.name, ["name": .string(name)])
+    }
+
+    func setRoomTopic(_ topic: String, in roomID: String) async -> Bool {
+        await setRoomState(roomID, EventType.topic, ["topic": .string(topic.trimmingCharacters(in: .whitespacesAndNewlines))])
+    }
+
+    /// Фото группы: квадратный JPEG на сервер и в `m.room.avatar`; `nil` — убрать фото.
+    func setRoomPhoto(_ jpeg: Data?, in roomID: String) async -> Bool {
+        guard let account else { return false }
+        guard let jpeg else { return await setRoomState(roomID, EventType.avatar, [:]) }
+        guard let mxc = try? await account.client.uploadMedia(jpeg, contentType: "image/jpeg", filename: "room.jpg") else { return false }
+        try? await media?.store(jpeg, for: mxc)
+        return await setRoomState(roomID, EventType.avatar, ["url": .string(mxc.description)])
+    }
+
+    /// Назначить или снять админа. Уровни берём свежими: иначе затрём чужое назначение, сделанное только что.
+    func setLevel(_ userID: String, to level: Int, in roomID: String) async -> Bool {
+        guard let me, let powers = await powers(roomID), powers.canSetLevel(me, userID, to: level) else { return false }
+        return await setRoomState(roomID, EventType.powerLevels, powers.setting(userID, to: level))
+    }
+
+    func setOnlyAdminsWrite(_ on: Bool, in roomID: String) async -> Bool {
+        guard let powers = await powers(roomID) else { return false }
+        return await setRoomState(roomID, EventType.powerLevels, powers.writing(onlyAdmins: on))
+    }
+
+    /// Сообщество открытое (входят сразу) или закрытое (по заявке).
+    func setClosed(_ closed: Bool, community spaceID: String) async -> Bool {
+        await setRoomState(spaceID, "m.room.join_rules", ["join_rule": .string(closed ? "knock" : "public")])
+    }
+
+    /// Группы сообщества, где можно навести порядок вслед за сообществом.
+    private func childRooms(_ spaceID: String) async -> [String] {
+        guard let account, let page = try? await account.client.roomHierarchy(roomID: spaceID, maxDepth: 1) else { return [] }
+        return page.rooms.map(\.room).filter { $0.roomID != spaceID && !$0.isSpace }.map(\.roomID)
+    }
+
+    /// Удалить из группы. Из сообщества — заодно из его групп: иначе человек остаётся в общем чате.
+    func remove(_ userID: String, from roomID: String, community: Bool) async -> Bool {
+        guard let account, (try? await account.client.kick(roomID: roomID, userID: userID)) != nil else { return false }
+        if community {
+            for child in await childRooms(roomID) { _ = try? await account.client.kick(roomID: child, userID: userID) }
+        }
+        return true
+    }
+
+    /// Заблокировать: вернуться сам не сможет. В сообществе — и во всех его группах.
+    func ban(_ userID: String, in roomID: String, community: Bool) async -> Bool {
+        guard let account, (try? await account.client.ban(roomID: roomID, userID: userID)) != nil else { return false }
+        if community {
+            for child in await childRooms(roomID) { _ = try? await account.client.ban(roomID: child, userID: userID) }
+        }
+        return true
+    }
+
+    func unban(_ userID: String, in roomID: String, community: Bool) async -> Bool {
+        guard let account, (try? await account.client.unban(roomID: roomID, userID: userID)) != nil else { return false }
+        if community {
+            for child in await childRooms(roomID) { _ = try? await account.client.unban(roomID: child, userID: userID) }
+        }
+        return true
+    }
+
+    /// Заявка в закрытое сообщество: одобрить — пригласить (на нашем сервере вход примется сам), отклонить — отказ.
+    func answerRequest(_ userID: String, in spaceID: String, accept: Bool) async -> Bool {
+        guard let account else { return false }
+        if accept { return (try? await account.client.invite(roomID: spaceID, userID: userID)) != nil }
+        return (try? await account.client.kick(roomID: spaceID, userID: userID)) != nil
+    }
+
+    /// Закрепить или открепить реплику: новое закреплённое — первым.
+    func pin(_ eventID: String, _ pinned: Bool, in roomID: String) async -> Bool {
+        guard let account else { return false }
+        let now = try? await account.client.state(roomID: roomID, type: PinnedEvents.type)
+        return await setRoomState(roomID, PinnedEvents.type, PinnedEvents.pinning(eventID, pinned, in: now))
     }
 
     /// Домен своей учётки: через него входим в комнаты сервера.

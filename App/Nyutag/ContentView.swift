@@ -41,6 +41,11 @@ struct ContentView: View {
         if let code = InviteCode.code(fromLink: url), session.phase != .signedIn { session.pendingInvite = code }
         // Виджет «Зурхай» открывает вкладку «Календарь».
         if url.scheme == "nyutag", url.host == "calendar" { session.requestedTab = 3 }
+        // Ссылка на сообщество со страницы nyutag.chat/c/: вкладка «Сообщества», его карточка.
+        if let spaceID = CommunityLink.roomID(from: url) {
+            session.pendingCommunity = spaceID
+            session.requestedTab = 2
+        }
     }
 
     #if DEBUG

@@ -24,6 +24,8 @@ public struct ChatLine: Sendable, Equatable, Identifiable {
     public let lastTS: Int
     public let unread: Int
     public let mentions: Int
+    /// Имя сообщества, в которое входит группа (`m.space.parent`), если мы в нём состоим.
+    public var community: String? = nil
 }
 
 public enum ChatDigest {
@@ -146,11 +148,21 @@ public enum ChatDigest {
         if let lastEvent, sender == me {
             delivery = try await isRead(lastEvent, roomID: record.id, members: members, me: me, store: store) ? .read : .sent
         }
+        var community: String?
+        if !record.isSpace, !record.isDirect {
+            for parent in try await store.state(record.id, type: "m.space.parent") where parent.content["via"] != nil {
+                if let space = try await store.room(parent.stateKey), space.membership == .join,
+                   let spaceName = space.name, !spaceName.isEmpty {
+                    community = spaceName
+                    break
+                }
+            }
+        }
         return ChatLine(id: record.id, title: title, avatarURL: avatarURL, membership: record.membership,
                         isDirect: record.isDirect, isEncrypted: record.isEncrypted, isSpace: record.isSpace,
                         last: last, lastSenderName: sender.map(name(of:)), lastIsMine: sender == me, delivery: delivery,
                         lastTS: lastEvent?.originServerTS ?? record.latestTS,
-                        unread: unread, mentions: record.highlightCount)
+                        unread: unread, mentions: record.highlightCount, community: community)
     }
 
     /// Прочитано, если кто-то из участников отметил прочтение этой реплики или более поздней.

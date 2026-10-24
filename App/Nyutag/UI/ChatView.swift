@@ -61,6 +61,10 @@ struct ChatView: View {
     @State private var schedulePast = false
     @State private var showingScheduled = false
     @State private var viewingOnce: OnceShot?
+    /// Права в группе (из своей базы) и закреплённые реплики; `pinIndex` — какую из закреплённых показывает плашка.
+    @State private var powers: RoomPowers?
+    @State private var pinnedIDs: [String] = []
+    @State private var pinIndex = 0
     struct OnceShot: Identifiable {
         let id: String
         let image: UIImage
@@ -93,6 +97,11 @@ struct ChatView: View {
 
     private var line: ChatLine? { session.lines.first { $0.id == roomID } }
     private var isGroup: Bool { !(line?.isDirect ?? false) }
+    /// Удалять чужие реплики и закреплять: модератор и выше в группе.
+    private var moderates: Bool { isGroup && (powers.map { $0.canRedactOthers(session.me ?? "") } ?? false) }
+    private var mayPin: Bool { isGroup && (powers.map { $0.canSetState(session.me ?? "", type: PinnedEvents.type) } ?? false) }
+    /// «Пишут только админы», а мы не админ: вместо поля ввода — подпись.
+    private var readOnly: Bool { isGroup && powers.map { !$0.canSend(session.me ?? "") } == true }
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -109,7 +118,8 @@ struct ChatView: View {
                         DayPlate(date: day(item.ts))
                     }
                     FeedRow(item: item, showsAuthor: isGroup && startsRun(item, after: previous),
-                            opening: openingID == item.id) { action in
+                            opening: openingID == item.id, moderates: moderates,
+                            pinned: mayPin ? pinnedIDs.contains(item.id) : nil) { action in
                         act(action, on: item)
                     }
                     .background(highlighted == item.id ? Theme.gold.opacity(0.28) : .clear,
@@ -128,6 +138,7 @@ struct ChatView: View {
         .scrollDismissesKeyboard(.interactively)
         .background(WallpaperBackground(roomID: roomID).ignoresSafeArea())
         .safeAreaInset(edge: .bottom, spacing: 0) { composer }
+        .safeAreaInset(edge: .top, spacing: 0) { pinnedBar }
         .navigationTitle(line?.title.isEmpty == false ? line!.title : words(.emptyChat))
         .navigationSubtitle(typingLine)
         .navigationBarTitleDisplayMode(.inline)
@@ -277,6 +288,10 @@ struct ChatView: View {
         }
         .task(id: session.revision) {
             await reload()
+            if isGroup, let local = await session.localPowers(roomID) {
+                if local.powers != powers { powers = local.powers }
+                if local.pinned != pinnedIDs { pinnedIDs = local.pinned; pinIndex = 0 }
+            }
             #if DEBUG
             sendForScreenshots()
             #endif
@@ -337,7 +352,12 @@ struct ChatView: View {
                 banner(title: replyTo.senderName, text: summary(replyTo.body), symbol: nil) { self.replyTo = nil }
             }
             if typing, words.buryatLetters { letterRow }
-            if recorder.recording {
+            if readOnly {
+                Label(words(.onlyAdminsComposer), systemImage: "megaphone")
+                    .font(.subheadline).foregroundStyle(Theme.quiet)
+                    .frame(maxWidth: .infinity).padding(.vertical, 16)
+                    .accessibilityIdentifier("chat-read-only")
+            } else if recorder.recording {
                 RecordingBar(recorder: recorder, cancel: { recorder.cancel() }, send: sendVoice)
             } else {
             HStack(alignment: .bottom, spacing: 8) {
@@ -407,6 +427,42 @@ struct ChatView: View {
             }
         }
         .background(Theme.card)
+    }
+
+    /// Плашка закреплённого сверху: нажатие прокручивает к реплике и переключает на следующую закреплённую.
+    @ViewBuilder private var pinnedBar: some View {
+        if isGroup, !pinnedIDs.isEmpty {
+            let id = pinnedIDs[min(pinIndex, pinnedIDs.count - 1)]
+            let item = items.first { $0.id == id }
+            Button {
+                if item != nil {
+                    scrollTarget = id
+                    highlighted = id
+                    Task {
+                        try? await Task.sleep(for: .seconds(2))
+                        if highlighted == id { highlighted = nil }
+                        scrollTarget = nil
+                    }
+                }
+                pinIndex = (pinIndex + 1) % pinnedIDs.count
+            } label: {
+                HStack(spacing: 10) {
+                    Capsule().fill(Theme.sky).frame(width: 3, height: 34)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(pinnedIDs.count > 1 ? "\(words(.pinnedMessage)) · \(min(pinIndex, pinnedIDs.count - 1) + 1)/\(pinnedIDs.count)"
+                                                 : words(.pinnedMessage))
+                            .font(.caption.bold()).foregroundStyle(Theme.sky)
+                        Text(item.map { summary($0.body) } ?? "…").font(.caption).foregroundStyle(Theme.ink).lineLimit(1)
+                    }
+                    Spacer(minLength: 4)
+                    Image(systemName: "pin.fill").font(.caption).foregroundStyle(Theme.quiet).rotationEffect(.degrees(45))
+                }
+                .padding(.horizontal, 14).padding(.vertical, 8)
+                .background(Theme.card)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("chat-pinned")
+        }
     }
 
     /// Строка «ө ү һ»: на русской раскладке этих букв нет.
@@ -646,6 +702,8 @@ struct ChatView: View {
             reporting = item
         case .forward:
             forwarding = item
+        case .pin(let on):
+            run { await session.pin(item.id, on, in: roomID) }
         case .saveSticker:
             guard let attachment = item.attachment, case .plain(let mxc) = attachment.source else { return }
             let sticker = Sticker(shortcode: attachment.name.isEmpty ? "sticker" : attachment.name, mxc: mxc, body: attachment.name,
@@ -1115,7 +1173,7 @@ struct ChatView: View {
 
 /// Одна строка ленты: плашка или пузырь со своей стороны.
 struct FeedRow: View {
-    enum Action { case reply, edit, delete, react(String), open, report, saveSticker, forward }
+    enum Action { case reply, edit, delete, react(String), open, report, saveSticker, forward, pin(Bool) }
 
     /// Быстрые реакции в меню, по порядку.
     static let quick = ["👍", "❤️", "😂", "😮", "😢", "🙏"]
@@ -1124,6 +1182,10 @@ struct FeedRow: View {
     let item: FeedItem
     let showsAuthor: Bool
     var opening = false
+    /// Можно удалять чужие реплики (модератор группы).
+    var moderates = false
+    /// Закреплена ли реплика; `nil` — закреплять нельзя.
+    var pinned: Bool? = nil
     let perform: (Action) -> Void
 
     var body: some View {
@@ -1172,7 +1234,10 @@ struct FeedRow: View {
         if item.canEdit {
             Button(words(.editAction), systemImage: "pencil") { perform(.edit) }
         }
-        if item.canDelete {
+        if let pinned, !item.isNotice, item.body != .deleted {
+            Button(words(pinned ? .unpinAction : .pinAction), systemImage: pinned ? "pin.slash" : "pin") { perform(.pin(!pinned)) }
+        }
+        if item.canDelete || (moderates && !item.isNotice && item.body != .deleted) {
             Button(words(.deleteAction), systemImage: "trash", role: .destructive) { perform(.delete) }
         }
         if item.canReport {
