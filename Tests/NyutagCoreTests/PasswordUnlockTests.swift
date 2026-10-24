@@ -33,29 +33,26 @@ import Testing
 
         let fresh = try await device(server, Self.alice, "A2")
         #expect(await OutboundTests().read(server, fresh) == [nil])
-        #expect(try await fresh.machine.unlockWithPassword("чужой", iterations: Self.iterations) == .needsRecoveryKey)
         #expect(try await fresh.machine.unlockWithPassword("пароль-1", iterations: Self.iterations) == .opened(imported: 1))
         #expect(await OutboundTests().read(server, fresh) == ["сайн байна"])
         #expect(try await alice.machine.devices(for: [Self.alice]).first { $0.deviceID == "A2" }?.crossSigned == true)
     }
 
-    @Test func identityWithoutStorageNeedsOtherDevice() async throws {
+    @Test func identityWithoutStorageIsResetByPassword() async throws {
         let server = FakeHomeserver()
         let old = try await device(server, Self.alice, "A1")
         try await old.machine.bootstrapCrossSigning(password: nil)
         let master = server.crossSigningKey(user: Self.alice, usage: "master")
 
         let fresh = try await device(server, Self.alice, "A2")
-        #expect(try await fresh.machine.unlockWithPassword("pw", iterations: Self.iterations) == .needsOtherDevice)
-        #expect(server.crossSigningKey(user: Self.alice, usage: "master") == master)
-        #expect(server.accountDataContent(user: Self.alice, type: "m.secret_storage.default_key") == nil)
-        // Устройство, у которого ключи есть, заводит хранилище под паролем, не меняя личность.
-        #expect(try await old.machine.unlockWithPassword("pw", iterations: Self.iterations) == .created)
-        #expect(server.crossSigningKey(user: Self.alice, usage: "master") == master)
+        // Ключей личности на устройстве нет и подтвердить нечем: заводим новую личность под паролем.
+        #expect(try await fresh.machine.unlockWithPassword("pw", iterations: Self.iterations) == .reset)
+        #expect(server.crossSigningKey(user: Self.alice, usage: "master") != master)
+        #expect(server.accountDataContent(user: Self.alice, type: "m.secret_storage.default_key") != nil)
         #expect(try await fresh.machine.unlockWithPassword("pw", iterations: Self.iterations) == .opened(imported: 0))
     }
 
-    @Test func oldRandomCodeIsRelockedWithPassword() async throws {
+    @Test func oldRandomCodeIsResetAndPasswordKeepsNewHistory() async throws {
         let server = FakeHomeserver()
         let alice = try await device(server, Self.alice, "A1")
         let bob = try await device(server, Self.bob, "B1")
@@ -65,14 +62,22 @@ import Testing
         _ = await OutboundTests().read(server, alice)
         let code = try await alice.machine.enableRecovery(password: nil)
 
+        // Ключ восстановления не спрашиваем: переписка под ним пропадает, хранилище заводится под паролем.
         let fresh = try await device(server, Self.alice, "A2")
-        #expect(try await fresh.machine.unlockWithPassword("pw", iterations: Self.iterations) == .needsRecoveryKey)
-        #expect(try await fresh.machine.relockWithPassword(recoveryKey: code, password: "pw", iterations: Self.iterations) == 1)
-        #expect(await OutboundTests().read(server, fresh) == ["старое"])
+        #expect(try await fresh.machine.unlockWithPassword("pw", iterations: Self.iterations) == .reset)
+        await #expect(throws: E2EEError.wrongRecoveryKey) { try await fresh.machine.restoreBackup(recoveryKey: code) }
+        try await bob.machine.store.markDeviceListsChanged([Self.alice])
+        try await bob.machine.sendEncrypted(roomID: Self.room, type: EventType.message,
+                                            content: OutboundTests().text("новое"))
+        #expect(await OutboundTests().read(server, fresh).last == "новое")
+        try await fresh.machine.uploadRoomKeysToBackup()
 
+        // Каждый следующий вход паролем поднимает всё, что было после сброса.
         let third = try await device(server, Self.alice, "A3")
         #expect(try await third.machine.unlockWithPassword("pw", iterations: Self.iterations) == .opened(imported: 1))
-        await #expect(throws: E2EEError.wrongRecoveryKey) { try await third.machine.restoreBackup(recoveryKey: code) }
+        #expect(await OutboundTests().read(server, third).last == "новое")
+        let fourth = try await device(server, Self.alice, "A4")
+        #expect(try await fourth.machine.unlockWithPassword("pw", iterations: Self.iterations) == .opened(imported: 1))
     }
 
     @Test func wrongKeyChangesNothingAndKeyAloneOpensHistory() async throws {
@@ -93,13 +98,11 @@ import Testing
         await #expect(throws: E2EEError.wrongRecoveryKey) {
             try await fresh.machine.relockWithPassword(recoveryKey: "не ключ", password: "pw", iterations: Self.iterations)
         }
-        #expect(try await fresh.machine.unlockWithPassword("pw", iterations: Self.iterations) == .needsRecoveryKey)
 
         // После перезапуска пароля в памяти нет: приложение только открывает хранилище ключом, без перезапирания.
         _ = try await fresh.machine.secretStorageKey(recoveryKey: code)
         try await fresh.machine.importCrossSigning(recoveryKey: code)
         #expect(try await fresh.machine.restoreBackup(recoveryKey: code).imported == 1)
         #expect(await OutboundTests().read(server, fresh) == ["старое"])
-        #expect(try await fresh.machine.unlockWithPassword("pw", iterations: Self.iterations) == .needsRecoveryKey)
     }
 }

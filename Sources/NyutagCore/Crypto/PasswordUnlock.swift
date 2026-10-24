@@ -8,10 +8,10 @@ public enum PasswordUnlockOutcome: Sendable, Equatable {
     case opened(imported: Int)
     /// Хранилища не было: завели его под этим паролем (и ключи кросс-подписи, если их не было на сервере).
     case created
-    /// Хранилище заперто не этим паролем (старый случайный код или пароль сменили на другом устройстве).
-    case needsRecoveryKey
-    /// Личность на сервере есть, хранилища нет, а у этого устройства закрытых ключей нет: подтвердить с другого устройства.
-    case needsOtherDevice
+    /// Хранилище было заперто не этим паролем (старый случайный ключ, пароль сменён через почту) или личность есть
+    /// без хранилища и без ключей на устройстве: завели новую личность и хранилище под паролем. Переписка под
+    /// прежним ключом не читается, дальше любой вход паролем поднимает историю.
+    case reset
 }
 
 extension CryptoMachine {
@@ -21,15 +21,19 @@ extension CryptoMachine {
         do {
             _ = try await defaultSecretStorageKey()
         } catch .noBackup {
-            guard try await canStartIdentity() else { return .needsOtherDevice }
-            _ = try await enableRecovery(password: password, passphrase: password, iterations: iterations)
-            return .created
+            let fresh = try await canStartIdentity()
+            _ = try await enableRecovery(password: password, resetIdentity: !fresh, passphrase: password,
+                                         iterations: iterations)
+            return fresh ? .created : .reset
         }
         let ssss: (id: String, key: Data)
         do {
             ssss = try await secretStorageKey(passphrase: password)
         } catch .wrongRecoveryKey {
-            return .needsRecoveryKey
+            // Владелец 23.10: ключ восстановления не спрашиваем никогда, вход паролем всегда сохраняет историю.
+            _ = try await enableRecovery(password: password, resetIdentity: true, passphrase: password,
+                                         iterations: iterations)
+            return .reset
         }
         try await importCrossSigning(ssss: ssss)
         return .opened(imported: try await restoreBackupIfAny(ssss: ssss))

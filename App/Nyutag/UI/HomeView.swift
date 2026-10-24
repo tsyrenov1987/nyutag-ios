@@ -55,7 +55,7 @@ struct ChatListView: View {
     @Environment(AppSession.self) private var session
     @State private var menu = false
     @State private var path: [String] = []
-    @State private var keySheet = false
+    @State private var signingInAgain = false
     /// Открытая папка; `nil` — «Все».
     @State private var folder: String?
     @State private var naming: FolderNaming?
@@ -77,13 +77,8 @@ struct ChatListView: View {
                     FolderBar(selected: $folder, naming: $naming, deleting: $deleting)
                         .padding(.top, 2)
                 }
-                if session.historyLocked {
-                    LockedHistoryCard { keySheet = true }
-                        .padding(.horizontal, 12)
-                        .padding(.top, 4)
-                }
-                if session.needsOtherDevice {
-                    UnconfirmedSignInCard { session.showDeviceCheck = true }
+                if session.historyNeedsSignIn {
+                    LockedHistoryCard { signingInAgain = true }
                         .padding(.horizontal, 12)
                         .padding(.top, 4)
                 }
@@ -163,7 +158,10 @@ struct ChatListView: View {
                 Button(words(.chatLeave), role: .destructive) { Task { await session.leaveChat(roomID) } }
                 Button(words(.cancel), role: .cancel) {}
             } message: { _ in Text(words(.chatLeaveHint)) }
-            .sheet(isPresented: $keySheet) { HistoryKeyView(canRelock: session.canRelockHistory) }
+            .confirmationDialog(words(.historyLockedTitle), isPresented: $signingInAgain, titleVisibility: .visible) {
+                Button(words(.signOut), role: .destructive) { Task { await session.signOut() } }
+                Button(words(.cancel), role: .cancel) {}
+            } message: { Text(words(.historySignInAgain)) }
             .alert(words(naming?.isNew == false ? .folderRename : .folderNew), isPresented: $naming.present()) {
                 TextField(words(.folderName), text: $folderName)
                 Button(words(.save)) { saveFolder() }
@@ -226,9 +224,6 @@ struct ChatListView: View {
                 guard ProcessInfo.processInfo.environment["NYUTAG_UI_SAVED"] != nil else { return }
                 while session.lines.isEmpty { try? await Task.sleep(for: .milliseconds(300)) }
                 openSaved()
-            }
-            .onChange(of: session.historyLocked, initial: true) {
-                if session.historyLocked, ProcessInfo.processInfo.environment["NYUTAG_UI_TRY_KEY"] != nil { keySheet = true }
             }
             #endif
         }

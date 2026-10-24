@@ -294,27 +294,15 @@ extension Phrase {
     // Старая история под прежним ключом
     static let historyLockedTitle = Phrase(bxr: "Хуушан бэшэгүүд хаалтатай", ru: "Старые сообщения закрыты",
                                            en: "Older messages are locked")
-    static let historyLockedLead = Phrase(bxr: "Урдань хадагалһан һэргээлгын түлхюурээ оруулагты",
-                                          ru: "Введите ключ восстановления, который вы сохраняли раньше",
-                                          en: "Enter the recovery key you saved earlier")
-    static let historyKeyExplain = Phrase(
-        bxr: "Энэ аккаунт дээрэ бэшэгүүд урдань түлхюураар хаагдаһан байна. Нэгэ дахин оруулаад, саашадаа нюуса үгөөрөө оронот.",
-        ru: "Раньше переписку этого аккаунта запирал отдельный ключ. Введите его один раз, дальше на любом устройстве хватит пароля.",
-        en: "This account's messages were locked with a separate key. Enter it once; after that your password is enough on any device.")
-    static let historyKeyExplainNoPassword = Phrase(
-        bxr: "Ключ оруулбал, хуушан бэшэгүүд энэ түхеэрэлгэ дээрэ нээгдэхэ.",
-        ru: "Ключ откроет старые сообщения на этом устройстве.",
-        en: "The key opens older messages on this device.")
-    static let recoveryKey = Phrase(bxr: "Һэргээлгын түлхюур", ru: "Ключ восстановления", en: "Recovery key")
-    static let paste = Phrase(bxr: "Оруулха", ru: "Вставить", en: "Paste")
-    static let openHistory = Phrase(bxr: "Бэшэгүүдые нээхэ", ru: "Открыть историю", en: "Open history")
-    static let openingHistory = Phrase(bxr: "Нээжэ байна…", ru: "Открываем…", en: "Opening…")
-    static let wrongKey = Phrase(bxr: "Түлхюур таарахагүй байна. Үсэг бүриие шалгагты.",
-                                 ru: "Ключ не подходит. Проверьте каждый знак.",
-                                 en: "This key doesn't fit. Check every character.")
+    static let historyLockedLead = Phrase(bxr: "Гараад, нюуса үгөөрөө дахин орогты",
+                                          ru: "Выйдите и войдите снова с паролем",
+                                          en: "Sign out and sign in again with your password")
+    static let historySignInAgain = Phrase(
+        bxr: "Урдахи түлхюураар хаагдаһан бэшэгүүдые нээхэ аргагүй. Нюуса үгөөрөө дахин ороходо, саашадаа бэшэгүүд хадагалагдаха.",
+        ru: "Сообщения под прежним ключом уже не открыть. После нового входа с паролем переписка будет сохраняться при каждом входе.",
+        en: "Messages under the old key can't be opened. After you sign in again with your password, your chats are kept on every sign-in.")
     static let historyOpened = Phrase(bxr: "Хуушан бэшэгүүд нээгдэбэ", ru: "Старые сообщения открыты",
                                       en: "Older messages are open")
-    static let later = Phrase(bxr: "Һүүлдэ", ru: "Позже", en: "Later")
 
     // Экран чата
     static let messageField = Phrase(bxr: "Бэшэг", ru: "Сообщение", en: "Message")
@@ -384,8 +372,6 @@ extension Phrase {
 
     // Подтверждение входа с другого устройства
     static let otherDeviceTitle = Phrase(bxr: "Оролтоо баталагты", ru: "Подтвердите вход", en: "Confirm this sign-in")
-    static let otherDeviceLead = Phrase(bxr: "Урдань ороһон утаһан гү, компьютер дээрэ Нютаг нээгты",
-                                        ru: "Откройте Нютаг там, где вы уже вошли", en: "Open Nyutag where you're already signed in")
     static let otherDeviceWait = Phrase(
         bxr: "Нүгөө төхөөрэмжэ дээрээ Нютаг нээгты. Тэндэ асуудал гараха, тэрэниие баталагты.",
         ru: "Откройте Нютаг на другом устройстве. Там появится запрос, подтвердите его.",
@@ -413,8 +399,6 @@ extension Phrase {
                                       ru: "Эмодзи не совпали, вход не подтверждён", en: "The emoji didn't match. Sign-in not confirmed.")
     static let noOtherDevice = Phrase(bxr: "Нютагтай нүгөө төхөөрэмжэ олдобогүй", ru: "Других устройств с Нютагом не нашли",
                                       en: "No other devices with Nyutag found")
-    static let confirmFromDevice = Phrase(bxr: "Нүгөө төхөөрэмжөөр баталха", ru: "Подтвердить с другого устройства",
-                                          en: "Confirm from another device")
     static let pin = Phrase(bxr: "Бэхилхэ", ru: "Закрепить", en: "Pin")
     static let unpin = Phrase(bxr: "Бэхилэлгые болюулха", ru: "Открепить", en: "Unpin")
     static let pinned = Phrase(bxr: "Бэхилэгдэһэн", ru: "Закреплён", en: "Pinned")
