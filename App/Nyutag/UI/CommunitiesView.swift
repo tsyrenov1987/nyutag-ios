@@ -330,7 +330,8 @@ struct CommunityView: View {
         guard canAdd else { return }
         busy = true
         defer { busy = false }
-        guard let roomID = await session.createGroup(named: words(.communityGeneralChat), in: community.id) else {
+        guard let roomID = await session.createGroup(named: community.name.isEmpty ? words(.communityGeneralChat) : community.name,
+                                                             in: community.id) else {
             problem = true
             return
         }
@@ -430,7 +431,7 @@ struct NewCommunityView: View {
         defer { busy = false }
         let title = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let id = await session.createCommunity(name: title, about: about, open: open,
-                                                   chatName: words(.communityGeneralChat)) else { problem = true; return }
+                                                   chatName: title) else { problem = true; return }
         var community = Community(PublicRoom(roomID: id, name: title, topic: about, numJoinedMembers: 1,
                                              joinRule: open ? "public" : "knock", roomType: "m.space"))
         if about.isEmpty { community.topic = nil }
