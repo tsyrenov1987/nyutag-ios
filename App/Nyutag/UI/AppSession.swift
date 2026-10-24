@@ -1040,13 +1040,13 @@ final class AppSession {
 
     // MARK: Группы и чаты
 
-    /// Новая группа из списка чатов: закрытая шифрованная комната, участники получают приглашение
+    /// Новая группа из списка чатов: закрытая комната без шифрования (новички видят историю), участники получают приглашение
     /// (на нашем сервере оно принимается само). Возвращает id комнаты.
     func createGroup(name: String, members: [String]) async -> String? {
         guard let account else { return nil }
         let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return nil }
-        guard let roomID = try? await account.client.createRoom(.init(name: name, invite: members)) else { return nil }
+        guard let roomID = try? await account.client.createRoom(.init(name: name, invite: members, encrypted: false)) else { return nil }
         #if DEBUG
         print("ui-check: группа «\(name)» создана, приглашено \(members.count)")
         #endif
@@ -1126,10 +1126,10 @@ final class AppSession {
         return spaceID
     }
 
-    /// Группа сообщества: шифрованная, войти может любой его участник (`restricted`).
+    /// Группа сообщества: без шифрования, чтобы вступившие видели историю; войти может любой его участник (`restricted`).
     func createGroup(named name: String, in spaceID: String) async -> String? {
         guard let account, let server else { return nil }
-        guard let roomID = try? await account.client.createRoom(.init(name: name)) else { return nil }
+        guard let roomID = try? await account.client.createRoom(.init(name: name, encrypted: false)) else { return nil }
         let rule: JSONValue = ["join_rule": "restricted",
                                "allow": [["type": "m.room_membership", "room_id": .string(spaceID)]]]
         do {

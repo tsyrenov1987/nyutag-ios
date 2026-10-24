@@ -18,6 +18,8 @@ public struct FeedItem: Sendable, Equatable, Identifiable {
         case roomPhoto(by: String)
         case roomTopic(String, by: String)
         case encryptionOn(by: String)
+        /// Реплики до нашего входа: ключ к ним раздали без нас, ждать его бесполезно.
+        case earlierLocked
     }
 
     public enum Body: Sendable, Equatable {
@@ -136,17 +138,29 @@ public enum ChatFeed {
         // Вход создателя сразу после создания — та же новость, что «чат создан».
         let creator = opened.first { $0.type == EventType.create }?.sender
 
+        // Наш последний вход в комнату: ключи к репликам до него раздавали без нас.
+        let joinedAt = opened.lastIndex {
+            $0.type == EventType.member && $0.stateKey == me && $0.content["membership"]?.string == "join"
+                && $0.unsigned?["prev_content"]?["membership"]?.string != "join"
+        }
+        var hidLocked = false
+
         let readUpTo = try await othersReadTS(roomID: roomID, members: members, me: me, store: store)
         var byID: [String: Event] = [:]
         for event in opened { if let id = event.eventID { byID[id] = event } }
 
         var items: [FeedItem] = []
-        for event in opened {
+        for (index, event) in opened.enumerated() {
             var shownContent = event.content
             guard let id = event.eventID, let sender = event.sender else { continue }
             if ChatDigest.isEdit(event) { continue }
             let body: FeedItem.Body
-            if event.isRedacted || removed.contains(id) {
+            if event.type == EventType.encrypted, !event.isRedacted, !removed.contains(id), let joinedAt, index < joinedAt {
+                // Все такие реплики — одной плашкой на месте первой.
+                if hidLocked { continue }
+                hidLocked = true
+                body = .notice(.earlierLocked)
+            } else if event.isRedacted || removed.contains(id) {
                 guard event.type == EventType.message || event.type == EventType.encrypted || event.type == EventType.sticker
                 else { continue }
                 body = .deleted

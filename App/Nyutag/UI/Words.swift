@@ -344,6 +344,9 @@ extension Phrase {
     static let noticeTopic = Phrase(bxr: "Тайлбари: {1}", ru: "Описание: {1}", en: "Description: {1}")
     static let noticeEncrypted = Phrase(bxr: "Бэшэгүүд нюуса шифрээр хамгаалагдана", ru: "Сообщения защищены сквозным шифрованием",
                                         en: "Messages are end-to-end encrypted")
+    static let noticeEarlierLocked = Phrase(bxr: "Таныг ороходо урдахи бэшэгүүд харагдахагүй: тэдэниие таныгүйгөөр шифрлэһэн",
+                                            ru: "Сообщения до вашего вступления скрыты: их зашифровали без вас",
+                                            en: "Messages from before you joined are hidden: they were encrypted without you")
 
     // Контакты
     static let inNyutag = Phrase(bxr: "Нютагта", ru: "В Нютаге", en: "On Nyutag")

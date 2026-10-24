@@ -142,6 +142,35 @@ struct ChatFeedTests {
         #expect(answer.reply == .init(eventID: "$s", senderName: "Арюна", preview: .text("тайна")))
     }
 
+    @Test("нерасшифрованное до нашего входа — одной плашкой, после входа — как есть")
+    func lockedBeforeJoin() async throws {
+        let store = try await prepared()
+        func sealed(_ id: String, ts: Int) -> Event {
+            Event(eventID: id, type: EventType.encrypted, sender: arjuna, originServerTS: ts,
+                  content: ["algorithm": "m.megolm.v1.aes-sha2"], roomID: room)
+        }
+        try await store.append([
+            text("$0", from: arjuna, ts: 90, "открыто"),
+            sealed("$s1", ts: 100), sealed("$s2", ts: 101),
+            member(me, name: "Я", id: "$own", ts: 110),
+            sealed("$s3", ts: 120),
+        ])
+        let items = try await ChatFeed.items(roomID: room, store: store, me: me)
+        #expect(items.map(\.id) == ["$0", "$s1", "$own", "$s3"])
+        #expect(items[1].body == .notice(.earlierLocked))
+        #expect(items[3].body == .locked)
+
+        // Ключ всё же пришёл (например, из резервной копии) — реплика видна.
+        let roomID = room
+        let opened = try await ChatFeed.items(roomID: roomID, store: store, me: me) { event, _ in
+            guard event.eventID == "$s2" else { return nil }
+            return Event(eventID: "$s2", type: EventType.message, sender: event.sender, originServerTS: 101,
+                         content: ["msgtype": "m.text", "body": "тайна"], roomID: roomID)
+        }
+        #expect(opened.first { $0.id == "$s2" }?.body == .text("тайна"))
+        #expect(opened.first { $0.id == "$s1" }?.body == .notice(.earlierLocked))
+    }
+
     @Test("цитата в ответе показывает текст после правки")
     func replyQuotesEditedText() async throws {
         let store = try await prepared()

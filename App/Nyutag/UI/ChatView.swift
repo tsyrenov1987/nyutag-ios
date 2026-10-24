@@ -1467,6 +1467,7 @@ enum NoticeText {
         case .roomPhoto: words(.noticeRoomPhoto)
         case .roomTopic(let topic, _): words(.noticeTopic, topic)
         case .encryptionOn: words(.noticeEncrypted)
+        case .earlierLocked: words(.noticeEarlierLocked)
         }
     }
 }
