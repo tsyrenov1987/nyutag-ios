@@ -4,7 +4,6 @@
 // В групповом звонке у каждого участника свой буфер и декодер, при воспроизведении голоса складываются.
 
 import Foundation
-import Synchronization
 
 public struct VoiceStats: Sendable, Equatable {
     public var sent = 0

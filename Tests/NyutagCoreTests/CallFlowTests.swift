@@ -1,6 +1,5 @@
 import Foundation
 @testable import NyutagCore
-import Synchronization
 import Testing
 
 /// Ход звонка: два диспетчера в одной комнате, релей и звук подменены, кадры настоящие (Opus + шифр).

@@ -16,7 +16,7 @@ NSE_ID = APP_ID + ".nse"
 WIDGET_ID = APP_ID + ".widget"
 GROUP = "group.chat.nyutag.messenger"
 BGTASK = APP_ID + ".background.refresh"
-IOS = "26.0"
+IOS = "17.0"
 
 
 def uid(name):

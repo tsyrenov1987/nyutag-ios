@@ -13,7 +13,10 @@ final class PhoneBook {
     private(set) var status = CNContactStore.authorizationStatus(for: .contacts)
     private(set) var entries: [BookEntry] = []
 
-    var canRead: Bool { status == .authorized || status == .limited }
+    var canRead: Bool {
+        if #available(iOS 18, *), status == .limited { return true }
+        return status == .authorized
+    }
 
     func ask() async {
         _ = try? await CNContactStore().requestAccess(for: .contacts)

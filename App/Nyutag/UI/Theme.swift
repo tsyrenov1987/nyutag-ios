@@ -105,3 +105,17 @@ struct AvatarPicture: View {
         .task(id: url) { image = await session.avatar(url, pixels: Int(size * 3)) }
     }
 }
+
+extension View {
+    /// Стекло iOS 26 у кнопок звонка; на iOS 17–18 — матовая подложка той же формы. `on: false` — без стекла.
+    @ViewBuilder
+    func callGlass<S: Shape>(_ on: Bool = true, interactive: Bool = true, in shape: S) -> some View {
+        if #available(iOS 26, *) {
+            glassEffect(on ? (interactive ? .regular.interactive() : .regular) : .identity, in: shape)
+        } else if on {
+            background(.ultraThinMaterial, in: shape)
+        } else {
+            self
+        }
+    }
+}

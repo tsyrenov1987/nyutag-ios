@@ -28,7 +28,8 @@ struct ChatView: View {
     @State private var loadingOlder = false
     @State private var outbox: [Outgoing] = []
     @State private var draft = ""
-    @State private var draftSelection: TextSelection?
+    /// `TextSelection?` — тип с iOS 18, в `@State` его не положить; читаем через `draftSelection`.
+    @State private var draftSelectionBox: Any?
     @State private var replyTo: FeedItem?
     @State private var editing: FeedItem?
     @State private var deleting: FeedItem?
@@ -140,7 +141,7 @@ struct ChatView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) { composer }
         .safeAreaInset(edge: .top, spacing: 0) { pinnedBar }
         .navigationTitle(line?.title.isEmpty == false ? line!.title : words(.emptyChat))
-        .navigationSubtitle(typingLine)
+        .typingSubtitle(title: line?.title.isEmpty == false ? line!.title : words(.emptyChat), subtitle: typingLine)
         .navigationBarTitleDisplayMode(.inline)
         .confirmationDialog(words(.deleteAsk), isPresented: Binding { deleting != nil } set: { if !$0 { deleting = nil } },
                             titleVisibility: .visible, presenting: deleting) { item in
@@ -389,7 +390,7 @@ struct ChatView: View {
                     .accessibilityLabel(words(.stickers))
                     .accessibilityIdentifier("chat-stickers")
                 }
-                TextField(words(.messageField), text: $draft, selection: $draftSelection, axis: .vertical)
+                draftField
                     .lineLimit(1...6)
                     .focused($typing)
                     .padding(.horizontal, 14).padding(.vertical, 10)
@@ -482,9 +483,26 @@ struct ChatView: View {
         .padding(.horizontal, 10).padding(.top, 8)
     }
 
+    @available(iOS 18, *)
+    private var draftSelection: TextSelection? {
+        get { draftSelectionBox as? TextSelection }
+        nonmutating set { draftSelectionBox = newValue }
+    }
+
+    /// Поле черновика; с iOS 18 знает курсор, на iOS 17 буквы ө ү һ встают в конец.
+    @ViewBuilder
+    private var draftField: some View {
+        if #available(iOS 18, *) {
+            TextField(words(.messageField), text: $draft, selection: Binding { draftSelection } set: { draftSelection = $0 }, axis: .vertical)
+        } else {
+            TextField(words(.messageField), text: $draft, axis: .vertical)
+        }
+    }
+
     /// Курсор в знаках от начала черновика; без выделения — конец текста.
     private var caretRange: Range<Int> {
         let end = draft.count
+        guard #available(iOS 18, *) else { return end..<end }
         guard case .selection(let range)? = draftSelection?.indices,
               range.upperBound <= draft.endIndex, range.lowerBound >= draft.startIndex else { return end..<end }
         let lower = draft.distance(from: draft.startIndex, to: range.lowerBound)
@@ -496,7 +514,9 @@ struct ChatView: View {
         let lower = draft.index(draft.startIndex, offsetBy: range.lowerBound)
         let upper = draft.index(draft.startIndex, offsetBy: range.upperBound)
         draft.replaceSubrange(lower..<upper, with: String(BuryatLetters.letter(base, after: draft[..<lower])))
-        draftSelection = TextSelection(insertionPoint: draft.index(draft.startIndex, offsetBy: range.lowerBound + 1))
+        if #available(iOS 18, *) {
+            draftSelection = TextSelection(insertionPoint: draft.index(draft.startIndex, offsetBy: range.lowerBound + 1))
+        }
     }
 
     /// «hайн» → «һайн» прямо при наборе; длина не меняется, курсор ставим туда же.
@@ -504,8 +524,10 @@ struct ChatView: View {
         guard words.buryatLetters, let fixed = BuryatLetters.fix(draft) else { return }
         let range = caretRange
         draft = fixed
-        draftSelection = TextSelection(range: draft.index(draft.startIndex, offsetBy: range.lowerBound)
-                                       ..< draft.index(draft.startIndex, offsetBy: range.upperBound))
+        if #available(iOS 18, *) {
+            draftSelection = TextSelection(range: draft.index(draft.startIndex, offsetBy: range.lowerBound)
+                                           ..< draft.index(draft.startIndex, offsetBy: range.upperBound))
+        }
     }
 
     /// Отложенные этого чата, ближайшие первыми.
@@ -1026,7 +1048,7 @@ struct ChatView: View {
             Self.draftedForScreenshots = true
             draft = text
             // Выделение осталось от пустого поля: без сброса буква встала бы не в конец.
-            draftSelection = nil
+            draftSelectionBox = nil
             typing = true
             if let letter = env["NYUTAG_UI_LETTER"].flatMap(\.first) { insertLetter(letter) }
             Task {
@@ -1676,6 +1698,25 @@ struct ForwardSheet: View {
             dismiss()
         } else {
             failed = true
+        }
+    }
+}
+
+private extension View {
+    /// Кто набирает — под именем чата: с iOS 26 системной подписью, раньше — своим заголовком из двух строк.
+    @ViewBuilder
+    func typingSubtitle(title: String, subtitle: String) -> some View {
+        if #available(iOS 26, *) {
+            navigationSubtitle(subtitle)
+        } else {
+            toolbar {
+                ToolbarItem(placement: .principal) {
+                    VStack(spacing: 0) {
+                        Text(title).font(.headline).lineLimit(1)
+                        if !subtitle.isEmpty { Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
+                    }
+                }
+            }
         }
     }
 }

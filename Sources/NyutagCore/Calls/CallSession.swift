@@ -8,7 +8,6 @@
 // Ушедший шлёт leave; никто так и не пришёл — начавший шлёт end, и у остальных будильник гаснет.
 
 import Foundation
-import Synchronization
 
 public enum CallPhase: Sendable, Equatable {
     /// Мы звоним, собеседник ещё не ответил.

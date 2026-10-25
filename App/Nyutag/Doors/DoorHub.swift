@@ -4,7 +4,6 @@
 
 import Foundation
 import NyutagCore
-import Synchronization
 
 actor DoorHub {
     static let shared = DoorHub()

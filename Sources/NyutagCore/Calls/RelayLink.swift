@@ -2,7 +2,6 @@
 // (дверь, ключ в заголовке). Бинарные сообщения — кадры собеседника как есть, текстовые — служебные (`{"peers":N}`).
 
 import Foundation
-import Synchronization
 
 public enum RelayInbound: Sendable, Equatable {
     case packet(Data)

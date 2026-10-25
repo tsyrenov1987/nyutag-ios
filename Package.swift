@@ -5,7 +5,7 @@ import PackageDescription
 let package = Package(
     name: "Nyutag",
     defaultLocalization: "ru",
-    platforms: [.iOS(.v26), .macOS(.v26)],
+    platforms: [.iOS(.v17), .macOS(.v14)],
     products: [
         .library(name: "NyutagCore", targets: ["NyutagCore"]),
         .library(name: "NyutagCrypto", targets: ["NyutagCrypto"]),

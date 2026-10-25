@@ -2,7 +2,6 @@ import CoreMedia
 import CoreVideo
 import Foundation
 @testable import NyutagCore
-import Synchronization
 import Testing
 
 @Suite struct VideoTests {

@@ -366,7 +366,7 @@ struct CallView: View {
                                 .frame(width: 44, height: 44)
                         }
                         .buttonStyle(.plain)
-                        .glassEffect(.regular.interactive(), in: .circle)
+                        .callGlass(in: .circle)
                         .accessibilityLabel(words(.callFold))
                     }
                     Spacer()
@@ -556,7 +556,7 @@ private struct FlowNames: View {
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
-                .glassEffect(.regular, in: .capsule)
+                .callGlass(interactive: false, in: .capsule)
             }
         }
     }
@@ -597,7 +597,7 @@ struct CallStrip: View {
         .padding(.leading, 8)
         .padding(.trailing, 6)
         .padding(.vertical, 6)
-        .glassEffect(.regular.interactive(), in: .capsule)
+        .callGlass(in: .capsule)
         .padding(.horizontal, 12)
         .transition(.move(edge: .top).combined(with: .opacity))
     }
@@ -639,7 +639,7 @@ private struct RoundButton: View {
                     .background(tint.map { Circle().fill($0) })
             }
             .buttonStyle(.plain)
-            .glassEffect(tint == nil ? .regular.interactive() : .identity, in: .circle)
+            .callGlass(tint == nil, in: .circle)
             .accessibilityLabel(caption)
             Text(caption)
                 .font(.footnote)

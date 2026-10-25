@@ -14,11 +14,21 @@ struct HomeView: View {
         // Свёрнутый звонок — над вкладками, а не поверх: заголовки и списки уходят под него, не просвечивая.
         VStack(spacing: 6) {
             if session.calls.showsStrip { CallStrip() }
-            TabView(selection: $tab) {
-                Tab(words(.chats), systemImage: "bubble.left.and.bubble.right", value: 0) { ChatListView() }
-                Tab(words(.contacts), systemImage: "person.2", value: 1) { ContactsView() }
-                Tab(words(.communities), systemImage: "circle.hexagongrid", value: 2) { CommunitiesView() }
-                Tab(words(.calendar), systemImage: "moon.stars", value: 3) { CalendarView() }
+            if #available(iOS 18, *) {
+                TabView(selection: $tab) {
+                    Tab(words(.chats), systemImage: "bubble.left.and.bubble.right", value: 0) { ChatListView() }
+                    Tab(words(.contacts), systemImage: "person.2", value: 1) { ContactsView() }
+                    Tab(words(.communities), systemImage: "circle.hexagongrid", value: 2) { CommunitiesView() }
+                    Tab(words(.calendar), systemImage: "moon.stars", value: 3) { CalendarView() }
+                }
+            } else {
+                // iOS 17: вкладки старым способом, те же четыре.
+                TabView(selection: $tab) {
+                    ChatListView().tabItem { Label(words(.chats), systemImage: "bubble.left.and.bubble.right") }.tag(0)
+                    ContactsView().tabItem { Label(words(.contacts), systemImage: "person.2") }.tag(1)
+                    CommunitiesView().tabItem { Label(words(.communities), systemImage: "circle.hexagongrid") }.tag(2)
+                    CalendarView().tabItem { Label(words(.calendar), systemImage: "moon.stars") }.tag(3)
+                }
             }
         }
         .background(Theme.milk.ignoresSafeArea())

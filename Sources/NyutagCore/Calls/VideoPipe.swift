@@ -10,7 +10,6 @@
 import CoreMedia
 import CoreVideo
 import Foundation
-import Synchronization
 
 public struct VideoStats: Sendable, Equatable {
     public var sentFrames = 0
