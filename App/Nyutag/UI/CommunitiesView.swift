@@ -481,3 +481,77 @@ struct NewCommunityView: View {
         created(community)
     }
 }
+
+/// «Откуда вы родом?»: один раз после входа, пока человек ни в одном сообществе. Ведёт в свой нютаг, где земляки
+/// и общий чат: без него новичок остаётся с пустым списком чатов. Открытый вступает сразу, закрытый — карточка с заявкой.
+struct WhereFromView: View {
+    static let doneKey = "whereFromDone"
+
+    @Environment(Words.self) private var words
+    @Environment(AppSession.self) private var session
+    @Environment(\.dismiss) private var dismiss
+    @State private var catalog: [PublicRoom]?
+    @State private var joining: String?
+    @State private var creating = false
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    Text(words(.whereFromHint)).foregroundStyle(Theme.quiet)
+                        .listRowBackground(Color.clear)
+                }
+                Section {
+                    if catalog == nil { ProgressView().frame(maxWidth: .infinity) }
+                    ForEach(catalog ?? [], id: \.roomID) { room in
+                        Button { Task { await pick(room) } } label: {
+                            HStack {
+                                CommunityRow(community: Community(room))
+                                if joining == room.roomID { ProgressView() }
+                            }
+                        }
+                        .foregroundStyle(Theme.ink)
+                        .disabled(joining != nil)
+                    }
+                    Button(words(.whereFromNew), systemImage: "plus") { creating = true }
+                }
+            }
+            .scrollContentBackground(.hidden)
+            .background(Theme.milk.ignoresSafeArea())
+            .navigationTitle(words(.whereFromTitle))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) { Button(words(.whereFromLater)) { dismiss() } }
+            }
+            .task {
+                for pause in [0, 2, 4, 8, 15] {
+                    if pause > 0 { try? await Task.sleep(for: .seconds(pause)) }
+                    if let found = await session.findCommunities("") {
+                        catalog = found.sorted { $0.numJoinedMembers > $1.numJoinedMembers }
+                        return
+                    }
+                }
+                catalog = []
+            }
+            .sheet(isPresented: $creating) {
+                NewCommunityView { community in open(community.id) }
+            }
+        }
+    }
+
+    private func pick(_ room: PublicRoom) async {
+        joining = room.roomID
+        if room.joinRule != "knock" { _ = await session.joinCommunity(room) }
+        joining = nil
+        #if DEBUG
+        print("ui-check: откуда: выбран нютаг")
+        #endif
+        open(room.roomID)
+    }
+
+    private func open(_ spaceID: String) {
+        session.pendingCommunity = spaceID
+        session.requestedTab = 2
+        dismiss()
+    }
+}

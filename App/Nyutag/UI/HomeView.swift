@@ -8,6 +8,7 @@ struct HomeView: View {
     @Environment(Words.self) private var words
     @Environment(AppSession.self) private var session
     @State private var tab = 0
+    @State private var whereFrom = false
 
     var body: some View {
         // Свёрнутый звонок — над вкладками, а не поверх: заголовки и списки уходят под него, не просвечивая.
@@ -27,6 +28,13 @@ struct HomeView: View {
             tab = requested
             session.requestedTab = nil
         }
+        .onChange(of: session.revision > 0, initial: true) {
+            // После первого /sync список сообществ настоящий: кто уже в нютаге, того не спрашиваем.
+            guard session.revision > 0, !UserDefaults.standard.bool(forKey: WhereFromView.doneKey) else { return }
+            UserDefaults.standard.set(true, forKey: WhereFromView.doneKey)
+            if session.communities.isEmpty { whereFrom = true }
+        }
+        .sheet(isPresented: $whereFrom) { WhereFromView() }
         .animation(.smooth, value: session.calls.showsStrip)
         .fullScreenCover(isPresented: .constant(session.calls.current != nil && !session.calls.folded)) { CallView() }
         .sheet(isPresented: Bindable(session).showDeviceCheck, onDismiss: { Task { await session.closeDeviceCheck() } }) {

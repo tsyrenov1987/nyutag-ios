@@ -589,9 +589,15 @@ extension Phrase {
                                            ru: "Заявка отправлена. Когда админ одобрит, сообщество появится здесь.",
                                            en: "Request sent. Once an admin approves it, the community shows up here.")
     static let communityInvite = Phrase(bxr: "Уриха", ru: "Пригласить", en: "Invite")
-    static let communityInviteText = Phrase(bxr: "Нютаг соо «{1}» оршондо орогты: {2}",
-                                            ru: "Вступайте в сообщество «{1}» в Нютаге: {2}",
-                                            en: "Join the community “{1}” on Nyutag: {2}")
+    static let communityInviteText = Phrase(bxr: "Нютагайхид, Нютаг соо «{1}» оршондо орогты: {2}",
+                                            ru: "Земляки, зову вас в «{1}» в Нютаге. Это наш бурятский мессенджер, звонки и сообщения в нём идут без VPN. Ставьте приложение и вступайте по ссылке: {2}",
+                                            en: "Join “{1}” on Nyutag, our Buryat messenger. Calls and messages work without a VPN. Install the app and join here: {2}")
+    static let whereFromTitle = Phrase(bxr: "Та хаанахи хүмбта?", ru: "Откуда вы родом?", en: "Where are you from?")
+    static let whereFromHint = Phrase(bxr: "Нютагаа шэлэгты: тэндэ нютагайхид болон ниитэ хөөрэлдөөн бии.",
+                                      ru: "Выберите свой нютаг: там земляки и общий чат. Можно вступить в несколько.",
+                                      en: "Pick your nyutag: people from your area and a shared chat are there. You can join several.")
+    static let whereFromNew = Phrase(bxr: "Нютагаа бии болгохо", ru: "Моего нютага нет, создать", en: "Mine isn't here, create it")
+    static let whereFromLater = Phrase(bxr: "Һүүлдэ", ru: "Позже", en: "Later")
     static let communityLeave = Phrase(bxr: "Гараха", ru: "Выйти", en: "Leave")
     static let communityLeaveAsk = Phrase(bxr: "Оршонһоо гараха гүт? Бүлэгүүд соо үлэхэт.",
                                           ru: "Выйти из сообщества? В его группах вы останетесь.",
