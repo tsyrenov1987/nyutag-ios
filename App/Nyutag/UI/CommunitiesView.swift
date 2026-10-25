@@ -486,6 +486,12 @@ struct NewCommunityView: View {
 /// и общий чат: без него новичок остаётся с пустым списком чатов. Открытый вступает сразу, закрытый — карточка с заявкой.
 struct WhereFromView: View {
     static let doneKey = "whereFromDone"
+    /// Открытые, но не земляческие: тестирование, Buriyad Gürün, iOS-чат. В «Откуда» их не показываем.
+    static let notNyutag: Set<String> = [
+        "!VEj4gB4U9HZG_NGmOtFSjovtzTxwrnUpIQO_DDn90eA",
+        "!uMU-VoU8rMTIGdD2rDV0kwkc3fYfrSvWRSuhnjDnve4",
+        "!tQswEmiMYcV3nEMOPdlIVSc1UaZdyrCoW59WbUFIClk",
+    ]
 
     @Environment(Words.self) private var words
     @Environment(AppSession.self) private var session
@@ -527,7 +533,8 @@ struct WhereFromView: View {
                 for pause in [0, 2, 4, 8, 15] {
                     if pause > 0 { try? await Task.sleep(for: .seconds(pause)) }
                     if let found = await session.findCommunities("") {
-                        catalog = found.sorted { $0.numJoinedMembers > $1.numJoinedMembers }
+                        catalog = found.filter { !Self.notNyutag.contains($0.roomID) }
+                            .sorted { $0.numJoinedMembers > $1.numJoinedMembers }
                         return
                     }
                 }
