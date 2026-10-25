@@ -1050,10 +1050,14 @@ struct ChatView: View {
             // Выделение осталось от пустого поля: без сброса буква встала бы не в конец.
             draftSelectionBox = nil
             typing = true
+            // NYUTAG_UI_CARET=n — курсор после n-го символа: буква встанет в середину (только iOS 18+).
+            if #available(iOS 18, *), let caret = env["NYUTAG_UI_CARET"].flatMap(Int.init), caret <= draft.count {
+                draftSelection = TextSelection(insertionPoint: draft.index(draft.startIndex, offsetBy: caret))
+            }
             if let letter = env["NYUTAG_UI_LETTER"].flatMap(\.first) { insertLetter(letter) }
             Task {
                 try? await Task.sleep(for: .milliseconds(300))
-                print("ui-check: черновик «\(draft)»")
+                print("ui-check: черновик «\(draft)», курсор \(caretRange)")
             }
         }
         // NYUTAG_UI_OPEN=once — ждать чужое исчезающее фото и открыть его.
