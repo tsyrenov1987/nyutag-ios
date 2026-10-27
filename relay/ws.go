@@ -31,6 +31,9 @@ const (
 
 var errTooBig = errors.New("message too big")
 
+// errClosed — участник сам закрыл соединение кадром close (обычное завершение).
+var errClosed = errors.New("close frame")
+
 type wsConn struct {
 	raw     net.Conn
 	r       *bufio.Reader
@@ -148,7 +151,7 @@ func (c *wsConn) ReadMessage() (op byte, data []byte, err error) {
 			continue
 		case opClose:
 			c.write(opClose, nil)
-			return 0, nil, io.EOF
+			return 0, nil, errClosed
 		case opText, opBinary:
 			if buf != nil {
 				return 0, nil, errors.New("new message inside fragmented one")

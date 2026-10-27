@@ -5,7 +5,10 @@ package main
 
 import (
 	"encoding/hex"
+	"errors"
 	"flag"
+	"io"
+	"net"
 	"net/http"
 	"time"
 )
@@ -36,15 +39,21 @@ func (h *hub) serve(w http.ResponseWriter, r *http.Request) {
 	}
 	defer conn.Close()
 	m := &member{conn: conn, out: make(chan outbound, 64)}
-	if !h.join(slot, m) {
+	call, peers := h.join(slot, m)
+	if call == 0 {
 		conn.write(opClose, []byte{0x03, 0xF0}) // 1008: место занято
+		logf("звонок: место занято")
 		return
 	}
+	started := time.Now()
+	logf("звонок #%d: участник вошёл, в слоте %d", call, peers)
+	var writeErr error
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
 		for o := range m.out {
-			if conn.write(o.op, o.data) != nil {
+			if err := conn.write(o.op, o.data); err != nil {
+				writeErr = err
 				conn.Close()
 				for range m.out {
 				}
@@ -52,7 +61,26 @@ func (h *hub) serve(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}()
+	// Выброшенное из очереди — раз в 10 с, пока растёт: видно, когда у получателя проседал канал.
+	watch := make(chan struct{})
+	go func() {
+		var seen int64
+		tick := time.NewTicker(10 * time.Second)
+		defer tick.Stop()
+		for {
+			select {
+			case <-watch:
+				return
+			case <-tick.C:
+				if d := m.dropped.Load(); d > seen {
+					logf("звонок #%d: получателю выброшено %d кадров за 10 с (очередь полна)", call, d-seen)
+					seen = d
+				}
+			}
+		}
+	}()
 	deadline := time.Now().Add(maxLifetime)
+	var readErr error
 	for {
 		next := time.Now().Add(idleTimeout)
 		if next.After(deadline) {
@@ -61,15 +89,38 @@ func (h *hub) serve(w http.ResponseWriter, r *http.Request) {
 		conn.raw.SetReadDeadline(next)
 		op, data, err := conn.ReadMessage()
 		if err != nil {
+			readErr = err
 			break
 		}
 		if op == opBinary {
+			m.in.Add(1)
 			h.forward(slot, m, data)
 		}
 	}
 	h.leave(slot, m)
 	m.stop()
 	<-done
+	close(watch)
+	logf("звонок #%d: участник вышел через %s (%s); принято %d, отдано в очередь %d, выброшено %d",
+		call, time.Since(started).Round(time.Second), leaveReason(readErr, writeErr), m.in.Load(), m.queued.Load(), m.dropped.Load())
+}
+
+// leaveReason — почему участник ушёл, коротко для журнала.
+func leaveReason(readErr, writeErr error) string {
+	var ne net.Error
+	switch {
+	case errors.Is(readErr, errClosed):
+		return "закрыл сам"
+	case errors.As(readErr, &ne) && ne.Timeout():
+		return "тишина 45 с"
+	case writeErr != nil:
+		return "не принимал: " + writeErr.Error()
+	case errors.Is(readErr, io.EOF) || errors.Is(readErr, io.ErrUnexpectedEOF):
+		return "соединение оборвано"
+	case readErr != nil:
+		return readErr.Error()
+	}
+	return "срок 6 ч"
 }
 
 func main() {

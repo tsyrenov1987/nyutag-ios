@@ -8,12 +8,15 @@ import (
 	"encoding/json"
 	"log"
 	"sync"
+	"sync/atomic"
 )
 
 type member struct {
 	conn *wsConn
 	out  chan outbound
 	once sync.Once
+	// Счётчики для журнала: принято от участника, поставлено ему в очередь, выброшено из-за полной очереди.
+	in, queued, dropped atomic.Int64
 }
 
 type outbound struct {
@@ -22,30 +25,37 @@ type outbound struct {
 }
 
 type hub struct {
-	mu       sync.Mutex
-	slots    map[string][]*member
+	mu    sync.Mutex
+	slots map[string][]*member
+	// Номер звонка для журнала: сам слот туда не пишем.
+	calls    map[string]int
+	lastCall int
 	maxSlots int
 	maxPeers int
 }
 
 func newHub(maxSlots, maxPeers int) *hub {
-	return &hub{slots: map[string][]*member{}, maxSlots: maxSlots, maxPeers: maxPeers}
+	return &hub{slots: map[string][]*member{}, calls: map[string]int{}, maxSlots: maxSlots, maxPeers: maxPeers}
 }
 
-// join добавляет участника; false — слот полон или слотов слишком много.
-func (h *hub) join(slot string, m *member) bool {
+// join добавляет участника и отдаёт номер звонка для журнала; 0 — слот полон или слотов слишком много.
+func (h *hub) join(slot string, m *member) (call, peers int) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	peers, exists := h.slots[slot]
+	current, exists := h.slots[slot]
 	if !exists && len(h.slots) >= h.maxSlots {
-		return false
+		return 0, 0
 	}
-	if len(peers) >= h.maxPeers {
-		return false
+	if len(current) >= h.maxPeers {
+		return 0, 0
 	}
-	h.slots[slot] = append(peers, m)
+	if !exists {
+		h.lastCall++
+		h.calls[slot] = h.lastCall
+	}
+	h.slots[slot] = append(current, m)
 	h.announceLocked(slot)
-	return true
+	return h.calls[slot], len(h.slots[slot])
 }
 
 func (h *hub) leave(slot string, m *member) {
@@ -60,6 +70,7 @@ func (h *hub) leave(slot string, m *member) {
 	}
 	if len(peers) == 0 {
 		delete(h.slots, slot)
+		delete(h.calls, slot)
 		return
 	}
 	h.slots[slot] = peers
@@ -95,7 +106,9 @@ func (h *hub) forward(slot string, from *member, data []byte) {
 func (m *member) offer(o outbound) {
 	select {
 	case m.out <- o:
+		m.queued.Add(1)
 	default:
+		m.dropped.Add(1)
 	}
 }
 
