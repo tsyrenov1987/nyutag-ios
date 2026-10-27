@@ -79,6 +79,14 @@ public final class DeviceCamera: NSObject, VideoSource, AVCaptureVideoDataOutput
     public func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer,
                               from connection: AVCaptureConnection) {
         guard let pipe, let buffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+        // Поворот, заданный при настройке, сессия может не применить: тогда кадр лежит боком (как у сенсора).
+        // Чиним на соединении, с которого кадр пришёл; этот боковой кадр не шлём — у собеседника он вышел бы повёрнутым.
+        if CVPixelBufferGetWidth(buffer) > CVPixelBufferGetHeight(buffer),
+           connection.isVideoRotationAngleSupported(90), connection.videoRotationAngle != 90 {
+            connection.videoRotationAngle = 90
+            log("камера: кадр боком, поворот 90° выставлен заново")
+            return
+        }
         pipe.capture(buffer, time: CMSampleBufferGetPresentationTimeStamp(sampleBuffer), mirrored: position == .front)
     }
 
