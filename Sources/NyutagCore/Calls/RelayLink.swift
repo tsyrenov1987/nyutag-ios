@@ -52,9 +52,14 @@ public final class RelayLink: Sendable {
         return RelayLink(task)
     }
 
+    /// Больше этого в очереди на отправку — сеть стоит: новые кадры выбрасываем, а не копим. Видео встаёт раньше
+    /// (VideoPipe.backlogLimit), так что выбрасывается голос, который к доставке всё равно устарел бы.
+    static let sendLimit = 512 << 10
+
     /// Не ждёт доставки: кадр, не успевший уйти, всё равно устарел бы.
     public func send(_ packet: Data) {
         let size = packet.count
+        guard unsent.load(ordering: .relaxed) < Self.sendLimit else { return }
         unsent.add(size, ordering: .relaxed)
         task.send(.data(packet)) { [weak self] _ in self?.unsent.subtract(size, ordering: .relaxed) }
     }

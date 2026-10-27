@@ -1,11 +1,14 @@
 // Нютаг. Конвейер видео одного звонка. Отправка: камера → H.264 → куски по 6 КБ → шифр → релей. Приём: шифр →
 // сборка кадра из кусков → декодер → экран. Видео идёт тем же каналом, что и голос, и не должно его душить:
-// пока в канале застряло много байт, новые кадры камеры не кодируются, а битрейт снижается.
+// пока в канале застряло много байт, новые кадры камеры не кодируются, а битрейт снижается. Пробку дальше по дороге
+// (буферы дверей, медленный приём у собеседника) показывает задержка эха зондов (DelayGauge): растёт — битрейт
+// снижается, а на самом низком видео встаёт на паузу, пока путь не освободится. Голос при этом идёт.
 // Потерянный кусок (релей сбрасывает кадры медленному получателю) ломает цепочку кадров до следующего ключевого:
 // получатель просит его служебным кадром, не дожидаясь планового.
 //
 // Кусок: [номер кадра 2 байта BE][номер куска 1 байт][кусков в кадре 1 байт][байты кадра].
-// Служебный: [код 1 байт]: 1 — пришли ключевой кадр, 2 — камера выключена.
+// Служебный: [код 1 байт]: 1 — пришли ключевой кадр, 2 — камера выключена, 3 — зонд [метка 4 байта BE],
+// 4 — эхо зонда [та же метка]. Неизвестный код получатель пропускает: старые версии зонды не возвращают.
 
 import CoreMedia
 import CoreVideo
@@ -23,6 +26,10 @@ public struct VideoStats: Sendable, Equatable {
     public var brokenFrames = 0
     public var keyRequestsSent = 0
     public var keyRequestsReceived = 0
+    /// Задержка пути туда и обратно по эху зондов, мс; `nil` — эха не было.
+    public var pathDelay: Int?
+    /// Видео на паузе из-за пробки на пути к собеседнику.
+    public var paused = false
     public var remoteWidth = 0
     public var remoteHeight = 0
 }
@@ -61,6 +68,8 @@ public final class VideoPipe: @unchecked Sendable {
     private enum Control: UInt8 {
         case keyframe = 1
         case cameraOff = 2
+        case probe = 3
+        case echo = 4
     }
 
     private struct Outgoing {
@@ -70,6 +79,12 @@ public final class VideoPipe: @unchecked Sendable {
         var cameraOn = false
         var windowStart = ContinuousClock.now
         var windowSkipped = 0
+        var gauge = DelayGauge()
+        /// Окон подряд на самом низком битрейте с пробкой.
+        var jammedAtFloor = 0
+        /// Окон подряд со свободным путём, пока видео на паузе.
+        var clearWhilePaused = 0
+        var paused = false
     }
 
     private struct Incoming {
@@ -89,6 +104,7 @@ public final class VideoPipe: @unchecked Sendable {
     private let backlog: @Sendable () -> Int
     private var encoder: VideoEncoder!
     private var decoder: VideoDecoder!
+    private let epoch = ContinuousClock.now
 
     public init(secret: CallSecret, send: @escaping @Sendable (Data) -> Void, backlog: @escaping @Sendable () -> Int = { 0 }) {
         outgoing = Mutex(Outgoing(video: CallCipher(secret), control: CallCipher(secret)))
@@ -136,30 +152,79 @@ public final class VideoPipe: @unchecked Sendable {
     /// Кадр камеры. Поток камеры один.
     public func capture(_ buffer: CVPixelBuffer, time: CMTime, mirrored: Bool = false) {
         let now = ContinuousClock.now
+        let ms = millis(now)
         let crowded = backlog() > Self.backlogLimit
-        let decision = outgoing.withLock { state -> (on: Bool, bitRate: Int?) in
-            guard state.cameraOn else { return (false, nil) }
+        let decision = outgoing.withLock { state -> (on: Bool, bitRate: Int?, probe: Data?, paused: Bool, resumed: Bool) in
+            guard state.cameraOn else { return (false, nil, nil, false, false) }
             if crowded { state.windowSkipped += 1 }
             var retune: Int?
+            var resumed = false
             if now - state.windowStart >= .seconds(1) {
                 let current = counters.withLock { $0.bitRate }
-                let next = state.windowSkipped > 2
-                    ? max(VideoFormat.minBitRate, current * 7 / 10)
-                    : state.windowSkipped == 0 ? min(VideoFormat.maxBitRate, current + 50_000) : current
+                let verdict = state.gauge.verdict(now: ms)
+                var next = current
+                if state.windowSkipped > 2 || verdict == .jammed {
+                    next = max(VideoFormat.minBitRate, current * 7 / 10)
+                    state.clearWhilePaused = 0
+                    // Самый низкий битрейт не помог: пауза, голосу весь путь.
+                    if current == VideoFormat.minBitRate, verdict == .jammed {
+                        state.jammedAtFloor += 1
+                        if state.jammedAtFloor >= 3 { state.paused = true }
+                    }
+                } else {
+                    state.jammedAtFloor = 0
+                    if state.paused {
+                        state.clearWhilePaused = verdict == .clear ? state.clearWhilePaused + 1 : 0
+                        if state.clearWhilePaused >= 3 {
+                            state.paused = false
+                            state.clearWhilePaused = 0
+                            resumed = true
+                        }
+                    } else if state.windowSkipped == 0, verdict != .fair {
+                        next = min(VideoFormat.maxBitRate, current + 50_000)
+                    }
+                }
                 if next != current { retune = next }
                 state.windowStart = now
                 state.windowSkipped = 0
+                let delay = state.gauge.delay(now: ms).map { Int($0) }, paused = state.paused
+                counters.withLock {
+                    $0.pathDelay = delay
+                    $0.paused = paused
+                }
             }
-            return (true, retune)
+            var probe: Data?
+            if let stamp = state.gauge.probe(now: ms) {
+                probe = state.control.seal(.control, Data([Control.probe.rawValue]) + Self.bytes(stamp))
+            }
+            return (true, retune, probe, state.paused, resumed)
         }
         guard decision.on else { return }
+        if let probe = decision.probe { send(probe) }
         sink?.local(VideoPicture(buffer: buffer, mirrored: mirrored))
         if let bitRate = decision.bitRate {
             encoder.setBitRate(bitRate)
             counters.withLock { $0.bitRate = bitRate }
         }
-        guard !crowded else { return counters.withLock { $0.skipped += 1 } }
+        // После паузы у собеседника цепочка кадров порвана: начинаем с ключевого.
+        if decision.resumed { encoder.requestKeyframe() }
+        guard !crowded, !decision.paused else { return counters.withLock { $0.skipped += 1 } }
         encoder.encode(buffer, time: time)
+    }
+
+    private func millis(_ instant: ContinuousClock.Instant) -> Int64 {
+        let elapsed = (instant - epoch).components
+        return elapsed.seconds * 1_000 + elapsed.attoseconds / 1_000_000_000_000_000
+    }
+
+    private static func bytes(_ stamp: UInt32) -> Data {
+        Data([UInt8(stamp >> 24), UInt8(stamp >> 16 & 0xFF), UInt8(stamp >> 8 & 0xFF), UInt8(stamp & 0xFF)])
+    }
+
+    private static func stamp(_ payload: Data) -> UInt32? {
+        let bytes = [UInt8](payload.dropFirst().prefix(4))
+        guard bytes.count == 4 else { return nil }
+        return bytes.reduce(0) { $0 << 8 | UInt32($1) }
     }
 
     private func ship(_ frame: VideoFrame) {
@@ -184,8 +249,8 @@ public final class VideoPipe: @unchecked Sendable {
         }
     }
 
-    private func sendControl(_ code: Control) {
-        let packet = outgoing.withLock { $0.control.seal(.control, Data([code.rawValue])) }
+    private func sendControl(_ code: Control, _ extra: Data = Data()) {
+        let packet = outgoing.withLock { $0.control.seal(.control, Data([code.rawValue]) + extra) }
         if let packet { send(packet) }
     }
 
@@ -202,6 +267,13 @@ public final class VideoPipe: @unchecked Sendable {
                 encoder.requestKeyframe()
             case .cameraOff:
                 sink?.remoteCameraOff()
+            case .probe:
+                // Сразу назад: задержка эха и есть мерка пути.
+                if let stamp = Self.stamp(opened.payload) { sendControl(.echo, Self.bytes(stamp)) }
+            case .echo:
+                guard let stamp = Self.stamp(opened.payload) else { break }
+                let now = millis(.now)
+                outgoing.withLock { $0.gauge.echo(stamp, now: now) }
             case nil:
                 break
             }

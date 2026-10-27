@@ -94,6 +94,70 @@ import Testing
         #expect(announced)
     }
 
+    @Test func delayGaugeJudgesByEcho() {
+        var gauge = DelayGauge()
+        // Эха не было (старая версия у собеседника) — судить не о чем.
+        let first = gauge.probe(now: 0)
+        #expect(first == 0)
+        #expect(gauge.probe(now: 100) == nil)
+        #expect(gauge.verdict(now: 2_000) == .unknown)
+        gauge.echo(0, now: 300)
+        #expect(gauge.base == 300)
+        #expect(gauge.verdict(now: 400) == .clear)
+        // Один зонд потерялся, следующий вернулся: потерянный больше не ждём.
+        _ = gauge.probe(now: 500)
+        let third = gauge.probe(now: 1_000)
+        gauge.echo(try! #require(third), now: 1_350)
+        #expect(gauge.verdict(now: 1_400) == .clear)
+        // Эхо перестало приходить: возраст зонда растёт — пробка.
+        _ = gauge.probe(now: 1_500)
+        #expect(gauge.verdict(now: 1_900) == .clear)
+        #expect(gauge.verdict(now: 2_200) == .fair)
+        #expect(gauge.verdict(now: 2_400) == .jammed)
+        // Пришло с большой задержкой — пробка, пока за секунду нет эха быстрее.
+        gauge.echo(1_500, now: 2_500)
+        #expect(gauge.verdict(now: 2_600) == .jammed)
+        let fast = gauge.probe(now: 2_600)
+        gauge.echo(try! #require(fast), now: 2_900)
+        #expect(gauge.verdict(now: 3_000) == .clear)
+        // Чужая метка не считается.
+        gauge.echo(12_345, now: 3_100)
+        #expect(gauge.base == 300)
+    }
+
+    /// Эхо зондов стало опаздывать на 1,5 с: битрейт падает до низа и видео встаёт на паузу; путь освободился —
+    /// видео снова идёт, с ключевого кадра. Своя очередь отправки при этом пуста.
+    @Test func slowPathPausesVideo() async throws {
+        let secret = try CallKeyPair.pair(callID: "video-path-test")
+        let lag = Atomic<Int>(0)
+        let box = PipeBox()
+        let sender = VideoPipe(secret: secret.caller, send: { packet in box.receiver?.receive(packet) })
+        let receiver = VideoPipe(secret: secret.callee, send: { packet in
+            let wait = lag.load(ordering: .relaxed)
+            DispatchQueue.global().asyncAfter(deadline: .now() + .milliseconds(wait)) { box.sender?.receive(packet) }
+        })
+        box.sender = sender
+        box.receiver = receiver
+        sender.cameraOn = true
+        let camera = PatternCamera()
+        try camera.start(sender)
+        defer { print("path test: \(sender.stats)") }
+        try await until(seconds: 4) { sender.stats.pathDelay != nil }
+        lag.store(1_500, ordering: .relaxed)
+        try await until(seconds: 15) { sender.stats.paused }
+        #expect(sender.stats.bitRate == VideoFormat.minBitRate)
+        let sent = sender.stats.sentFrames
+        try await Task.sleep(for: .seconds(1))
+        #expect(sender.stats.sentFrames <= sent + 1)
+        let keys = sender.stats.sentKeyframes
+        lag.store(0, ordering: .relaxed)
+        try await until(seconds: 8) { !sender.stats.paused }
+        try await until(seconds: 3) { sender.stats.sentKeyframes > keys }
+        camera.stop()
+        sender.close()
+        receiver.close()
+    }
+
     private func until(seconds: Double = 5, _ condition: () async -> Bool) async throws {
         let deadline = Date().addingTimeInterval(seconds)
         while Date() < deadline {
