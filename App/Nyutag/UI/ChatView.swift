@@ -41,6 +41,7 @@ struct ChatView: View {
     @State private var lastMarked: String?
     @State private var pickingPhoto = false
     @State private var pickingFile = false
+    @State private var shooting = false
     @State private var pickingSticker = false
     @State private var recorder = VoiceRecorder()
     @State private var noMic = false
@@ -141,7 +142,7 @@ struct ChatView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) { composer }
         .safeAreaInset(edge: .top, spacing: 0) { pinnedBar }
         .navigationTitle(line?.title.isEmpty == false ? line!.title : words(.emptyChat))
-        .typingSubtitle(title: line?.title.isEmpty == false ? line!.title : words(.emptyChat), subtitle: typingLine)
+        .typingSubtitle(title: line?.title.isEmpty == false ? line!.title : words(.emptyChat), subtitle: headerLine)
         .navigationBarTitleDisplayMode(.inline)
         .confirmationDialog(words(.deleteAsk), isPresented: Binding { deleting != nil } set: { if !$0 { deleting = nil } },
                             titleVisibility: .visible, presenting: deleting) { item in
@@ -193,6 +194,22 @@ struct ChatView: View {
         .photosPicker(isPresented: $pickingPhoto, selection: $photoItem, matching: pickingOnce ? .images : .any(of: [.images, .videos]))
         .fileImporter(isPresented: $pickingFile, allowedContentTypes: [.item]) { result in
             if case .success(let url) = result { Task { await attachFile(url) } }
+        }
+        .fullScreenCover(isPresented: $shooting) {
+            CameraPicker { shot in
+                shooting = false
+                switch shot {
+                case .photo(let data): Task { await attachPhoto(data) }
+                case .movie(let url):
+                    Task {
+                        preparingVideo = true
+                        defer { preparingVideo = false }
+                        await attachVideo(at: url)
+                    }
+                case nil: break
+                }
+            }
+            .ignoresSafeArea()
         }
         .onChange(of: photoItem) {
             guard let picked = photoItem else { return }
@@ -364,6 +381,9 @@ struct ChatView: View {
             HStack(alignment: .bottom, spacing: 8) {
                 if editing == nil {
                     Menu {
+                        if CameraPicker.available {
+                            Button(words(.cameraAction), systemImage: "camera") { pickingOnce = false; shooting = true }
+                        }
                         Button(words(.photoAction), systemImage: "photo.on.rectangle") { pickingOnce = false; pickingPhoto = true }
                         // В открытом чате ключ ушёл бы рядом с фото: исчезающее — только под шифрованием.
                         if line?.isEncrypted == true {
@@ -625,7 +645,29 @@ struct ChatView: View {
         return !text.isEmpty
     }
 
-    /// Подпись под именем чата: кто набирает текст.
+    /// Подпись под именем чата: кто набирает; в личном — в сети ли собеседник, иначе что чат шифрованный.
+    private var headerLine: String {
+        let typing = typingLine
+        if !typing.isEmpty { return typing }
+        if !isGroup, let partner, let status = session.presence[partner] {
+            if status.online { return words(.online) }
+            if let lastActive = status.lastActive { return lastSeenLine(lastActive) }
+        }
+        return line?.isEncrypted == true ? words(.encryptedChat) : ""
+    }
+
+    private func lastSeenLine(_ date: Date) -> String {
+        let minutes = Int(Date.now.timeIntervalSince(date) / 60)
+        switch minutes {
+        case ..<1: return words(.online)
+        case ..<60: return words(.lastOnline, words(.minutesShort, "\(minutes)"))
+        case ..<(24 * 60): return words(.lastOnline, words(.hoursShort, "\(minutes / 60)"))
+        case ..<(7 * 24 * 60): return words(.lastOnline, words(.daysShort, "\(minutes / 60 / 24)"))
+        default: return words(.lastSeenLongAgo)
+        }
+    }
+
+    /// Кто набирает текст.
     private var typingLine: String {
         let who = session.typing[roomID] ?? []
         guard let first = who.first else { return "" }
@@ -831,9 +873,14 @@ struct ChatView: View {
     }
 
     private func attachPhoto(_ picked: PhotosPickerItem) async {
+        guard let data = try? await picked.loadTransferable(type: Data.self) else { failed = true; return }
+        await attachPhoto(data)
+    }
+
+    /// Снимок из галереи или с камеры: пережать, в очередь.
+    private func attachPhoto(_ data: Data) async {
         let name = "photo-" + stamp
-        guard let data = try? await picked.loadTransferable(type: Data.self),
-              var file = await Task.detached(priority: .userInitiated, operation: { OutgoingFile.photo(data, name: name) }).value
+        guard var file = await Task.detached(priority: .userInitiated, operation: { OutgoingFile.photo(data, name: name) }).value
         else { failed = true; return }
         file.viewOnce = pickingOnce
         pickingOnce = false

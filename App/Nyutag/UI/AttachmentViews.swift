@@ -22,6 +22,54 @@ struct PickedMovie: Transferable {
     }
 }
 
+/// Снимок или ролик с камеры прямо из скрепки: системная камера, своего интерфейса нет.
+/// Ролик приходит файлом во временной папке (хозяин — вызвавший), снимок — JPEG с ориентацией в EXIF.
+struct CameraPicker: UIViewControllerRepresentable {
+    enum Shot {
+        case photo(Data)
+        case movie(URL)
+    }
+
+    let done: (Shot?) -> Void
+
+    static var available: Bool { UIImagePickerController.isSourceTypeAvailable(.camera) }
+
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.sourceType = .camera
+        picker.mediaTypes = [UTType.image.identifier, UTType.movie.identifier]
+        picker.videoQuality = .typeHigh
+        // Дольше трёх минут и 720p не влезет в 25 МБ сервера.
+        picker.videoMaximumDuration = 180
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_: UIImagePickerController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator { Coordinator(done: done) }
+
+    final class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+        let done: (Shot?) -> Void
+
+        init(done: @escaping (Shot?) -> Void) { self.done = done }
+
+        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
+            if let url = info[.mediaURL] as? URL {
+                // Временный файл камеры система уберёт после закрытия, поэтому своя копия.
+                let copy = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString + "." + url.pathExtension)
+                if (try? FileManager.default.copyItem(at: url, to: copy)) != nil { done(.movie(copy)) } else { done(nil) }
+            } else if let image = info[.originalImage] as? UIImage, let jpeg = image.jpegData(compressionQuality: 0.95) {
+                done(.photo(jpeg))
+            } else {
+                done(nil)
+            }
+        }
+
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) { done(nil) }
+    }
+}
+
 extension OutgoingFile {
     /// Снимок из галереи: длинная сторона не больше 2560 px, JPEG. Ориентация уже применена.
     nonisolated static func photo(_ data: Data, name: String = "photo") -> OutgoingFile? {

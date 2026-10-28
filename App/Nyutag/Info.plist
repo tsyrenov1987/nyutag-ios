@@ -38,9 +38,9 @@
 	<key>NSContactsUsageDescription</key>
 	<string>Нютаг сверяет номера из книжки с сервером, чтобы показать, кто из знакомых уже здесь. Номера не сохраняются.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Камера нужна для видеозвонков: картинка уходит собеседнику зашифрованной.</string>
+	<string>Камера нужна для видеозвонков и снимков в чат: картинка уходит собеседнику зашифрованной.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Микрофон нужен для звонков: голос уходит собеседнику зашифрованным.</string>
+	<string>Микрофон нужен для звонков, голосовых и видео в чат: голос уходит собеседнику зашифрованным.</string>
 	<key>NyutagAppGroup</key>
 	<string>$(NYUTAG_APP_GROUP)</string>
 </dict>

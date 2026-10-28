@@ -113,6 +113,10 @@ enum PushWording {
     }
 
     private static func mutable(_ base: UNNotificationContent) -> UNMutableNotificationContent {
-        (base.mutableCopy() as? UNMutableNotificationContent) ?? UNMutableNotificationContent()
+        let content = (base.mutableCopy() as? UNMutableNotificationContent) ?? UNMutableNotificationContent()
+        // Sygnal кладёт в aps только mutable-content, без sound — без этой строки пуш приходит молча.
+        // Беззвучные чаты пуш не получают вовсе (правило на сервере, Quiet.swift), так что звук тут безопасен.
+        if content.sound == nil { content.sound = .default }
+        return content
     }
 }

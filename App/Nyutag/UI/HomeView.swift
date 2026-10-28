@@ -441,6 +441,7 @@ struct ChatRow: View {
                         .font(.headline).foregroundStyle(Theme.ink).lineLimit(1)
                     if line.isEncrypted {
                         Image(systemName: "lock.fill").font(.caption2).foregroundStyle(Theme.quiet)
+                            .accessibilityLabel(words(.encryptedChat))
                     }
                     if session.layout.isPinned(line.id) {
                         Image(systemName: "pin.fill").font(.caption2).foregroundStyle(Theme.quiet)

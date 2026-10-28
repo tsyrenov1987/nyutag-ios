@@ -47,6 +47,8 @@ final class AppSession {
     private(set) var revision = 0
     /// Кто сейчас набирает текст: комната → собеседники, кроме нас.
     private(set) var typing: [String: [String]] = [:]
+    /// Кто в сети, по пользователю — из `m.presence` синхронизации.
+    private(set) var presence: [String: Relations.Presence] = [:]
     /// Проверка своего устройства по эмодзи: этот вход просит подтверждения или подтверждает новый вход.
     private(set) var deviceCheck: VerificationFlow?
     /// Имя другого устройства из списка устройств учётки.
@@ -221,6 +223,7 @@ final class AppSession {
         autoJoined = []
         setScheduled(scheduled.removingAccount(account.session.userID))
         typing = [:]
+        presence = [:]
         me = nil
         history = nil
         deviceCheck = nil
@@ -1358,6 +1361,7 @@ final class AppSession {
                 }
                 #endif
                 self?.noteTyping(update.response)
+                self?.notePresence(update.response)
                 await self?.absorbCalls(update.response)
                 await self?.followDeviceCheck()
                 await self?.refresh()
@@ -1586,6 +1590,12 @@ final class AppSession {
             guard let who = Relations.typing(room.ephemeral, me: me) else { continue }
             if who.isEmpty { typing.removeValue(forKey: roomID) } else if typing[roomID] != who { typing[roomID] = who }
         }
+    }
+
+    private func notePresence(_ response: SyncResponse) {
+        let fresh = Relations.presence(response.presence)
+        guard !fresh.isEmpty else { return }
+        presence.merge(fresh) { $1 }
     }
 
     private func stop() async {

@@ -145,7 +145,7 @@ public enum SyncFilter {
                 "state": ["lazy_load_members": true],
                 "ephemeral": ["types": ["m.receipt", "m.typing"]],
             ],
-            "presence": ["types": []],
+            "presence": ["types": ["m.presence"]],
         ]
     }
 
@@ -156,7 +156,7 @@ public enum SyncFilter {
                 "state": ["lazy_load_members": true],
                 "ephemeral": ["types": ["m.receipt", "m.typing"]],
             ],
-            "presence": ["types": []],
+            "presence": ["types": ["m.presence"]],
         ]
     }
 }

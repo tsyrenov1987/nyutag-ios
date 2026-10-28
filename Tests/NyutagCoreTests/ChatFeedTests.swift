@@ -117,6 +117,20 @@ struct ChatFeedTests {
         #expect(Relations.typing([], me: me) == nil)
     }
 
+    @Test("кто в сети: online с currently_active, иначе когда был по last_active_ago")
+    func presence() {
+        let now = Date(timeIntervalSince1970: 1_000)
+        let events = [
+            Event(type: EventType.presence, sender: arjuna,
+                  content: ["presence": "online", "currently_active": true, "last_active_ago": 0]),
+            Event(type: EventType.presence, sender: me, content: ["presence": "offline", "last_active_ago": 60_000]),
+        ]
+        let seen = Relations.presence(events, now: now)
+        #expect(seen[arjuna] == Relations.Presence(online: true, lastActive: now))
+        #expect(seen[me] == Relations.Presence(online: false, lastActive: now.addingTimeInterval(-60)))
+        #expect(Relations.presence([]).isEmpty)
+    }
+
     @Test("ответ несёт цитату; без ключа — замок; с расшифровкой — текст")
     func repliesAndEncryption() async throws {
         let store = try await prepared()

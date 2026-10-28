@@ -322,10 +322,18 @@ extension Phrase {
     static let editing = Phrase(bxr: "Заһалга", ru: "Изменение", en: "Editing")
     static let typingNow = Phrase(bxr: "бэшэжэ байна…", ru: "печатает…", en: "typing…")
     static let typingName = Phrase(bxr: "{1} бэшэжэ байна…", ru: "{1} печатает…", en: "{1} is typing…")
+    static let online = Phrase(bxr: "сүлжээндэ", ru: "в сети", en: "online")
+    static let lastOnline = Phrase(bxr: "{1} урда сүлжээндэ байгаа", ru: "в сети {1} назад", en: "last seen {1} ago")
+    static let lastSeenLongAgo = Phrase(bxr: "үни сүлжээндэ ороогүй", ru: "давно не в сети", en: "last seen a long time ago")
+    static let minutesShort = Phrase(bxr: "{1} мин", ru: "{1} мин", en: "{1} min")
+    static let hoursShort = Phrase(bxr: "{1} саг", ru: "{1} ч", en: "{1} h")
+    static let daysShort = Phrase(bxr: "{1} үдэр", ru: "{1} дн.", en: "{1} d")
+    static let encryptedChat = Phrase(bxr: "Шифрлэгдэнхэй: гансал та хоёр уншана", ru: "Сквозное шифрование: читаете только вы двое", en: "End-to-end encrypted: only the two of you can read")
     static let typingMany = Phrase(bxr: "{1} болон {2} хүн бэшэжэ байна…", ru: "{1} и ещё {2} печатают…",
                                    en: "{1} and {2} more are typing…")
     static let attach = Phrase(bxr: "Хабсаргаха", ru: "Прикрепить", en: "Attach")
     static let photoAction = Phrase(bxr: "Зураг, видео", ru: "Фото или видео", en: "Photo or video")
+    static let cameraAction = Phrase(bxr: "Камера", ru: "Камера", en: "Camera")
     static let videoTooBig = Phrase(bxr: "Видео хэтэрхэй томо: 25 МБ хүрэтэр", ru: "Видео не влезло: до 25 МБ после сжатия", en: "Video is too big: up to 25 MB after compression")
     static let fileAction = Phrase(bxr: "Файл", ru: "Файл", en: "File")
     static let cantDo = Phrase(bxr: "Бүтэбэгүй. Холбоогоо шалгагты.", ru: "Не получилось. Проверьте связь.",
