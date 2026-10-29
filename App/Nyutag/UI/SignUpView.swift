@@ -19,6 +19,8 @@ struct SignUpView: View {
     @State private var busy = false
     @State private var failure: SignUpFlow.Failure?
     @State private var codeShown = false
+    /// Согласие с условиями и политикой (App Store 1.2): без галочки код не запросить.
+    @State private var agreed = false
     @FocusState private var field: Field?
 
     enum Field { case name, nick, phone, email, password, invite }
@@ -34,6 +36,7 @@ struct SignUpView: View {
                     NyutagLogo(size: 52)
                     Text(words(.signUpLead)).foregroundStyle(Theme.quiet)
                     form
+                    agreement
                     if let failure { FailureNote(text: message(failure)) }
                     BigButton(title: busy ? words(.sendingCode) : words(.getCode), busy: busy, enabled: canSubmit,
                               id: "signup-submit", action: submit)
@@ -151,6 +154,21 @@ struct SignUpView: View {
         }
     }
 
+    private var agreement: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Button { agreed.toggle() } label: {
+                Image(systemName: agreed ? "checkmark.square.fill" : "square")
+                    .font(.title3).foregroundStyle(agreed ? Theme.sky : Theme.quiet)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(words(.termsOfUse))
+            .accessibilityValue(agreed ? "1" : "0")
+            .accessibilityIdentifier("signup-agree")
+            Text((try? AttributedString(markdown: words(.agreeTerms))) ?? AttributedString(words(.agreeTerms)))
+                .font(.footnote).foregroundStyle(Theme.quiet).tint(Theme.sky)
+        }
+    }
+
     @ViewBuilder private var nickMark: some View {
         switch flow.nickState {
         case .checking: ProgressView().controlSize(.mini)
@@ -161,7 +179,7 @@ struct SignUpView: View {
     }
 
     private var canSubmit: Bool {
-        guard !busy, flow.configuration != nil, flow.nickState == .free,
+        guard !busy, agreed, flow.configuration != nil, flow.nickState == .free,
               !name.trimmingCharacters(in: .whitespaces).isEmpty,
               email.contains("@"), password.count >= 8 else { return false }
         if flow.configuration?.requiresPhone == true, phone.filter(\.isNumber).count < 7 { return false }
@@ -218,6 +236,7 @@ struct SignUpView: View {
         phone = json["phone"] ?? ""
         email = json["email"] ?? ""
         password = json["password"] ?? ""
+        agreed = true
         for _ in 0..<60 where !canSubmit { try? await Task.sleep(for: .milliseconds(500)) }
         print("ui-check: регистрация, ник @\(flow.nick) \(flow.nickState)")
         submit()

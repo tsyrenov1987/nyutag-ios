@@ -652,6 +652,7 @@ struct MeMenu: View {
     @State private var donating = false
     @State private var editingProfile = false
     @State private var showingDevices = false
+    @State private var readingContestRules = false
     /// Имя из профиля; пока не загрузилось (или не задано) — логин.
     @State private var myName: String?
     let onSaved: () -> Void
@@ -737,6 +738,26 @@ struct MeMenu: View {
                     Button(words(.deleteAccount), role: .destructive) { deletingAccount = true }
                         .accessibilityIdentifier("delete-account")
                 }
+                Section(words(.aboutNyutag)) {
+                    Link(destination: URL(string: "https://nyutag.chat/terms/")!) {
+                        Label(words(.termsOfUse), systemImage: "doc.text").foregroundStyle(Theme.ink)
+                    }
+                    .accessibilityIdentifier("menu-terms")
+                    Link(destination: URL(string: "https://nyutag.chat/privacy/")!) {
+                        Label(words(.privacyPolicy), systemImage: "hand.raised").foregroundStyle(Theme.ink)
+                    }
+                    .accessibilityIdentifier("menu-privacy")
+                    if ContestRulesView.isRunning {
+                        Button { readingContestRules = true } label: {
+                            Label(words(.contestRules), systemImage: "gift").foregroundStyle(Theme.ink)
+                        }
+                        .accessibilityIdentifier("menu-contest")
+                    }
+                    Link(destination: URL(string: "mailto:hello@ntsautosiga.com")!) {
+                        Label(words(.writeSupport), systemImage: "envelope").foregroundStyle(Theme.ink)
+                    }
+                    .accessibilityIdentifier("menu-support")
+                }
                 Section {
                     VStack(spacing: 8) {
                         NyutagLogo(size: 44)
@@ -757,12 +778,14 @@ struct MeMenu: View {
             .sheet(isPresented: $choosingWallpaper) { WallpaperPicker() }
             .sheet(isPresented: $donating) { DonateView() }
             .sheet(isPresented: $deletingAccount) { DeleteAccountView() }
+            .sheet(isPresented: $readingContestRules) { ContestRulesView() }
             #if DEBUG
             .onAppear {
                 if ProcessInfo.processInfo.environment["NYUTAG_UI_INVITE"] != nil { inviting = true }
                 if ProcessInfo.processInfo.environment["NYUTAG_UI_DELETE_ACCOUNT"] != nil { deletingAccount = true }
                 if ProcessInfo.processInfo.environment["NYUTAG_UI_DONATE"] != nil { donating = true }
                 if ProcessInfo.processInfo.environment["NYUTAG_UI_DEVICES"] != nil { showingDevices = true }
+                if ProcessInfo.processInfo.environment["NYUTAG_UI_CONTEST"] != nil { readingContestRules = true }
                 if ProcessInfo.processInfo.environment["NYUTAG_UI_ABOUT"] != nil { editingProfile = true }
                 if ProcessInfo.processInfo.environment["NYUTAG_UI_AVATAR"] != nil { editingProfile = true }
             }
@@ -775,6 +798,34 @@ struct MeMenu: View {
                 Button(words(.cancel), role: .cancel) {}
             }
         }
+    }
+}
+
+/// Правила розыгрыша прямо в приложении (App Store 5.3.2): спонсор, сроки и что Apple ни при чём.
+struct ContestRulesView: View {
+    /// Пункт виден до 4 января 2027 по Иркутску: три дня на выплату приза после эфира.
+    static let isRunning = Date() < Date(timeIntervalSince1970: 1_798_992_000)
+
+    @Environment(Words.self) private var words
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                Text(words(.contestRulesBody))
+                    .font(.callout).foregroundStyle(Theme.ink)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(20)
+            }
+            .background(Theme.milk.ignoresSafeArea())
+            .navigationTitle(words(.contestRules))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) { Button(words(.done)) { dismiss() } }
+            }
+        }
+        .accessibilityIdentifier("contest-rules")
     }
 }
 

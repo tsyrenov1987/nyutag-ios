@@ -249,6 +249,56 @@ extension Phrase {
                                             ru: "Не удалось удалить аккаунт. Проверьте пароль и связь.",
                                             en: "Could not delete the account. Check the password and the connection.")
 
+    // Документы и поддержка (App Store 1.2, 5.1.1); бурятский не сверен с носителем
+    static let aboutNyutag = Phrase(bxr: "Нютаг тухай", ru: "О Нютаге", en: "About Nyutag")
+    static let termsOfUse = Phrase(bxr: "Хэрэглэхэ болзол", ru: "Условия пользования", en: "Terms of use")
+    static let privacyPolicy = Phrase(bxr: "Нюуса хамгаалга", ru: "Политика конфиденциальности", en: "Privacy policy")
+    static let writeSupport = Phrase(bxr: "Туһаламжада бэшэхэ", ru: "Написать в поддержку", en: "Contact support")
+    static let agreeTerms = Phrase(
+        bxr: "[Хэрэглэхэ болзол](https://nyutag.chat/terms/) болон [нюуса хамгаалгые](https://nyutag.chat/privacy/) зүбшөөнөб. Доромжолхо, айлгаха, бузар юумэ тараахые хорюулна.",
+        ru: "Принимаю [условия пользования](https://nyutag.chat/terms/) и [политику конфиденциальности](https://nyutag.chat/privacy/). Оскорбления, угрозы и непристойный контент запрещены.",
+        en: "I accept the [terms of use](https://nyutag.chat/terms/) and the [privacy policy](https://nyutag.chat/privacy/). Insults, threats and obscene content are not allowed.")
+
+    // Правила розыгрыша внутри приложения (App Store 5.3); бурятский: пока русский текст правил
+    static let contestRules = Phrase(bxr: "Сугалаанай дүрим", ru: "Правила розыгрыша", en: "Giveaway rules")
+    static let contestRulesBody = Phrase(
+        bxr: contestRulesRu,
+        ru: contestRulesRu,
+        en: """
+        Giveaway “Invite your people”: 10,000 ₽
+
+        Dates: October 27 to December 31, 2026.
+
+        How to get a ticket. Ask the Nyutag Administrator in the app for your invite code. A person registers with your code between October 27 and December 24, 2026 inclusive. When within a week they send three messages and have two people to talk to, both of you get a ticket. There is no limit on tickets.
+
+        Not counted: messages to the Administrator, second accounts of the same person, accounts without conversations, inflated tickets. The Nyutag team and test accounts do not take part.
+
+        Drawing: December 31, 2026 at 12:00 Irkutsk time, live. The ticket list is published at nyutag.chat/konkurs before the stream. The winner gets 10,000 rubles by SBP transfer within three days.
+
+        Entry is free. Store reviews and ratings are not required and do not affect anything.
+
+        Sponsor and organizer: NTSAUTOSIGA LLC, the developer of Nyutag. Apple and Google are not sponsors and are not involved in this giveaway in any way.
+
+        Questions: the Nyutag Administrator in the app or hello@ntsautosiga.com.
+        """)
+    private static let contestRulesRu = """
+        Розыгрыш «Позови своих»: 10 000 ₽
+
+        Сроки: с 27 октября по 31 декабря 2026 года.
+
+        Как получить билет. Попросите у Администратора Нютага в приложении свой код приглашения. Человек регистрируется по вашему коду с 27 октября по 24 декабря 2026 года включительно. Когда он за неделю напишет три сообщения и у него будет двое собеседников, билет получаете вы и билет получает он. Билетов может быть сколько угодно.
+
+        Не считаются: переписка с Администратором, второй аккаунт того же человека, аккаунты без переписки, накрученные билеты. Команда Нютага и тестовые аккаунты не участвуют.
+
+        Розыгрыш: 31 декабря 2026 года в 12:00 по Иркутску, в прямом эфире. Список билетов выложим на nyutag.chat/konkurs до начала эфира. Победитель получает 10 000 рублей переводом по СБП в течение трёх дней.
+
+        Участие бесплатное. Отзывы и оценки в магазинах приложений не требуются и ни на что не влияют.
+
+        Спонсор и организатор: NTSAUTOSIGA LLC, разработчик Нютага. Apple и Google не спонсоры розыгрыша и никак в нём не участвуют.
+
+        Вопросы: Администратору Нютага в приложении или на hello@ntsautosiga.com.
+        """
+
     // Пересылка; бурятский не сверен с носителем
     static let forward = Phrase(bxr: "Дамжуулха", ru: "Переслать", en: "Forward")
     static let forwarded = Phrase(bxr: "Дамжуулагдаһан", ru: "Переслано", en: "Forwarded")
