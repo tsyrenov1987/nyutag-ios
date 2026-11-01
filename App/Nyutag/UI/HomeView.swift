@@ -159,8 +159,12 @@ struct ChatListView: View {
                     .accessibilityIdentifier("me-menu")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button(words(.groupNew), systemImage: "square.and.pencil") { creatingGroup = true }
-                        .accessibilityIdentifier("new-group")
+                    // Карандаш не читался как «создать группу» — подписываем словом.
+                    Button { creatingGroup = true } label: {
+                        Label(words(.groupNewShort), systemImage: "person.3").labelStyle(.titleAndIcon)
+                    }
+                    .accessibilityLabel(words(.groupNew))
+                    .accessibilityIdentifier("new-group")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(words(.savedMessages), systemImage: "bookmark") { openSaved() }

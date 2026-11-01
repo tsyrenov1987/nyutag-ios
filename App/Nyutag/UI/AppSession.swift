@@ -373,6 +373,12 @@ final class AppSession {
                                           decrypt: opener())) ?? []
     }
 
+    /// Кто прочитал свою реплику в группе.
+    func readers(of item: FeedItem, in roomID: String) async -> (read: [String], unread: [String]) {
+        guard let account, let me else { return ([], []) }
+        return (try? await ChatFeed.readers(roomID: roomID, ts: item.ts, store: account.store, me: me)) ?? ([], [])
+    }
+
     // MARK: Блокировка и жалоба
 
     func isBlocked(_ userID: String) -> Bool { ignored.contains(userID) }

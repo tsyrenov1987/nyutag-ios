@@ -274,6 +274,24 @@ public enum ChatFeed {
         }
     }
 
+    /// Кто из участников уже дочитал до реплики со временем `ts`, а кто ещё нет — имена по алфавиту.
+    public static func readers(roomID: String, ts: Int, store: Store, me: String) async throws -> (read: [String], unread: [String]) {
+        var read: [String] = []
+        var unread: [String] = []
+        for member in try await store.state(roomID, type: EventType.member)
+        where member.stateKey != me && member.content["membership"]?.string == "join" {
+            let name = member.content["displayname"]?.string.flatMap { $0.isEmpty ? nil : $0 } ?? ChatDigest.localpart(member.stateKey)
+            var seen = false
+            if let receipted = try await store.receipt(roomID: roomID, userID: member.stateKey),
+               let event = try await store.event(receipted) {
+                seen = (event.originServerTS ?? 0) >= ts
+            }
+            if seen { read.append(name) } else { unread.append(name) }
+        }
+        let order: (String, String) -> Bool = { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+        return (read.sorted(by: order), unread.sorted(by: order))
+    }
+
     /// Самая поздняя отметка прочтения собеседников (время прочитанного события).
     static func othersReadTS(roomID: String, members: [(stateKey: String, sender: String?, content: JSONValue)],
                              me: String, store: Store) async throws -> Int? {

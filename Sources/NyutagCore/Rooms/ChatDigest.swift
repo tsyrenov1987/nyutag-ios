@@ -57,6 +57,9 @@ public enum ChatDigest {
             if let name = member.content["displayname"]?.string, !name.isEmpty { names[member.stateKey] = name }
         }
         func name(of userID: String) -> String { names[userID] ?? localpart(userID) }
+        // Личный чат, куда позвали ещё людей, — уже группа: в ленте нужны имена, в шапке — не «в сети» одного.
+        let company = members.filter { ["join", "invite"].contains($0.content["membership"]?.string ?? "") }.count
+        let isDirect = record.isDirect && company <= 2
 
         var last: PushPreview.Kind?
         var lastEvent: Event?
@@ -138,7 +141,7 @@ public enum ChatDigest {
         // Картинка: у комнаты своя, иначе у личного чата — аватар собеседника из его записи участника.
         // Комната с именем — группа, даже если в ней пока двое: ей чужое фото не даём.
         var avatarURL = record.avatarURL
-        if avatarURL == nil, record.isDirect || record.name == nil {
+        if avatarURL == nil, isDirect || record.name == nil {
             let others = members.filter { member in
                 member.stateKey != me && ["join", "invite"].contains(member.content["membership"]?.string ?? "")
             }
@@ -151,7 +154,7 @@ public enum ChatDigest {
             delivery = try await isRead(lastEvent, roomID: record.id, members: members, me: me, store: store) ? .read : .sent
         }
         var community: String?
-        if !record.isSpace, !record.isDirect {
+        if !record.isSpace, !isDirect {
             for parent in try await store.state(record.id, type: "m.space.parent") where parent.content["via"] != nil {
                 if let space = try await store.room(parent.stateKey), space.membership == .join,
                    let spaceName = space.name, !spaceName.isEmpty {
@@ -161,7 +164,7 @@ public enum ChatDigest {
             }
         }
         return ChatLine(id: record.id, title: title, avatarURL: avatarURL, membership: record.membership,
-                        isDirect: record.isDirect, isEncrypted: record.isEncrypted, isSpace: record.isSpace,
+                        isDirect: isDirect, isEncrypted: record.isEncrypted, isSpace: record.isSpace,
                         last: last, lastSenderName: sender.map(name(of:)), lastIsMine: sender == me, delivery: delivery,
                         lastTS: lastEvent?.originServerTS ?? record.latestTS,
                         unread: unread, mentions: record.highlightCount, community: community)

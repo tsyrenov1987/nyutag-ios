@@ -256,6 +256,25 @@ struct ChatFeedTests {
         #expect(items.first { $0.id == "$3" }?.isRead == false)
     }
 
+    @Test("кто прочитал в группе: дочитавшие до реплики и остальные, без себя и ушедших")
+    func readersInGroup() async throws {
+        let store = try await prepared()
+        let dima = "@dima:nyutag.chat", bair = "@bair:nyutag.chat", gone = "@gone:nyutag.chat"
+        for event in [member(dima, name: "Дима"), member(bair), member(gone, membership: "leave")] { try await store.setState(event) }
+        try await store.append([
+            text("$1", from: me, ts: 100, "раз"),
+            text("$2", from: dima, ts: 200, "два"),
+        ])
+        try await store.setReceipt(roomID: room, userID: arjuna, eventID: "$2", ts: 250)
+        try await store.setReceipt(roomID: room, userID: dima, eventID: "$1", ts: 150)
+        let first = try await ChatFeed.readers(roomID: room, ts: 100, store: store, me: me)
+        #expect(first.read == ["Арюна", "Дима"])
+        #expect(first.unread == ["bair"])
+        let second = try await ChatFeed.readers(roomID: room, ts: 200, store: store, me: me)
+        #expect(second.read == ["Арюна"])
+        #expect(Set(second.unread) == ["bair", "Дима"])
+    }
+
     @Test("вложение: вид и подпись отдельно от имени файла")
     func attachments() async throws {
         let store = try await prepared()

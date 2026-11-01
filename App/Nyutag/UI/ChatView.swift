@@ -35,6 +35,7 @@ struct ChatView: View {
     @State private var deleting: FeedItem?
     @State private var reporting: FeedItem?
     @State private var forwarding: FeedItem?
+    @State private var readersOf: FeedItem?
     @State private var reportSent = false
     @State private var failed = false
     @State private var typingSentAt: Date?
@@ -45,7 +46,7 @@ struct ChatView: View {
     @State private var pickingSticker = false
     @State private var recorder = VoiceRecorder()
     @State private var noMic = false
-    @State private var photoItem: PhotosPickerItem?
+    @State private var photoItems: [PhotosPickerItem] = []
     @State private var previewURL: URL?
     @State private var openingID: String?
     /// Переход из поиска: куда прокрутить и что подсветить; сколько раз уже докачали историю ради этого.
@@ -120,7 +121,7 @@ struct ChatView: View {
                         DayPlate(date: day(item.ts))
                     }
                     FeedRow(item: item, showsAuthor: isGroup && startsRun(item, after: previous),
-                            opening: openingID == item.id, moderates: moderates,
+                            opening: openingID == item.id, moderates: moderates, showsReaders: isGroup,
                             pinned: mayPin ? pinnedIDs.contains(item.id) : nil) { action in
                         act(action, on: item)
                     }
@@ -167,6 +168,7 @@ struct ChatView: View {
         } message: { Text(words(.chatLeaveHint)) }
         .sheet(item: $reporting) { item in ReportSheet(item: item, roomID: roomID) { reportSent = true } }
         .sheet(item: $forwarding) { item in ForwardSheet(item: item, roomID: roomID) }
+        .sheet(item: $readersOf) { item in ReadersSheet(item: item, roomID: roomID) }
         .alert(words(.reportSent), isPresented: $reportSent) { Button(words(.done)) {} }
         .sheet(isPresented: $choosingWallpaper) { WallpaperPicker(roomID: roomID) }
         .sheet(isPresented: $pickingSticker) { StickerPicker(roomID: roomID) { sendSticker($0) } }
@@ -190,8 +192,9 @@ struct ChatView: View {
             }
             #endif
         }
-        // Исчезающее — только снимок; обычный выбор — снимки и ролики.
-        .photosPicker(isPresented: $pickingPhoto, selection: $photoItem, matching: pickingOnce ? .images : .any(of: [.images, .videos]))
+        // Исчезающее — один снимок; обычный выбор — до десяти снимков и роликов, в порядке отметки.
+        .photosPicker(isPresented: $pickingPhoto, selection: $photoItems, maxSelectionCount: pickingOnce ? 1 : 10,
+                      selectionBehavior: .ordered, matching: pickingOnce ? .images : .any(of: [.images, .videos]))
         .fileImporter(isPresented: $pickingFile, allowedContentTypes: [.item]) { result in
             if case .success(let url) = result { Task { await attachFile(url) } }
         }
@@ -211,14 +214,20 @@ struct ChatView: View {
             }
             .ignoresSafeArea()
         }
-        .onChange(of: photoItem) {
-            guard let picked = photoItem else { return }
-            photoItem = nil
-            let types = picked.supportedContentTypes
-            if types.contains(where: { $0.conforms(to: .movie) }), !types.contains(where: { $0.conforms(to: .image) }) {
-                Task { await attachVideo(picked) }
-            } else {
-                Task { await attachPhoto(picked) }
+        .onChange(of: photoItems) {
+            guard !photoItems.isEmpty else { return }
+            let picked = photoItems
+            photoItems = []
+            // По одному, чтобы в ленте шли в том же порядке, что отмечены.
+            Task {
+                for item in picked {
+                    let types = item.supportedContentTypes
+                    if types.contains(where: { $0.conforms(to: .movie) }), !types.contains(where: { $0.conforms(to: .image) }) {
+                        await attachVideo(item)
+                    } else {
+                        await attachPhoto(item)
+                    }
+                }
             }
         }
         .quickLookPreview($previewURL)
@@ -253,7 +262,7 @@ struct ChatView: View {
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
-                    if partner != nil {
+                    if partner != nil, line?.isDirect != false {
                         Button(words(.profile), systemImage: "person.crop.circle") { showingPartner = true }
                     }
                     if line?.isDirect == false, roomID != session.savedRoom {
@@ -766,6 +775,8 @@ struct ChatView: View {
             reporting = item
         case .forward:
             forwarding = item
+        case .readers:
+            readersOf = item
         case .pin(let on):
             run { await session.pin(item.id, on, in: roomID) }
         case .saveSticker:
@@ -1246,7 +1257,7 @@ struct ChatView: View {
 
 /// Одна строка ленты: плашка или пузырь со своей стороны.
 struct FeedRow: View {
-    enum Action { case reply, edit, delete, react(String), open, report, saveSticker, forward, pin(Bool) }
+    enum Action { case reply, edit, delete, react(String), open, report, saveSticker, forward, pin(Bool), readers }
 
     /// Быстрые реакции в меню, по порядку.
     static let quick = ["👍", "❤️", "😂", "😮", "😢", "🙏"]
@@ -1257,6 +1268,8 @@ struct FeedRow: View {
     var opening = false
     /// Можно удалять чужие реплики (модератор группы).
     var moderates = false
+    /// В группе у своей реплики можно посмотреть, кто её прочитал.
+    var showsReaders = false
     /// Закреплена ли реплика; `nil` — закреплять нельзя.
     var pinned: Bool? = nil
     let perform: (Action) -> Void
@@ -1303,6 +1316,9 @@ struct FeedRow: View {
         }
         if !item.isMine, item.attachment?.isSticker == true {
             Button(words(.stickerSave), systemImage: "plus.square.on.square") { perform(.saveSticker) }
+        }
+        if showsReaders, item.isMine, !item.isNotice, item.body != .deleted {
+            Button(words(.readersAction), systemImage: "checkmark.circle") { perform(.readers) }
         }
         if item.canEdit {
             Button(words(.editAction), systemImage: "pencil") { perform(.edit) }
@@ -1683,6 +1699,47 @@ struct ReportSheet: View {
         if block { _ = await session.setBlocked(item.sender, true) }
         dismiss()
         onSent()
+    }
+}
+
+/// Кто из группы прочитал свою реплику, а кто ещё нет.
+struct ReadersSheet: View {
+    @Environment(Words.self) private var words
+    @Environment(AppSession.self) private var session
+    @Environment(\.dismiss) private var dismiss
+    let item: FeedItem
+    let roomID: String
+    @State private var readers: (read: [String], unread: [String])?
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if let readers {
+                    section(words(.readersRead), readers.read, icon: "checkmark.circle.fill", tint: Theme.read)
+                    section(words(.readersUnread), readers.unread, icon: "circle", tint: Theme.quiet)
+                }
+            }
+            .overlay { if readers == nil { ProgressView() } }
+            .scrollContentBackground(.hidden)
+            .background(Theme.milk.ignoresSafeArea())
+            .navigationTitle(words(.readersAction))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) { Button(words(.done)) { dismiss() } }
+            }
+            .task { readers = await session.readers(of: item, in: roomID) }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    @ViewBuilder private func section(_ title: String, _ names: [String], icon: String, tint: Color) -> some View {
+        if !names.isEmpty {
+            Section("\(title) · \(names.count)") {
+                ForEach(Array(names.enumerated()), id: \.offset) { _, name in
+                    Label { Text(name).foregroundStyle(Theme.ink) } icon: { Image(systemName: icon).foregroundStyle(tint) }
+                }
+            }
+        }
     }
 }
 

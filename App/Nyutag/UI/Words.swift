@@ -359,6 +359,9 @@ extension Phrase {
     static let send = Phrase(bxr: "Эльгээхэ", ru: "Отправить", en: "Send")
     static let reply = Phrase(bxr: "Харюусаха", ru: "Ответить", en: "Reply")
     static let copy = Phrase(bxr: "Хуулаха", ru: "Копировать", en: "Copy")
+    static let readersAction = Phrase(bxr: "Хэн уншаба", ru: "Кто прочитал", en: "Read by")
+    static let readersRead = Phrase(bxr: "Уншаһан", ru: "Прочитали", en: "Read")
+    static let readersUnread = Phrase(bxr: "Уншаагүй", ru: "Ещё не прочитали", en: "Not read yet")
     static let edited = Phrase(bxr: "заһагдаһан", ru: "изм.", en: "edited")
     static let deleted = Phrase(bxr: "Бэшэг усадхагдаһан", ru: "Сообщение удалено", en: "Message deleted")
     static let waitingKey = Phrase(bxr: "Түлхюур хүлеэгдэнэ", ru: "Ждём ключ от отправителя", en: "Waiting for the key")
@@ -670,6 +673,7 @@ extension Phrase {
 
     // Группы из списка чатов
     static let groupNew = Phrase(bxr: "Шэнэ бүлэг", ru: "Новая группа", en: "New group")
+    static let groupNewShort = Phrase(bxr: "Бүлэг", ru: "Группа", en: "Group")
     static let groupName = Phrase(bxr: "Бүлэгэй нэрэ", ru: "Название группы", en: "Group name")
     static let groupWho = Phrase(bxr: "Хэниие уриха", ru: "Кого позвать", en: "Who to invite")
     static let groupWhoHint = Phrase(bxr: "Эндэ танай хөөрэлдэдэг хүнүүд. Бусадые «Контактнууд» соо олоорой.",

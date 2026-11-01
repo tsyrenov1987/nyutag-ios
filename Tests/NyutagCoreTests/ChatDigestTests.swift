@@ -46,6 +46,20 @@ struct ChatDigestTests {
         #expect(line.unread == 2)
     }
 
+    @Test("личный чат, куда позвали третьего, — группа: имена в ленте нужны")
+    func directGrownIntoGroup() async throws {
+        let store = try Store.inMemory()
+        var room = RoomRecord(id: "!dm3", membership: .join)
+        room.isDirect = true
+        try await store.upsert(room)
+        let dima = "@dima:nyutag.chat"
+        for event in [member(me, "!dm3", name: "Я"), member(arjuna, "!dm3", name: "Арюна"),
+                      member(dima, "!dm3", name: "Дима", membership: "invite")] { try await store.setState(event) }
+        try await store.append([text("$1", "!dm3", from: arjuna, ts: 100, "Сайн")])
+        let line = try #require(try await ChatDigest.lines(store: store, me: me).first)
+        #expect(!line.isDirect)
+    }
+
     @Test("картинка строки: у комнаты своя, у личного чата без своей — аватар собеседника, в группе — ничья")
     func avatarFromPartner() async throws {
         let store = try Store.inMemory()
