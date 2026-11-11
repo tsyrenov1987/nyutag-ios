@@ -228,6 +228,8 @@ struct PersonCard: View {
     @State private var askBlock = false
     @State private var failed = false
     @State private var viewingAvatar = false
+    @State private var reporting = false
+    @State private var reportSent = false
 
     var body: some View {
         NavigationStack {
@@ -270,6 +272,8 @@ struct PersonCard: View {
                             Button(words(.block), role: .destructive) { askBlock = true }
                                 .accessibilityIdentifier("person-block")
                         }
+                        Button(words(.reportAction), role: .destructive) { reporting = true }
+                            .accessibilityIdentifier("person-report")
                     }
                 }
             }
@@ -283,6 +287,8 @@ struct PersonCard: View {
                 Button(words(.cancel), role: .cancel) {}
             }
             .alert(words(.cantDo), isPresented: $failed) { Button(words(.done)) {} }
+            .sheet(isPresented: $reporting) { ReportSheet(target: .person(userID)) { reportSent = true } }
+            .alert(words(.reportSent), isPresented: $reportSent) { Button(words(.done)) {} }
             .fullScreenCover(isPresented: $viewingAvatar) {
                 if let url = profile?.avatarURL {
                     AvatarViewer(url: url, title: profile?.displayName ?? ChatDigest.localpart(userID))

@@ -62,6 +62,11 @@ struct ChatView: View {
     @State private var scheduling: String?
     @State private var scheduleDate = Date.now.addingTimeInterval(3600)
     @State private var schedulePast = false
+    @State private var filterBlocked = false
+    /// Карточка автора реплики в группе.
+    @State private var authorCard: String?
+    /// Автор, которого блокируем из меню реплики.
+    @State private var blockingAuthor: FeedItem?
     @State private var showingScheduled = false
     @State private var viewingOnce: OnceShot?
     /// Права в группе (из своей базы) и закреплённые реплики; `pinIndex` — какую из закреплённых показывает плашка.
@@ -158,9 +163,20 @@ struct ChatView: View {
         .onChange(of: line == nil) { gone, nowGone in if !gone && nowGone { dismiss() } }
         .alert(words(.autoDeleteError), isPresented: $ruleFailed) { Button(words(.done)) {} }
         .alert(words(.schedulePast), isPresented: $schedulePast) { Button(words(.done)) {} }
+        .alert(words(.filterSendTitle), isPresented: $filterBlocked) { Button(words(.done)) {} } message: {
+            Text(words(.filterSendText))
+        }
         .sheet(isPresented: Binding { scheduling != nil } set: { if !$0 { scheduling = nil } }) { schedulePicker }
         .sheet(isPresented: $showingScheduled) { scheduledList }
         .sheet(isPresented: $showingPartner) { if let partner { PersonCard(userID: partner) } }
+        .sheet(isPresented: Binding { authorCard != nil } set: { if !$0 { authorCard = nil } }) {
+            if let authorCard { PersonCard(userID: authorCard) }
+        }
+        .confirmationDialog(words(.blockAsk), isPresented: Binding { blockingAuthor != nil } set: { if !$0 { blockingAuthor = nil } },
+                            titleVisibility: .visible, presenting: blockingAuthor) { item in
+            Button(words(.block), role: .destructive) { run { await session.setBlocked(item.sender, true) } }
+            Button(words(.cancel), role: .cancel) {}
+        }
         .sheet(isPresented: $showingInfo) { GroupInfoView(roomID: roomID) { dismiss() } }
         .confirmationDialog(words(.chatLeave), isPresented: $askLeave, titleVisibility: .visible) {
             Button(words(.chatLeave), role: .destructive) { leave() }
@@ -777,6 +793,10 @@ struct ChatView: View {
             forwarding = item
         case .readers:
             readersOf = item
+        case .author:
+            authorCard = item.sender
+        case .block:
+            blockingAuthor = item
         case .pin(let on):
             run { await session.pin(item.id, on, in: roomID) }
         case .saveSticker:
@@ -944,6 +964,7 @@ struct ChatView: View {
     private func sendDraft() {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard canSend else { return }
+        guard !blocksWords(text) else { return }
         if let editing {
             self.editing = nil
             draft = ""
@@ -958,9 +979,16 @@ struct ChatView: View {
         deliver(pending)
     }
 
+    /// В группах и сообществах мат и оскорбления не уходят: черновик остаётся, человек видит почему.
+    private func blocksWords(_ text: String) -> Bool {
+        guard isGroup, ContentFilter.contains(text) else { return false }
+        filterBlocked = true
+        return true
+    }
+
     private func askSchedule() {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
+        guard !text.isEmpty, !blocksWords(text) else { return }
         scheduleDate = Date.now.addingTimeInterval(3600)
         scheduling = text
     }
@@ -1257,7 +1285,7 @@ struct ChatView: View {
 
 /// Одна строка ленты: плашка или пузырь со своей стороны.
 struct FeedRow: View {
-    enum Action { case reply, edit, delete, react(String), open, report, saveSticker, forward, pin(Bool), readers }
+    enum Action { case reply, edit, delete, react(String), open, report, saveSticker, forward, pin(Bool), readers, author, block }
 
     /// Быстрые реакции в меню, по порядку.
     static let quick = ["👍", "❤️", "😂", "😮", "😢", "🙏"]
@@ -1285,7 +1313,7 @@ struct FeedRow: View {
                         StickerCard(item: item, mxc: mxc, showsAuthor: showsAuthor)
                             .contextMenu { menu }
                     } else {
-                        Bubble(item: item, showsAuthor: showsAuthor, opening: opening) { perform(.open) }
+                        Bubble(item: item, showsAuthor: showsAuthor, opening: opening, author: { perform(.author) }) { perform(.open) }
                             .contextMenu { menu }
                     }
                     if !item.reactions.isEmpty {
@@ -1332,6 +1360,9 @@ struct FeedRow: View {
         if item.canReport {
             Button(words(.reportAction), systemImage: "exclamationmark.bubble", role: .destructive) { perform(.report) }
         }
+        if !item.isMine, !item.isNotice {
+            Button(words(.block), systemImage: "hand.raised", role: .destructive) { perform(.block) }
+        }
     }
 }
 
@@ -1358,6 +1389,8 @@ struct Bubble: View {
     let item: FeedItem
     let showsAuthor: Bool
     var opening = false
+    /// Касание имени автора в группе: карточка человека, где можно пожаловаться и заблокировать.
+    var author: () -> Void = {}
     var open: () -> Void = {}
 
     private var ink: Color { item.isMine ? .white : Theme.ink }
@@ -1368,6 +1401,9 @@ struct Bubble: View {
             if showsAuthor {
                 Text(item.senderName).font(.caption.bold())
                     .foregroundStyle(Theme.avatarTints[Int(Pillow.stableHash(item.sender) % UInt32(Theme.avatarTints.count))])
+                    .onTapGesture(perform: author)
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityIdentifier("author-name")
             }
             if item.forwarded {
                 Label(words(.forwarded), systemImage: "arrowshape.turn.up.right")
@@ -1645,41 +1681,110 @@ enum NoticeText {
 }
 
 /// Жалоба администратору на чужую реплику, с кнопкой «пожаловаться и заблокировать» автора.
+/// Жалоба модератору: на сообщение, на человека или на группу. Причина — из списка, подробности по желанию.
 struct ReportSheet: View {
+    enum Target {
+        case message(FeedItem, roomID: String)
+        case person(String)
+        case group(String)
+    }
+
+    enum Reason: String, CaseIterable, Identifiable {
+        case abuse, threat, hate, sexual, spam, other
+        var id: String { rawValue }
+
+        var phrase: Phrase {
+            switch self {
+            case .abuse: .reasonAbuse
+            case .threat: .reasonThreat
+            case .hate: .reasonHate
+            case .sexual: .reasonSexual
+            case .spam: .reasonSpam
+            case .other: .reasonOther
+            }
+        }
+    }
+
     @Environment(Words.self) private var words
     @Environment(AppSession.self) private var session
     @Environment(\.dismiss) private var dismiss
-    let item: FeedItem
-    let roomID: String
+    let target: Target
     let onSent: () -> Void
-    @State private var reason = ""
+    @State private var reason: Reason?
+    @State private var details = ""
     @State private var busy = false
     @State private var failed = false
 
+    init(target: Target, onSent: @escaping () -> Void) {
+        self.target = target
+        self.onSent = onSent
+    }
+
+    init(item: FeedItem, roomID: String, onSent: @escaping () -> Void) {
+        self.init(target: .message(item, roomID: roomID), onSent: onSent)
+    }
+
+    private var title: Phrase {
+        switch target {
+        case .message: .reportTitle
+        case .person: .reportPersonTitle
+        case .group: .reportGroupTitle
+        }
+    }
+
+    /// Кого заблокировать вместе с жалобой; у жалобы на группу блокировки нет.
+    private var offender: String? {
+        switch target {
+        case .message(let item, _): item.sender
+        case .person(let userID): userID
+        case .group: nil
+        }
+    }
+
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    Text(words(.reportLead)).foregroundStyle(Theme.ink)
-                    TextField(words(.reportReason), text: $reason, axis: .vertical)
-                        .lineLimit(3...6)
-                        .padding(16)
-                        .background(Theme.card, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            List {
+                Section {
+                    ForEach(Reason.allCases) { option in
+                        Button { reason = option } label: {
+                            HStack {
+                                Text(words(option.phrase)).foregroundStyle(Theme.ink)
+                                Spacer()
+                                if reason == option { Image(systemName: "checkmark").foregroundStyle(Theme.sky) }
+                            }
+                        }
+                        .accessibilityIdentifier("report-reason-\(option.rawValue)")
+                    }
+                } header: {
+                    Text(words(.reportReason))
+                } footer: {
+                    if case .message = target { Text(words(.reportLead)) } else { Text(words(.reportLeadOther)) }
+                }
+                Section {
+                    TextField(words(.reportDetails), text: $details, axis: .vertical)
+                        .lineLimit(2...5)
                         .accessibilityIdentifier("report-reason")
-                    BigButton(title: words(.send), busy: busy, enabled: !busy, id: "report-send") {
+                }
+                Section {
+                    BigButton(title: words(.send), busy: busy, enabled: !busy && reason != nil, id: "report-send") {
                         Task { await send(block: false) }
                     }
-                    Button(words(.reportAndBlock), role: .destructive) { Task { await send(block: true) } }
-                        .font(.callout.weight(.semibold))
-                        .frame(maxWidth: .infinity)
-                        .disabled(busy)
-                        .accessibilityIdentifier("report-block")
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets())
+                    if offender != nil {
+                        Button(words(.reportAndBlock), role: .destructive) { Task { await send(block: true) } }
+                            .font(.callout.weight(.semibold))
+                            .frame(maxWidth: .infinity)
+                            .disabled(busy || reason == nil)
+                            .listRowBackground(Color.clear)
+                            .accessibilityIdentifier("report-block")
+                    }
                 }
-                .padding(20)
             }
+            .scrollContentBackground(.hidden)
             .scrollDismissesKeyboard(.interactively)
             .background(Theme.milk.ignoresSafeArea())
-            .navigationTitle(words(.reportTitle))
+            .navigationTitle(words(title))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button(words(.cancel)) { dismiss() } }
@@ -1688,15 +1793,36 @@ struct ReportSheet: View {
         }
     }
 
+    /// Текст жалобы для модератора: причина по-английски (один язык для разбора), подробности и выдержка.
+    private func reasonText() -> String {
+        var parts = ["category: \(reason?.rawValue ?? "other")"]
+        let extra = details.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !extra.isEmpty { parts.append("details: \(extra)") }
+        if case .message(let item, _) = target {
+            parts.append("author: \(item.sender)")
+            switch item.body {
+            case .text(let text): parts.append("text: \(text.prefix(500))")
+            case .attachment(let kind, let caption): parts.append("attachment: \(kind)\(caption.map { " \($0.prefix(300))" } ?? "")")
+            default: break
+            }
+        }
+        return parts.joined(separator: " | ")
+    }
+
     private func send(block: Bool) async {
         busy = true
         defer { busy = false }
-        let text = reason.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard await session.report(item.id, in: roomID, reason: text.isEmpty ? words(.reportAction) : text) else {
+        let text = reasonText()
+        let sent: Bool = switch target {
+        case .message(let item, let roomID): await session.report(item.id, in: roomID, reason: text)
+        case .person(let userID): await session.report(user: userID, reason: text)
+        case .group(let roomID): await session.report(room: roomID, reason: text)
+        }
+        guard sent else {
             failed = true
             return
         }
-        if block { _ = await session.setBlocked(item.sender, true) }
+        if block, let offender { _ = await session.setBlocked(offender, true) }
         dismiss()
         onSent()
     }

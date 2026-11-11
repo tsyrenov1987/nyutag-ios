@@ -333,13 +333,65 @@ extension Phrase {
                                  en: "Block this person? Their messages will stop reaching you.")
     static let reportAction = Phrase(bxr: "Гомдол бэшэхэ", ru: "Пожаловаться", en: "Report")
     static let reportTitle = Phrase(bxr: "Бэшэг тухай гомдол", ru: "Жалоба на сообщение", en: "Report message")
-    static let reportLead = Phrase(bxr: "Юун буруу бэ гэжэ бэшэгты. Гомдолые Нютагай захиргаан абаха.",
-                                   ru: "Опишите, что не так. Жалобу получит администратор Нютага.",
-                                   en: "Tell us what is wrong. The Nyutag administrator will receive the report.")
+    static let reportLead = Phrase(bxr: "Шалтагаанаа шэлэгты. Нютагай модератор гомдолые нэгэ хоног соо хаража үзэхэ, бэшэг таанадта дары харагдахаа болихо.",
+                                   ru: "Выберите причину. Модератор Нютага разберёт жалобу в течение суток, а сообщение у вас скроется сразу.",
+                                   en: "Choose a reason. A Nyutag moderator reviews every report within 24 hours. The message is hidden for you right away.")
+    static let reportLeadOther = Phrase(bxr: "Шалтагаанаа шэлэгты. Нютагай модератор гомдолые нэгэ хоног соо хаража үзэхэ.",
+                                        ru: "Выберите причину. Модератор Нютага разберёт жалобу в течение суток.",
+                                        en: "Choose a reason. A Nyutag moderator reviews every report within 24 hours.")
+    static let reportPersonTitle = Phrase(bxr: "Хүн тухай гомдол", ru: "Жалоба на человека", en: "Report person")
+    static let reportGroupTitle = Phrase(bxr: "Бүлэг тухай гомдол", ru: "Жалоба на группу", en: "Report group")
+    static let reportDetails = Phrase(bxr: "Нэмэлтэ (заабол бэшэхэгүй)", ru: "Подробности (необязательно)",
+                                      en: "Details (optional)")
+    static let reasonAbuse = Phrase(bxr: "Доромжолго, хашалга", ru: "Оскорбления или травля", en: "Insults or harassment")
+    static let reasonThreat = Phrase(bxr: "Айлгалга, хүсэрхийлэл", ru: "Угрозы или насилие", en: "Threats or violence")
+    static let reasonHate = Phrase(bxr: "Үндэһэн, шажан, хүйһөөр үзэн ядалга", ru: "Ненависть к национальности, вере, полу",
+                                   en: "Hate speech")
+    static let reasonSexual = Phrase(bxr: "Бузар юумэн", ru: "Непристойное", en: "Sexual or obscene content")
+    static let reasonSpam = Phrase(bxr: "Спам, мэхэ", ru: "Спам или мошенничество", en: "Spam or scam")
+    static let reasonOther = Phrase(bxr: "Бусад", ru: "Другое", en: "Other")
     static let reportReason = Phrase(bxr: "Шалтагаан", ru: "Причина", en: "Reason")
     static let reportAndBlock = Phrase(bxr: "Гомдол бэшээд хориглохо", ru: "Пожаловаться и заблокировать",
                                        en: "Report and block")
-    static let reportSent = Phrase(bxr: "Гомдол эльгээгдээ", ru: "Жалоба отправлена", en: "Report sent")
+    static let reportSent = Phrase(bxr: "Гомдол эльгээгдээ. Нэгэ хоног соо хаража үзэхэбди.",
+                                   ru: "Жалоба отправлена. Разберём в течение суток.",
+                                   en: "Report sent. We review it within 24 hours.")
+
+    // Фильтр недопустимого (App Store 1.2); бурятский не сверен с носителем
+    static let filterWords = Phrase(bxr: "Муу үгэнүүдые хааха", ru: "Скрывать мат и оскорбления",
+                                    en: "Hide profanity and insults")
+    static let filterWordsHint = Phrase(
+        bxr: "Иимэ үгэнүүд бусадай бэшэгүүд соо сэгээр хаагдана. Бүлэг болон нэгэдэлнүүдтэ эльгээгдэхэгүй.",
+        ru: "Такие слова в чужих сообщениях закрываются точками. В группы и сообщества их отправить нельзя.",
+        en: "Such words in other people's messages are masked with dots. They can't be posted to groups and communities.")
+    static let filterSendTitle = Phrase(bxr: "Бэшэг эльгээгдээгүй", ru: "Сообщение не отправлено", en: "Message not sent")
+    static let filterSendText = Phrase(
+        bxr: "Бүлэг, нэгэдэлнүүдтэ муу үгэ, доромжолго бэшэхэ хорюултай. Бэшэгээ заһагты.",
+        ru: "В группах и сообществах нельзя писать мат и оскорбления. Исправьте текст.",
+        en: "Profanity and insults are not allowed in groups and communities. Please edit the message.")
+
+    // Правила при входе (App Store 1.2, EULA); бурятский не сверен с носителем
+    static let rulesTitle = Phrase(bxr: "Нютагай дүримүүд", ru: "Правила Нютага", en: "Nyutag rules")
+    static let rulesLead = Phrase(bxr: "Үргэлжэлүүлхын урда хэрэглэхэ болзолые зүбшөөгыт.",
+                                  ru: "Чтобы продолжить, примите условия пользования.",
+                                  en: "To continue, please accept the terms of use.")
+    static let rulesZero = Phrase(
+        bxr: "Доромжолго, айлгалга, хашалга, бузар болон хэрцгы юумэн хорюултай. Онсо ябадал үгы.",
+        ru: "Оскорбления, угрозы, травля, непристойный и жестокий контент запрещены. Исключений нет.",
+        en: "Zero tolerance: insults, threats, harassment, obscene or violent content are not allowed.")
+    static let rulesReport = Phrase(
+        bxr: "Ямаршье бэшэг тухай гомдол бэшэжэ, ямаршье хүниие хоригложо болохо. Модератор гомдолые нэгэ хоног соо харана.",
+        ru: "На любое сообщение можно пожаловаться, любого человека — заблокировать. Модератор разбирает жалобы в течение суток.",
+        en: "You can report any message and block any person. A moderator reviews every report within 24 hours.")
+    static let rulesRemove = Phrase(
+        bxr: "Дүрим эбдэһэн юумые усадхадагбди, эбдэгшын аккаунт хаадагбди.",
+        ru: "Нарушающий контент удаляем, аккаунт нарушителя закрываем.",
+        en: "Objectionable content is removed and the offender's account is closed.")
+    static let rulesFilter = Phrase(
+        bxr: "Муу үгэнүүд бэшэгүүд соо өөрөө хаагдана, энээниие цэсэ соо һэлгэжэ болохо.",
+        ru: "Мат и оскорбления в сообщениях закрываются сами, это можно поменять в меню.",
+        en: "Profanity and insults in messages are masked automatically. You can change this in the menu.")
+    static let rulesAccept = Phrase(bxr: "Зүбшөөнөб", ru: "Принимаю", en: "I agree")
 
     // Старая история под прежним ключом
     static let historyLockedTitle = Phrase(bxr: "Хуушан бэшэгүүд хаалтатай", ru: "Старые сообщения закрыты",

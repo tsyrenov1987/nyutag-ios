@@ -146,3 +146,64 @@ struct SignInView: View {
         }
     }
 }
+
+/// Правила Нютага (EULA): каждая учётка принимает их один раз до главного экрана, даже если вошла готовым аккаунтом.
+/// Нулевая терпимость к оскорблениям, жалоба и блокировка, разбор жалоб за сутки (App Store 1.2).
+struct RulesView: View {
+    @Environment(Words.self) private var words
+    @Environment(AppSession.self) private var session
+    @State private var askSignOut = false
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 22) {
+                VStack(alignment: .leading, spacing: 8) {
+                    NyutagLogo(size: 64).padding(.bottom, 8)
+                    Text(words(.rulesTitle))
+                        .font(.system(.largeTitle, design: .rounded, weight: .bold)).foregroundStyle(Theme.ink)
+                    Text(words(.rulesLead)).foregroundStyle(Theme.quiet)
+                }
+                VStack(alignment: .leading, spacing: 16) {
+                    point("hand.raised.fill", words(.rulesZero))
+                    point("exclamationmark.bubble.fill", words(.rulesReport))
+                    point("trash.fill", words(.rulesRemove))
+                    point("eye.slash.fill", words(.rulesFilter))
+                }
+                .padding(18)
+                .background(Theme.card, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                VStack(alignment: .leading, spacing: 10) {
+                    Link(destination: URL(string: "https://nyutag.chat/terms/")!) {
+                        Label(words(.termsOfUse), systemImage: "doc.text")
+                    }
+                    .accessibilityIdentifier("rules-terms")
+                    Link(destination: URL(string: "https://nyutag.chat/privacy/")!) {
+                        Label(words(.privacyPolicy), systemImage: "hand.raised")
+                    }
+                }
+                .font(.callout.weight(.semibold))
+                BigButton(title: words(.rulesAccept), busy: false, enabled: true, id: "rules-accept") {
+                    session.acceptRules()
+                }
+                Button(words(.signOut)) { askSignOut = true }
+                    .font(.callout)
+                    .foregroundStyle(Theme.quiet)
+                    .frame(maxWidth: .infinity)
+                    .accessibilityIdentifier("rules-sign-out")
+            }
+            .padding(24)
+            .frame(maxWidth: 560)
+            .frame(maxWidth: .infinity)
+        }
+        .background(Theme.milk.ignoresSafeArea())
+        .confirmationDialog(words(.signOutAsk), isPresented: $askSignOut, titleVisibility: .visible) {
+            Button(words(.signOut), role: .destructive) { Task { await session.signOut() } }
+        }
+    }
+
+    private func point(_ icon: String, _ text: String) -> some View {
+        HStack(alignment: .top, spacing: 14) {
+            Image(systemName: icon).font(.title3).foregroundStyle(Theme.sky).frame(width: 28)
+            Text(text).foregroundStyle(Theme.ink).fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}

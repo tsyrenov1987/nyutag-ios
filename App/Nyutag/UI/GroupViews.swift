@@ -149,6 +149,8 @@ struct GroupInfoView: View {
     @State private var target: Person?
     @State private var managing = false
     @State private var viewingPhoto = false
+    @State private var reporting = false
+    @State private var reportSent = false
 
     private var line: ChatLine? { session.lines.first { $0.id == roomID } }
     private var me: String { session.me ?? "" }
@@ -191,9 +193,15 @@ struct GroupInfoView: View {
                 if leaveFailed {
                     Section { Text(words(.chatLeaveFailed)).font(.footnote).foregroundStyle(Theme.quiet) }
                 }
+                Section {
+                    Button(words(.reportAction), role: .destructive) { reporting = true }
+                        .accessibilityIdentifier("group-report")
+                }
             }
             .scrollContentBackground(.hidden)
             .background(Theme.milk.ignoresSafeArea())
+            .sheet(isPresented: $reporting) { ReportSheet(target: .group(roomID)) { reportSent = true } }
+            .alert(words(.reportSent), isPresented: $reportSent) { Button(words(.done)) {} }
             .navigationTitle(words(.groupInfo))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

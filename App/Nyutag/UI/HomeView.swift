@@ -731,6 +731,13 @@ struct MeMenu: View {
                 } footer: {
                     Text(words(.buryatLettersHint))
                 }
+                Section {
+                    Toggle(words(.filterWords), isOn: Bindable(session).filterWords)
+                        .tint(Theme.gold)
+                        .accessibilityIdentifier("menu-filter-words")
+                } footer: {
+                    Text(words(.filterWordsHint))
+                }
                 Section(words(.advanced)) {
                     Button { showingDevices = true } label: {
                         Label(words(.devices), systemImage: "iphone.and.ipad").foregroundStyle(Theme.ink)

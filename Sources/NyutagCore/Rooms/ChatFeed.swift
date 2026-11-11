@@ -78,6 +78,28 @@ public struct FeedItem: Sendable, Equatable, Identifiable {
     public var canDelete: Bool { isMine && !isNotice && body != .deleted }
     /// Пожаловаться можно на чужую реплику, которую видно.
     public var canReport: Bool { !isMine && !isNotice && body != .deleted && body != .locked }
+
+    /// Та же реплика с закрытыми недопустимыми словами в тексте, подписи и цитате; `nil` — закрывать нечего.
+    public func filtered() -> FeedItem? {
+        var body = body
+        var reply = reply
+        var changed = false
+        switch body {
+        case .text(let text):
+            if let masked = ContentFilter.mask(text) { body = .text(masked); changed = true }
+        case .attachment(let kind, let caption):
+            if let caption, let masked = ContentFilter.mask(caption) { body = .attachment(kind, caption: masked); changed = true }
+        default:
+            break
+        }
+        if let quote = reply, case .text(let text) = quote.preview, let masked = ContentFilter.mask(text) {
+            reply = Quote(eventID: quote.eventID, senderName: quote.senderName, preview: .text(masked))
+            changed = true
+        }
+        guard changed else { return nil }
+        return FeedItem(id: id, sender: sender, senderName: senderName, isMine: isMine, ts: ts, body: body, edited: edited,
+                        reply: reply, reactions: reactions, attachment: attachment, isRead: isRead, forwarded: forwarded)
+    }
 }
 
 public enum ChatFeed {

@@ -15,7 +15,8 @@ struct ContentView: View {
                 switch session.phase {
                 case .launching: Theme.milk.ignoresSafeArea()
                 case .signedOut: SignInView()
-                case .signedIn: HomeView()
+                case .signedIn:
+                    if session.rulesAccepted { HomeView() } else { RulesView() }
                 }
             }
         }
@@ -26,6 +27,7 @@ struct ContentView: View {
         .environment(\.locale, (words.lang ?? .ru).locale)
         .tint(Theme.sky)
         .animation(.smooth, value: session.phase)
+        .animation(.smooth, value: session.rulesAccepted)
         .animation(.smooth, value: words.lang)
         .onOpenURL(perform: open)
         .task {
@@ -66,6 +68,7 @@ struct ContentView: View {
         for attempt in 1...6 {
             do throws(AppSession.SignInFailure) {
                 try await session.signIn(identifier: user, password: password)
+                if env["NYUTAG_UI_RULES"] == "accept" { session.acceptRules() }
                 return print("ui-check: вход выполнен")
             } catch {
                 print("ui-check: вход, попытка \(attempt): \(error)")

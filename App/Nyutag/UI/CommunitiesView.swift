@@ -194,6 +194,8 @@ struct CommunityView: View {
     @State private var allPeople = false
     @State private var target: Person?
     @State private var managing = false
+    @State private var reporting = false
+    @State private var reportSent = false
 
     private var joined: Bool { session.communities.contains { $0.id == community.id } }
     private var me: String { session.me ?? "" }
@@ -285,6 +287,10 @@ struct CommunityView: View {
                     }
                 }
             }
+            Section {
+                Button(words(.reportAction), systemImage: "exclamationmark.bubble", role: .destructive) { reporting = true }
+                    .accessibilityIdentifier("community-report")
+            }
         }
         .scrollContentBackground(.hidden)
         .background(Theme.milk.ignoresSafeArea())
@@ -293,6 +299,8 @@ struct CommunityView: View {
         .refreshable { await loadGroups() }
         .modifier(MemberActions(target: $target, roomID: community.id, powers: facts?.powers, community: true) { await loadGroups() })
         .sheet(isPresented: $managing) { RoomAdminView(roomID: community.id, community: true) { await loadGroups() } }
+        .sheet(isPresented: $reporting) { ReportSheet(target: .group(community.id)) { reportSent = true } }
+        .alert(words(.reportSent), isPresented: $reportSent) { Button(words(.done)) {} }
         .confirmationDialog(words(.communityLeaveAsk), isPresented: $leaving, titleVisibility: .visible) {
             Button(words(.communityLeave), role: .destructive) {
                 Task {

@@ -1,7 +1,7 @@
 // Нютаг. Защита от людей: блокировка собеседника, жалоба на сообщение, удаление аккаунта.
 // Блокировка — стандартный `m.ignored_user_list` в данных учётки: сервер перестаёт присылать события
 // блокированного, а мы на всякий случай прячем его реплики и у себя. Жалоба — `/rooms/{id}/report/{event}`,
-// её читает администратор сервера. Удаление аккаунта — `/account/deactivate` с подтверждением паролем
+// `/users/{id}/report` и `/rooms/{id}/report`: сервер пересылает её модератору Нютага. Удаление аккаунта — `/account/deactivate` с подтверждением паролем
 // (обязательно для приложений с регистрацией: App Store 5.1.1(v)).
 
 import Foundation
@@ -36,6 +36,16 @@ public extension MatrixClient {
     func report(roomID: String, eventID: String, reason: String, score: Int = -100) async throws(MatrixError) {
         let _: EmptyResponse = try await request(.post, "rooms/\(roomID)/report/\(eventID)",
                                                  body: ["reason": .string(reason), "score": .int(score)])
+    }
+
+    /// Жалоба на человека: уходит модератору Нютага вместе с блокировкой или отдельно из профиля.
+    func reportUser(_ userID: String, reason: String) async throws(MatrixError) {
+        let _: EmptyResponse = try await request(.post, "users/\(userID)/report", body: ["reason": .string(reason)])
+    }
+
+    /// Жалоба на группу или сообщество целиком.
+    func reportRoom(_ roomID: String, reason: String) async throws(MatrixError) {
+        let _: EmptyResponse = try await request(.post, "rooms/\(roomID)/report", body: ["reason": .string(reason)])
     }
 
     /// Удалить аккаунт на сервере навсегда. Сервер просит подтвердить паролем (UIA): первый запрос без

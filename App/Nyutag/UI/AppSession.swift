@@ -22,6 +22,19 @@ final class AppSession {
     private(set) var lines: [ChatLine] = []
     /// Блокированные (`m.ignored_user_list`): их реплики не показываем, сервер их события не присылает.
     private(set) var ignored: Set<String> = []
+    /// Версия правил (EULA): поднимаем, когда условия меняются, и экран согласия покажется снова.
+    static let rulesVersion = 1
+    /// Учётка на этом телефоне приняла правила; до этого вместо главного экрана — экран правил.
+    private(set) var rulesAccepted = false
+    static let filterKey = "nyutag.filterWords"
+    /// Закрывать мат и оскорбления в чужих репликах и в списке чатов. По умолчанию включено.
+    var filterWords = UserDefaults.standard.object(forKey: AppSession.filterKey) as? Bool ?? true {
+        didSet {
+            UserDefaults.standard.set(filterWords, forKey: Self.filterKey)
+            revision += 1
+            Task { await refresh() }
+        }
+    }
     /// Чаты без звука: правила уведомлений комнат из `m.push_rules`.
     private(set) var muted: Set<String> = []
     /// Число на значке приложения, которое поставили сами.
@@ -125,6 +138,8 @@ final class AppSession {
                                                   deviceName: "Нютаг iPhone")
             if let displayName {
                 try? await account.client.setDisplayName(userID: account.session.userID, displayName)
+                // Новый участник принял правила галочкой в форме регистрации.
+                Self.rememberRules(account.session.userID)
             }
             await start(account, password: password)
         } catch let error as MatrixError {
@@ -230,7 +245,26 @@ final class AppSession {
         deviceCheckName = nil
         awaitingKeys = false
         showDeviceCheck = false
+        rulesAccepted = false
         phase = .signedOut
+    }
+
+    // MARK: Правила
+
+    private static func rulesKey(_ userID: String) -> String { "nyutag.rules.\(userID)" }
+
+    private static func rememberRules(_ userID: String) {
+        UserDefaults.standard.set(rulesVersion, forKey: rulesKey(userID))
+    }
+
+    /// Согласие с правилами: на телефоне и в данных учётки на сервере, чтобы оно было записано и у нас.
+    func acceptRules() {
+        guard let account, let me else { return }
+        Self.rememberRules(me)
+        rulesAccepted = true
+        let content: JSONValue = ["version": .int(Self.rulesVersion), "accepted_ts": .int(Int(Date().timeIntervalSince1970 * 1000))]
+        let client = account.client
+        Task { try? await client.setAccountData(userID: me, type: "chat.nyutag.rules", content: content) }
     }
 
     // MARK: Старая история
@@ -369,8 +403,15 @@ final class AppSession {
 
     func feed(_ roomID: String, limit: Int) async -> [FeedItem] {
         guard let account, let me else { return [] }
-        return (try? await ChatFeed.items(roomID: roomID, store: account.store, me: me, limit: limit, ignored: ignored,
-                                          decrypt: opener())) ?? []
+        let items = (try? await ChatFeed.items(roomID: roomID, store: account.store, me: me, limit: limit, ignored: ignored,
+                                               decrypt: opener())) ?? []
+        let hidden = Self.reported(by: me)
+        let filter = filterWords
+        return items.compactMap { item in
+            if hidden.contains(item.id) { return nil }
+            guard filter, !item.isMine else { return item }
+            return item.filtered() ?? item
+        }
     }
 
     /// Кто прочитал свою реплику в группе.
@@ -400,13 +441,40 @@ final class AppSession {
         ignored = users
         await refresh()
         revision += 1
+        // Блокировка — сигнал модератору: сервер пересылает жалобу на человека разработчику.
+        if blocked {
+            let client = account.client
+            Task { try? await client.reportUser(userID, reason: "Blocked by \(me)") }
+        }
         return true
     }
 
-    /// Жалоба администратору сервера на сообщение.
+    /// Жалоба модератору на сообщение. Сообщение сразу пропадает из ленты у того, кто пожаловался.
     func report(_ eventID: String, in roomID: String, reason: String) async -> Bool {
+        guard let account, let me else { return false }
+        guard (try? await account.client.report(roomID: roomID, eventID: eventID, reason: reason)) != nil else { return false }
+        var hidden = Self.reported(by: me)
+        hidden.insert(eventID)
+        UserDefaults.standard.set(Array(hidden), forKey: Self.reportedKey(me))
+        revision += 1
+        return true
+    }
+
+    /// Жалоба модератору на человека или на группу целиком (`roomID`).
+    func report(user userID: String? = nil, room roomID: String? = nil, reason: String) async -> Bool {
         guard let account else { return false }
-        return (try? await account.client.report(roomID: roomID, eventID: eventID, reason: reason)) != nil
+        if let userID {
+            return (try? await account.client.reportUser(userID, reason: reason)) != nil
+        }
+        guard let roomID else { return false }
+        return (try? await account.client.reportRoom(roomID, reason: reason)) != nil
+    }
+
+    private static func reportedKey(_ me: String) -> String { "nyutag.reported.\(me)" }
+
+    /// Реплики, на которые пожаловались с этого телефона: в ленте их больше не показываем.
+    private static func reported(by me: String) -> Set<String> {
+        Set(UserDefaults.standard.stringArray(forKey: reportedKey(me)) ?? [])
     }
 
     /// Докачать историю назад. `false` — дальше начало чата (или нет сети).
@@ -1325,6 +1393,7 @@ final class AppSession {
         self.engine = engine
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
         media = try? MediaCache(client: account.client, directory: caches.appending(path: "media", directoryHint: .isDirectory))
+        rulesAccepted = UserDefaults.standard.integer(forKey: Self.rulesKey(account.session.userID)) >= Self.rulesVersion
         phase = .signedIn
         await refresh()
         Task { [weak self] in
@@ -1628,7 +1697,8 @@ final class AppSession {
         guard let account, let me else { return }
         if let list = try? await IgnoredUsers.load(store: account.store), list != ignored { ignored = list }
         if let quiet = try? await MutedRooms.load(store: account.store), quiet != muted { muted = quiet }
-        if let fresh = try? await ChatDigest.lines(store: account.store, me: me, ignored: ignored, decrypt: opener()) {
+        if var fresh = try? await ChatDigest.lines(store: account.store, me: me, ignored: ignored, decrypt: opener()) {
+            if filterWords { fresh = fresh.map { $0.lastIsMine ? $0 : ($0.filtered() ?? $0) } }
             let chats = fresh.filter { !$0.isSpace }
             let spaces = fresh.filter { $0.isSpace && $0.membership == .join }
             if chats != lines { lines = chats }

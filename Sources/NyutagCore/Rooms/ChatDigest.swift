@@ -26,6 +26,15 @@ public struct ChatLine: Sendable, Equatable, Identifiable {
     public let mentions: Int
     /// Имя сообщества, в которое входит группа (`m.space.parent`), если мы в нём состоим.
     public var community: String? = nil
+
+    /// Та же строка списка с закрытыми недопустимыми словами в последней реплике; `nil` — закрывать нечего.
+    public func filtered() -> ChatLine? {
+        guard case .text(let text) = last, let masked = ContentFilter.mask(text) else { return nil }
+        return ChatLine(id: id, title: title, avatarURL: avatarURL, membership: membership, isDirect: isDirect,
+                        isEncrypted: isEncrypted, isSpace: isSpace, last: .text(masked), lastSenderName: lastSenderName,
+                        lastIsMine: lastIsMine, delivery: delivery, lastTS: lastTS, unread: unread, mentions: mentions,
+                        community: community)
+    }
 }
 
 public enum ChatDigest {
